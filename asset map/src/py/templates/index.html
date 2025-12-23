@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Asset Map</title>
+
+  <!-- Leaflet CSS: we use the free OpenStreetMap tiles via Leaflet for now -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    crossorigin=""
+  />
+
+  <!-- Local styles -->
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Asset Map</h1>
+  </header>
+
+  <main>
+    <!-- The map div will be filled by Leaflet. The JS fetches markers from
+         /api/markers and posts new markers on click to /api/markers. -->
+    <div id="map"></div>
+  </main>
+
+  <footer class="app-footer">
+    <small id="status">Ready</small>
+  </footer>
+
+  <!-- Leaflet JS -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    crossorigin=""
+  ></script>
+
+  <!-- App JS -->
+  <script src="/static/js/map.js"></script>
+</body>
+</html>
