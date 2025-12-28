@@ -16,6 +16,24 @@
   <link rel="stylesheet" href="/static/css/styles.css" />
 </head>
 <body>
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="nav-brand">
+        <h2>Asset Map</h2>
+      </div>
+      <ul class="nav-menu">
+        <li class="nav-item"><a href="#map" class="nav-link active">Map View</a></li>
+        <li class="nav-item"><a href="#list" class="nav-link">List View</a></li>
+        <li class="nav-item"><a href="#analytics" class="nav-link">Analytics</a></li>
+        <li class="nav-item"><a href="#export" class="nav-link">Export</a></li>
+      </ul>
+      <div class="nav-search">
+        <input type="text" id="nav-search-input" placeholder="Search assets by location, name..." />
+        <button onclick="searchAssets()">Search</button>
+      </div>
+    </div>
+  </nav>
+
   <header class="app-header">
     <h1>Asset Map — CSV persistence (local)</h1>
   </header>
