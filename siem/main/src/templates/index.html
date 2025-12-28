@@ -7,6 +7,25 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <h2>SIEM</h2>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item"><a href="#dashboard" class="nav-link active">Dashboard</a></li>
+                <li class="nav-item"><a href="#events" class="nav-link">Events</a></li>
+                <li class="nav-item"><a href="#alerts" class="nav-link">Alerts</a></li>
+                <li class="nav-item"><a href="#reports" class="nav-link">Reports</a></li>
+                <li class="nav-item"><a href="#settings" class="nav-link">Settings</a></li>
+            </ul>
+            <div class="nav-search">
+                <input type="text" id="nav-search-input" placeholder="Search events, alerts..." />
+                <button onclick="performSearch()">Search</button>
+            </div>
+        </div>
+    </nav>
+
     <div class="container">
         <header>
             <h1>SIEM Dashboard</h1>

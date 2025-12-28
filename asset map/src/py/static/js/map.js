@@ -231,4 +231,75 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Kick off initial load of markers.
   loadMarkers();
+
+  // Navigation link handling
+  const navLinks = document.querySelectorAll('.nav-link');
+  navLinks.forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+
+      // Update active state
+      navLinks.forEach(l => l.classList.remove('active'));
+      this.classList.add('active');
+
+      // Handle navigation
+      const section = this.getAttribute('href').substring(1);
+      console.log('Navigating to:', section);
+    });
+  });
+
+  // Enable Enter key for search
+  const searchInput = document.getElementById('nav-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        searchAssets();
+      }
+    });
+  }
 });
+
+// Search assets functionality
+// Purpose: Search through markers by name or properties and highlight matching ones
+function searchAssets() {
+  const searchInput = document.getElementById('nav-search-input');
+  const query = searchInput.value.trim().toLowerCase();
+
+  if (!query) {
+    alert('Please enter a search term');
+    return;
+  }
+
+  const statusEl = document.getElementById('status');
+  let matchCount = 0;
+
+  // Search through all markers
+  fetch('/api/markers')
+    .then(r => r.json())
+    .then(data => {
+      const markers = data.markers || [];
+      const matches = markers.filter(marker => {
+        const name = marker.properties?.name || '';
+        const idStr = String(marker.id);
+        return name.toLowerCase().includes(query) || idStr.includes(query);
+      });
+
+      matchCount = matches.length;
+
+      if (matches.length > 0) {
+        // Zoom to first match
+        const firstMatch = matches[0];
+        const map = document.querySelector('#map')._leaflet_map;
+        if (map) {
+          map.setView([firstMatch.lat, firstMatch.lng], 12);
+        }
+        statusEl.textContent = `Found ${matchCount} match(es) for "${query}". Zoomed to first result.`;
+      } else {
+        statusEl.textContent = `No matches found for "${query}".`;
+      }
+    })
+    .catch(err => {
+      console.error('Search failed:', err);
+      statusEl.textContent = 'Search failed. Please try again.';
+    });
+}
