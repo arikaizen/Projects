@@ -47,10 +47,55 @@ async function sendData() {
     }
 }
 
-// Load status on page load
+// Search functionality
+function performSearch() {
+    const searchInput = document.getElementById('nav-search-input');
+    const query = searchInput.value.trim();
+
+    if (!query) {
+        alert('Please enter a search term');
+        return;
+    }
+
+    // Display search results in the response display
+    const responseDiv = document.getElementById('response-display');
+    responseDiv.innerHTML = `
+        <p><strong>Search Results for:</strong> "${query}"</p>
+        <p style="color: #666;">Search functionality ready for implementation</p>
+        <p style="color: #666;">This will search through events, alerts, and logs</p>
+    `;
+
+    // Scroll to results
+    responseDiv.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Navigation link handling
 document.addEventListener('DOMContentLoaded', function() {
     fetchStatus();
 
     // Refresh status every 5 seconds
     setInterval(fetchStatus, 5000);
+
+    // Handle navigation links
+    const navLinks = document.querySelectorAll('.nav-link');
+    navLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            // Update active state
+            navLinks.forEach(l => l.classList.remove('active'));
+            this.classList.add('active');
+
+            // Handle navigation (placeholder for now)
+            const section = this.getAttribute('href').substring(1);
+            console.log('Navigating to:', section);
+        });
+    });
+
+    // Enable Enter key for search
+    document.getElementById('nav-search-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            performSearch();
+        }
+    });
 });
