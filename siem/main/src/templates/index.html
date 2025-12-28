@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIEM Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SIEM Dashboard</h1>
+            <p class="subtitle">Security Information and Event Management</p>
+        </header>
+
+        <main>
+            <section class="status-panel">
+                <h2>System Status</h2>
+                <div id="status-display">
+                    <p>Loading status...</p>
+                </div>
+            </section>
+
+            <section class="data-panel">
+                <h2>Data Management</h2>
+                <div class="form-group">
+                    <textarea id="data-input" placeholder="Enter data (JSON format)"></textarea>
+                    <button onclick="sendData()">Submit Data</button>
+                </div>
+                <div id="response-display"></div>
+            </section>
+
+            <section class="info-panel">
+                <h2>Quick Info</h2>
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h3>Events</h3>
+                        <p class="count">0</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Alerts</h3>
+                        <p class="count">0</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Sources</h3>
+                        <p class="count">0</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
