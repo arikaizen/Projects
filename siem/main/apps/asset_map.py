@@ -73,11 +73,11 @@ class AssetMapApp(BaseApp):
                     </div>
                     <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; text-align: center;">
                         <div style="font-size: 1.5em; font-weight: bold; color: #f6ad55;" id="tagged-count">0</div>
-                        <div style="color: #666; font-size: 0.9em;">Tagged</div>
+                        <div style="color: #666; font-size: 0.9em;">With IP</div>
                     </div>
                     <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; text-align: center;">
                         <div style="font-size: 1.5em; font-weight: bold; color: #9f7aea;" id="critical-count">0</div>
-                        <div style="color: #666; font-size: 0.9em;">Critical</div>
+                        <div style="color: #666; font-size: 0.9em;">With Contact</div>
                     </div>
                 </div>
             </div>
@@ -150,13 +150,18 @@ class AssetMapApp(BaseApp):
         document.body.appendChild(leafletJS);
 
         function initAssetMap() {
-            // Initialize map centered on world view
-            assetMap = L.map('asset-map').setView([20, 0], 2);
+            // Initialize map centered on world view with bounds to limit to single world map
+            assetMap = L.map('asset-map', {
+                minZoom: 2,
+                maxBounds: [[-90, -180], [90, 180]],
+                maxBoundsViscosity: 1.0
+            }).setView([20, 0], 2);
 
             // Add OpenStreetMap tiles
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
-                attribution: '© OpenStreetMap contributors'
+                attribution: '© OpenStreetMap contributors',
+                noWrap: true
             }).addTo(assetMap);
 
             // Load saved markers from localStorage
@@ -172,11 +177,11 @@ class AssetMapApp(BaseApp):
 
         function addMarker(lat, lng, data = null) {
             const id = data?.id || markerId++;
-            const name = data?.name || '';
-            const type = data?.type || 'server';
-            const status = data?.status || 'active';
-            const tags = data?.tags || '';
-            const notes = data?.notes || '';
+            const address = data?.address || '';
+            const ip_address = data?.ip_address || '';
+            const owner = data?.owner || '';
+            const site = data?.site || '';
+            const contact_info = data?.contact_info || '';
 
             const marker = L.marker([lat, lng], {
                 draggable: true
@@ -191,7 +196,7 @@ class AssetMapApp(BaseApp):
             });
 
             // Create popup content
-            const popupContent = createPopupContent(id, name, type, status, tags, notes);
+            const popupContent = createPopupContent(id, address, ip_address, owner, site, contact_info);
             marker.bindPopup(popupContent);
 
             // Store marker data
@@ -200,11 +205,11 @@ class AssetMapApp(BaseApp):
                 marker: marker,
                 lat: lat,
                 lng: lng,
-                name: name,
-                type: type,
-                status: status,
-                tags: tags,
-                notes: notes
+                address: address,
+                ip_address: ip_address,
+                owner: owner,
+                site: site,
+                contact_info: contact_info
             };
 
             saveMarkers();
@@ -213,27 +218,15 @@ class AssetMapApp(BaseApp):
             return marker;
         }
 
-        function createPopupContent(id, name, type, status, tags, notes) {
+        function createPopupContent(id, address, ip_address, owner, site, contact_info) {
             return `
                 <div class="asset-popup">
                     <h4 style="margin: 0 0 10px 0;">Asset Details</h4>
-                    <input type="text" id="name-${id}" placeholder="Asset Name" value="${name}" />
-                    <select id="type-${id}">
-                        <option value="server" ${type === 'server' ? 'selected' : ''}>Server</option>
-                        <option value="datacenter" ${type === 'datacenter' ? 'selected' : ''}>Data Center</option>
-                        <option value="office" ${type === 'office' ? 'selected' : ''}>Office</option>
-                        <option value="endpoint" ${type === 'endpoint' ? 'selected' : ''}>Endpoint</option>
-                        <option value="network" ${type === 'network' ? 'selected' : ''}>Network Device</option>
-                        <option value="critical" ${type === 'critical' ? 'selected' : ''}>Critical Infrastructure</option>
-                    </select>
-                    <select id="status-${id}">
-                        <option value="active" ${status === 'active' ? 'selected' : ''}>Active</option>
-                        <option value="inactive" ${status === 'inactive' ? 'selected' : ''}>Inactive</option>
-                        <option value="maintenance" ${status === 'maintenance' ? 'selected' : ''}>Maintenance</option>
-                        <option value="critical" ${status === 'critical' ? 'selected' : ''}>Critical Alert</option>
-                    </select>
-                    <input type="text" id="tags-${id}" placeholder="Tags (comma-separated)" value="${tags}" />
-                    <textarea id="notes-${id}" placeholder="Notes" rows="2">${notes}</textarea>
+                    <input type="text" id="address-${id}" placeholder="Address" value="${address}" />
+                    <input type="text" id="ip-${id}" placeholder="IP Address (optional)" value="${ip_address}" />
+                    <input type="text" id="owner-${id}" placeholder="Owner" value="${owner}" />
+                    <input type="text" id="site-${id}" placeholder="Site" value="${site}" />
+                    <textarea id="contact-${id}" placeholder="Contact Info" rows="2">${contact_info}</textarea>
                     <button class="btn-save" onclick="updateMarker(${id})">Save</button>
                     <button class="btn-delete" onclick="deleteMarker(${id})">Delete</button>
                     <button class="btn-cancel" onclick="assetMap.closePopup()">Cancel</button>
@@ -243,19 +236,19 @@ class AssetMapApp(BaseApp):
 
         function updateMarker(id) {
             const markerData = markers[id];
-            markerData.name = document.getElementById(`name-${id}`).value;
-            markerData.type = document.getElementById(`type-${id}`).value;
-            markerData.status = document.getElementById(`status-${id}`).value;
-            markerData.tags = document.getElementById(`tags-${id}`).value;
-            markerData.notes = document.getElementById(`notes-${id}`).value;
+            markerData.address = document.getElementById(`address-${id}`).value;
+            markerData.ip_address = document.getElementById(`ip-${id}`).value;
+            markerData.owner = document.getElementById(`owner-${id}`).value;
+            markerData.site = document.getElementById(`site-${id}`).value;
+            markerData.contact_info = document.getElementById(`contact-${id}`).value;
 
             const popupContent = createPopupContent(
                 id,
-                markerData.name,
-                markerData.type,
-                markerData.status,
-                markerData.tags,
-                markerData.notes
+                markerData.address,
+                markerData.ip_address,
+                markerData.owner,
+                markerData.site,
+                markerData.contact_info
             );
             markerData.marker.setPopupContent(popupContent);
 
@@ -287,11 +280,11 @@ class AssetMapApp(BaseApp):
                 id: m.id,
                 lat: m.lat,
                 lng: m.lng,
-                name: m.name,
-                type: m.type,
-                status: m.status,
-                tags: m.tags,
-                notes: m.notes
+                address: m.address,
+                ip_address: m.ip_address,
+                owner: m.owner,
+                site: m.site,
+                contact_info: m.contact_info
             }));
             localStorage.setItem('siem_asset_markers', JSON.stringify(data));
         }
@@ -312,11 +305,11 @@ class AssetMapApp(BaseApp):
                 id: m.id,
                 lat: m.lat,
                 lng: m.lng,
-                name: m.name,
-                type: m.type,
-                status: m.status,
-                tags: m.tags,
-                notes: m.notes
+                address: m.address,
+                ip_address: m.ip_address,
+                owner: m.owner,
+                site: m.site,
+                contact_info: m.contact_info
             }));
 
             const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
@@ -340,15 +333,13 @@ class AssetMapApp(BaseApp):
             });
             document.getElementById('country-count').textContent = countries.size;
 
-            // Count tagged assets
-            const tagged = markerArray.filter(m => m.tags && m.tags.trim().length > 0).length;
-            document.getElementById('tagged-count').textContent = tagged;
+            // Count assets with IP addresses
+            const withIP = markerArray.filter(m => m.ip_address && m.ip_address.trim().length > 0).length;
+            document.getElementById('tagged-count').textContent = withIP;
 
-            // Count critical assets
-            const critical = markerArray.filter(m =>
-                m.status === 'critical' || m.type === 'critical'
-            ).length;
-            document.getElementById('critical-count').textContent = critical;
+            // Count assets with contact info
+            const withContact = markerArray.filter(m => m.contact_info && m.contact_info.trim().length > 0).length;
+            document.getElementById('critical-count').textContent = withContact;
         }
         """
 
