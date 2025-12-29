@@ -164,13 +164,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Enable Enter key for main search bar
+    // Enable Enter key for main search bar (Shift+Enter for new line, Enter to search)
     const mainSearchInput = document.getElementById('main-search-input');
     if (mainSearchInput) {
-        mainSearchInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
+        mainSearchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
                 executeSearch();
             }
+            // Shift+Enter will create new line (default behavior)
         });
     }
 });
