@@ -119,12 +119,92 @@ function executeSearch() {
     }, 400);
 }
 
+// Load app content
+async function loadApp(appId) {
+    try {
+        const response = await fetch(`/api/apps/${appId}`);
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('App not found:', appId);
+            return;
+        }
+
+        // Show app page
+        const appPage = document.getElementById('search-app-page');
+        appPage.innerHTML = data.content.html;
+        appPage.classList.remove('hidden');
+        document.getElementById('main-content').style.display = 'none';
+
+        // Execute app JavaScript
+        if (data.content.js) {
+            const script = document.createElement('script');
+            script.textContent = data.content.js;
+            document.body.appendChild(script);
+        }
+
+        // Add app CSS
+        if (data.content.css) {
+            const style = document.createElement('style');
+            style.textContent = data.content.css;
+            document.head.appendChild(style);
+        }
+
+    } catch (error) {
+        console.error('Failed to load app:', error);
+    }
+}
+
+// Hide app and return to dashboard
+function hideApp() {
+    document.getElementById('search-app-page').classList.add('hidden');
+    document.getElementById('main-content').style.display = 'block';
+}
+
+// Load available apps and populate dropdown
+async function loadAvailableApps() {
+    try {
+        const response = await fetch('/api/apps');
+        const data = await response.json();
+
+        const dropdownMenu = document.querySelector('.dropdown-menu');
+        if (dropdownMenu && data.apps) {
+            // Clear existing items
+            dropdownMenu.innerHTML = '';
+
+            // Add each app
+            data.apps.forEach(app => {
+                const link = document.createElement('a');
+                link.href = `#${app.id}`;
+                link.className = 'dropdown-item';
+                link.textContent = `${app.icon} ${app.name}`;
+                link.setAttribute('data-app-id', app.id);
+                link.setAttribute('title', app.description);
+                dropdownMenu.appendChild(link);
+
+                // Add click handler
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    loadApp(app.id);
+                });
+            });
+
+            console.log(`Loaded ${data.apps.length} apps`);
+        }
+    } catch (error) {
+        console.error('Failed to load apps:', error);
+    }
+}
+
 // Navigation link handling
 document.addEventListener('DOMContentLoaded', function() {
     fetchStatus();
 
     // Refresh status every 5 seconds
     setInterval(fetchStatus, 5000);
+
+    // Load available apps
+    loadAvailableApps();
 
     // Handle navigation links
     const navLinks = document.querySelectorAll('.nav-link');
@@ -142,37 +222,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Handle dropdown items
-    const dropdownItems = document.querySelectorAll('.dropdown-item');
-    dropdownItems.forEach(item => {
-        item.addEventListener('click', function(e) {
-            e.preventDefault();
-            const href = this.getAttribute('href');
-
-            if (href === '#search-app') {
-                showSearchApp();
-            } else {
-                console.log('Opening app:', href);
-            }
-        });
-    });
-
     // Enable Enter key for navbar search
     document.getElementById('nav-search-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             performSearch();
         }
     });
-
-    // Enable Enter key for main search bar (Shift+Enter for new line, Enter to search)
-    const mainSearchInput = document.getElementById('main-search-input');
-    if (mainSearchInput) {
-        mainSearchInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                executeSearch();
-            }
-            // Shift+Enter will create new line (default behavior)
-        });
-    }
 });
