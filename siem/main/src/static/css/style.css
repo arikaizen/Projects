@@ -107,12 +107,23 @@ body {
     min-width: 180px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     border-radius: 5px;
-    margin-top: 8px;
+    margin-top: 5px;
     z-index: 1001;
+    padding: 5px 0;
 }
 
-.dropdown:hover .dropdown-menu {
+.dropdown:hover .dropdown-menu,
+.dropdown-menu:hover {
     display: block;
+}
+
+.dropdown::before {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 0;
+    right: 0;
+    height: 5px;
 }
 
 .dropdown-item {
