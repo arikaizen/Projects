@@ -17,6 +17,14 @@
                 <li class="nav-item"><a href="#events" class="nav-link">Events</a></li>
                 <li class="nav-item"><a href="#alerts" class="nav-link">Alerts</a></li>
                 <li class="nav-item"><a href="#reports" class="nav-link">Reports</a></li>
+                <li class="nav-item dropdown">
+                    <a href="#apps" class="nav-link">Apps ▼</a>
+                    <div class="dropdown-menu">
+                        <a href="#search-app" class="dropdown-item">Search</a>
+                        <a href="#analytics-app" class="dropdown-item">Analytics</a>
+                        <a href="#tools-app" class="dropdown-item">Tools</a>
+                    </div>
+                </li>
                 <li class="nav-item"><a href="#settings" class="nav-link">Settings</a></li>
             </ul>
             <div class="nav-search">
@@ -26,7 +34,20 @@
         </div>
     </nav>
 
-    <div class="container">
+    <!-- Search App Page -->
+    <div id="search-app-page" class="search-app-page hidden">
+        <div class="search-page-container">
+            <h1 class="search-page-title">Search Everything</h1>
+            <div class="search-bar-wrapper">
+                <input type="text" id="main-search-input" class="main-search-bar" placeholder="Type to search and press Enter..." />
+                <button onclick="executeSearch()" class="main-search-button">Search</button>
+            </div>
+            <div id="search-results" class="search-results"></div>
+            <a href="#dashboard" class="back-link" onclick="hideSearchApp()">← Back to Dashboard</a>
+        </div>
+    </div>
+
+    <div class="container" id="main-content">
         <header>
             <h1>SIEM Dashboard</h1>
             <p class="subtitle">Security Information and Event Management</p>
