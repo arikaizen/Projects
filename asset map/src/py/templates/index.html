@@ -25,6 +25,14 @@
         <li class="nav-item"><a href="#map" class="nav-link active">Map View</a></li>
         <li class="nav-item"><a href="#list" class="nav-link">List View</a></li>
         <li class="nav-item"><a href="#analytics" class="nav-link">Analytics</a></li>
+        <li class="nav-item dropdown">
+          <a href="#apps" class="nav-link">Apps ▼</a>
+          <div class="dropdown-menu">
+            <a href="#search-app" class="dropdown-item">Search</a>
+            <a href="#filter-app" class="dropdown-item">Filter</a>
+            <a href="#reports-app" class="dropdown-item">Reports</a>
+          </div>
+        </li>
         <li class="nav-item"><a href="#export" class="nav-link">Export</a></li>
       </ul>
       <div class="nav-search">
@@ -34,13 +42,27 @@
     </div>
   </nav>
 
-  <header class="app-header">
-    <h1>Asset Map — CSV persistence (local)</h1>
-  </header>
+  <!-- Search App Page -->
+  <div id="search-app-page" class="search-app-page hidden">
+    <div class="search-page-container">
+      <h1 class="search-page-title">Search Assets</h1>
+      <div class="search-bar-wrapper">
+        <input type="text" id="main-search-input" class="main-search-bar" placeholder="Type to search assets and press Enter..." />
+        <button onclick="executeSearch()" class="main-search-button">Search</button>
+      </div>
+      <div id="search-results" class="search-results"></div>
+      <a href="#map" class="back-link" onclick="hideSearchApp()">← Back to Map</a>
+    </div>
+  </div>
 
-  <main>
-    <div id="map"></div>
-  </main>
+  <div id="main-content">
+    <header class="app-header">
+      <h1>Asset Map — CSV persistence (local)</h1>
+    </header>
+
+    <main>
+      <div id="map"></div>
+    </main>
 
   <footer class="app-footer">
     <small id="status">Click the map to add markers. Drag markers to update location. Use popup to edit/delete.</small>
