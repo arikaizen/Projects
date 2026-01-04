@@ -5,7 +5,7 @@
  * Provides TCP socket communication functionality for forwarding logs to SIEM server.
  */
 
-#include "../inc/log_forwarder.h"
+#include "log_forwarder.h"
 #include <iostream>
 
 #pragma comment(lib, "ws2_32.lib")

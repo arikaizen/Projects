@@ -5,8 +5,8 @@
  * Provides high-level functions to initialize and run the log forwarding service.
  */
 
-#include "../inc/forwarder_api.h"
-#include "../inc/event_log_reader.h"
+#include "forwarder_api.h"
+#include "event_log_reader.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
