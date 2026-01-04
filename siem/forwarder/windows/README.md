@@ -24,6 +24,39 @@ A C++ application that reads Windows Event Logs and forwards them to the SIEM se
 - SIEM server must be running and listening on port 8089
 - Network connectivity between forwarder and SIEM server
 
+## Automated Prerequisite Installation
+
+**NEW!** Automated scripts to check and install build tools:
+
+### Option 1: PowerShell (Recommended - Can auto-install CMake)
+
+```powershell
+.\install_prerequisites.ps1
+```
+
+This script will:
+- ✅ Check for CMake, Visual Studio, and Windows SDK
+- ✅ Automatically download and install CMake if missing
+- ✅ Provide download links for Visual Studio
+- ✅ Verify all prerequisites are met
+
+### Option 2: Batch Script (Check only)
+
+```batch
+check_prerequisites.bat
+```
+
+This script will:
+- ✅ Check for all required build tools
+- ✅ Provide download links if tools are missing
+- ✅ Open download pages in browser
+
+**Recommended workflow:**
+1. Run `install_prerequisites.ps1` (PowerShell)
+2. Follow prompts to install missing tools
+3. Restart terminal after installation
+4. Run `build.bat` to compile
+
 ## Building the Forwarder
 
 ### Automatic Build (Windows)
