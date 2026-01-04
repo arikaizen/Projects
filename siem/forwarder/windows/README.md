@@ -97,6 +97,53 @@ cd bin
 log_forwarder.exe
 ```
 
+## Testing the Forwarder
+
+A test program is included to verify the forwarder works correctly without needing a full SIEM server.
+
+### Running the Test
+
+The build process creates two executables in the `bin/` folder:
+- `log_forwarder.exe` - The main forwarder
+- `test_forwarder.exe` - Mock SIEM server for testing
+
+**Step 1: Start the test server (Terminal 1)**
+```batch
+cd bin
+test_forwarder.exe
+```
+
+This starts a mock SIEM server that listens on port 8089 and validates incoming logs.
+
+**Step 2: Run the forwarder (Terminal 2)**
+```batch
+cd bin
+log_forwarder.exe
+```
+
+The forwarder will connect to the test server and begin forwarding Windows Event Logs.
+
+**Step 3: Observe the results**
+
+The test server will display:
+- Each received log in JSON format
+- Validation results for each log
+- Statistics (total logs, valid logs, invalid logs)
+- Final test results
+
+**Expected Output:**
+```
+[TEST] Received Log #1:
+{"event_id":"1234","level":"4","channel":"System","computer":"YOUR-PC","timestamp":133123456789}
+[TEST] ✓ Log validation PASSED
+[TEST] Statistics: 1 total, 1 valid, 0 invalid
+```
+
+If all logs pass validation, you'll see:
+```
+[TEST] ✓✓✓ ALL TESTS PASSED ✓✓✓
+```
+
 ## Configuration
 
 The forwarder monitors these Windows Event Log channels:
