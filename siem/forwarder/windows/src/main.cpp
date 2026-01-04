@@ -18,7 +18,7 @@
  *   log_forwarder.exe 192.168.1.100 8089
  */
 
-#include "../inc/forwarder_api.h"
+#include "forwarder_api.h"
 #include <cstdlib>
 
 /**

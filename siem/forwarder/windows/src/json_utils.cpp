@@ -5,7 +5,7 @@
  * Provides string escaping and formatting for JSON compliance.
  */
 
-#include "../inc/json_utils.h"
+#include "json_utils.h"
 #include <sstream>
 #include <iomanip>
 
