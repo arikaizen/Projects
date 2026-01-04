@@ -5,8 +5,8 @@
  * Provides functionality to read and parse Windows Event Log events.
  */
 
-#include "../inc/event_log_reader.h"
-#include "../inc/json_utils.h"
+#include "event_log_reader.h"
+#include "json_utils.h"
 #include <sstream>
 
 #pragma comment(lib, "wevtapi.lib")
