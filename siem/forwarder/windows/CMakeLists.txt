@@ -5,10 +5,28 @@ project(WindowsEventLogForwarder)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Add executable
-add_executable(log_forwarder
+# Include directories
+include_directories(${CMAKE_SOURCE_DIR}/inc)
+
+# Source files
+set(SOURCES
     src/main.cpp
+    src/log_forwarder.cpp
+    src/event_log_reader.cpp
+    src/json_utils.cpp
+    src/forwarder_api.cpp
 )
+
+# Header files (for IDE organization)
+set(HEADERS
+    inc/log_forwarder.h
+    inc/event_log_reader.h
+    inc/json_utils.h
+    inc/forwarder_api.h
+)
+
+# Add executable
+add_executable(log_forwarder ${SOURCES} ${HEADERS})
 
 # Link Windows libraries
 target_link_libraries(log_forwarder
