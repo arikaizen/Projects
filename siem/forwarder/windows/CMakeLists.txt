@@ -16,9 +16,9 @@ target_link_libraries(log_forwarder
     ws2_32
 )
 
-# Set output directory
+# Set output directory to project bin folder
 set_target_properties(log_forwarder PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
 )
 
 # Installation
