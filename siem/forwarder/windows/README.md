@@ -38,7 +38,7 @@ This will:
 1. Check for CMake installation
 2. Generate build files
 3. Compile the project
-4. Place the executable in `build/bin/Release/log_forwarder.exe`
+4. Place the executable in `bin/log_forwarder.exe`
 
 ### Manual Build (Windows)
 
@@ -53,7 +53,7 @@ cmake .. -G "Visual Studio 16 2019" -A x64
 # Build the project
 cmake --build . --config Release
 
-# The executable will be in: build/bin/Release/log_forwarder.exe
+# The executable will be in: bin/log_forwarder.exe
 ```
 
 ### Alternative: MinGW Build
@@ -93,7 +93,7 @@ log_forwarder.exe 192.168.1.100 8089
 
 Or from an elevated command prompt:
 ```batch
-cd build\bin\Release
+cd bin
 log_forwarder.exe
 ```
 
@@ -157,10 +157,12 @@ When a search is performed in the SIEM Search app, it will query both:
 ### Project Structure
 
 ```
-forwarder/windows/
+siem/forwarder/windows/
 ├── src/
 │   └── main.cpp          # Main forwarder application
-├── include/              # Header files (if needed)
+├── inc/                  # Header files (if needed)
+├── tst/                  # Test files
+├── bin/                  # Output binaries (generated)
 ├── build/                # Build artifacts (generated)
 ├── CMakeLists.txt        # CMake configuration
 ├── build.bat             # Automatic build script
