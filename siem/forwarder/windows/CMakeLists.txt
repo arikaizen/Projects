@@ -39,7 +39,22 @@ set_target_properties(log_forwarder PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
 )
 
+# Test executable
+add_executable(test_forwarder
+    tst/test_forwarder.cpp
+)
+
+# Link Windows libraries for test
+target_link_libraries(test_forwarder
+    ws2_32
+)
+
+# Set test output directory to bin folder
+set_target_properties(test_forwarder PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
+)
+
 # Installation
-install(TARGETS log_forwarder
+install(TARGETS log_forwarder test_forwarder
     RUNTIME DESTINATION bin
 )
