@@ -43,7 +43,7 @@ if %ERRORLEVEL% NEQ 0 (
 echo.
 echo ====================================
 echo Build completed successfully!
-echo Executable: build\bin\Release\log_forwarder.exe
+echo Executable: bin\log_forwarder.exe
 echo ====================================
 echo.
 
