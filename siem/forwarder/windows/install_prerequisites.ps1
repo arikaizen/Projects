@@ -31,8 +31,23 @@ function Download-FileWithProgress {
     Write-Host "  Download complete: $Destination" -ForegroundColor Green
 }
 
+# Check for .NET Framework
+Write-Host "[1/4] Checking for .NET Framework..." -ForegroundColor White
+$dotnetInstalled = $false
+try {
+    $dotnetVersion = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" -ErrorAction Stop
+    if ($dotnetVersion.Version) {
+        Write-Host "  [OK] .NET Framework found: $($dotnetVersion.Version)" -ForegroundColor Green
+        $dotnetInstalled = $true
+    }
+} catch {
+    Write-Host "  [MISSING] .NET Framework 4.0 or higher not found" -ForegroundColor Red
+    Write-Host "  [INFO] Required for installing Visual Studio" -ForegroundColor Yellow
+    $missingTools += ".NET Framework"
+}
+
 # Check for CMake
-Write-Host "[1/3] Checking for CMake..." -ForegroundColor White
+Write-Host "[2/4] Checking for CMake..." -ForegroundColor White
 $cmakeInstalled = $false
 try {
     $cmakeVersion = cmake --version 2>$null
@@ -46,7 +61,7 @@ try {
 }
 
 # Check for Visual Studio
-Write-Host "[2/3] Checking for Visual Studio..." -ForegroundColor White
+Write-Host "[3/4] Checking for Visual Studio..." -ForegroundColor White
 $vsFound = $false
 
 $vsPaths = @(
@@ -83,7 +98,7 @@ if (-not $vsFound) {
 }
 
 # Check for Windows SDK
-Write-Host "[3/3] Checking for Windows SDK..." -ForegroundColor White
+Write-Host "[4/4] Checking for Windows SDK..." -ForegroundColor White
 if (Test-Path "C:\Program Files (x86)\Windows Kits\10\Include") {
     Write-Host "  [OK] Windows SDK 10 found" -ForegroundColor Green
 } elseif (Test-Path "C:\Program Files (x86)\Windows Kits\8.1\Include") {
@@ -112,6 +127,55 @@ if ($missingTools.Count -eq 0) {
 # Handle missing tools
 Write-Host "[WARNING] Missing prerequisites detected" -ForegroundColor Yellow
 Write-Host ""
+
+# Install .NET Framework
+if ($missingTools -contains ".NET Framework") {
+    Write-Host "Missing: .NET Framework 4.0 or higher" -ForegroundColor Red
+    Write-Host "  Required for: Visual Studio installation" -ForegroundColor Yellow
+    Write-Host ""
+
+    $installDotNet = Read-Host "Would you like to download and install .NET Framework 4.8? (Y/N)"
+
+    if ($installDotNet -eq "Y" -or $installDotNet -eq "y") {
+        Write-Host ""
+        Write-Host "Installing .NET Framework 4.8..." -ForegroundColor Yellow
+
+        # .NET Framework 4.8 Runtime installer URL
+        $dotnetUrl = "https://go.microsoft.com/fwlink/?linkid=2088631"
+        $dotnetInstaller = "$env:TEMP\ndp48-web.exe"
+
+        try {
+            Write-Host "  Downloading .NET Framework 4.8 installer..." -ForegroundColor Yellow
+            Download-FileWithProgress -Url $dotnetUrl -Destination $dotnetInstaller
+
+            Write-Host "  Running .NET Framework installer..." -ForegroundColor Yellow
+            Write-Host "  This may take several minutes..." -ForegroundColor Cyan
+            Write-Host "  A system restart will be required after installation" -ForegroundColor Yellow
+
+            Start-Process -FilePath $dotnetInstaller -ArgumentList "/q /norestart" -Wait
+
+            Write-Host "  .NET Framework installation complete!" -ForegroundColor Green
+            Write-Host "  IMPORTANT: You must restart your computer before installing Visual Studio" -ForegroundColor Red
+
+            # Clean up installer
+            Remove-Item $dotnetInstaller -ErrorAction SilentlyContinue
+
+            $restart = Read-Host "Restart computer now? (Y/N)"
+            if ($restart -eq "Y" -or $restart -eq "y") {
+                Write-Host "  Restarting computer..." -ForegroundColor Yellow
+                Restart-Computer -Force
+            }
+        } catch {
+            Write-Host "  [ERROR] Failed to install .NET Framework automatically" -ForegroundColor Red
+            Write-Host "  Please download manually from: https://dotnet.microsoft.com/download/dotnet-framework/net48" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "  Manual installation required:" -ForegroundColor Yellow
+        Write-Host "  Download from: https://go.microsoft.com/fwlink/?linkid=2088631" -ForegroundColor White
+        Write-Host "  After installation, restart your computer" -ForegroundColor White
+        Write-Host ""
+    }
+}
 
 # Install CMake automatically
 if ($missingTools -contains "CMake") {

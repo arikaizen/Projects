@@ -12,8 +12,30 @@ echo.
 
 SET MISSING_TOOLS=0
 
+REM Check for .NET Framework
+echo [1/4] Checking for .NET Framework...
+SET DOTNET_FOUND=0
+
+REM Check registry for .NET Framework 4.x installations
+reg query "HKLM\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" /v Version >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    for /f "tokens=3" %%i in ('reg query "HKLM\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" /v Version ^| findstr Version') do (
+        echo   [OK] .NET Framework found: %%i
+        SET DOTNET_FOUND=1
+        goto :check_cmake
+    )
+)
+
+if !DOTNET_FOUND! EQU 0 (
+    echo   [MISSING] .NET Framework 4.0 or higher not found
+    echo   [INFO] Required for installing Visual Studio
+    SET MISSING_TOOLS=1
+    SET MISSING_DOTNET=1
+)
+
+:check_cmake
 REM Check for CMake
-echo [1/3] Checking for CMake...
+echo [2/4] Checking for CMake...
 where cmake >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
     for /f "tokens=*" %%i in ('cmake --version') do (
@@ -28,7 +50,7 @@ if %ERRORLEVEL% EQU 0 (
 
 :check_vs
 REM Check for Visual Studio
-echo [2/3] Checking for Visual Studio...
+echo [3/4] Checking for Visual Studio...
 SET VS_FOUND=0
 
 REM Check for VS 2022
@@ -76,7 +98,7 @@ if !VS_FOUND! EQU 0 (
 
 :check_winsdk
 REM Check for Windows SDK (usually comes with VS)
-echo [3/3] Checking for Windows SDK...
+echo [4/4] Checking for Windows SDK...
 if exist "C:\Program Files (x86)\Windows Kits\10\Include" (
     echo   [OK] Windows SDK 10 found
 ) else if exist "C:\Program Files (x86)\Windows Kits\8.1\Include" (
@@ -104,6 +126,21 @@ if !MISSING_TOOLS! EQU 0 (
 REM Handle missing tools
 echo [WARNING] Some prerequisites are missing
 echo.
+
+if DEFINED MISSING_DOTNET (
+    echo Missing: .NET Framework 4.0 or higher
+    echo   Required for: Visual Studio installation
+    echo   Download from: https://dotnet.microsoft.com/download/dotnet-framework/net48
+    echo   Recommended: .NET Framework 4.8 Runtime
+    echo.
+    set /p INSTALL_DOTNET="Would you like to open the .NET Framework download page? (Y/N): "
+    if /i "!INSTALL_DOTNET!"=="Y" (
+        start https://go.microsoft.com/fwlink/?linkid=2088631
+        echo   Opening browser to .NET Framework download page...
+        echo   After installing, restart your computer and re-run this script
+        echo.
+    )
+)
 
 if DEFINED MISSING_CMAKE (
     echo Missing: CMake
