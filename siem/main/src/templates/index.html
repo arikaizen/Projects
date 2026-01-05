@@ -7,7 +7,46 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <div class="container">
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <h2>SIEM</h2>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item"><a href="#dashboard" class="nav-link active">Dashboard</a></li>
+                <li class="nav-item"><a href="#events" class="nav-link">Events</a></li>
+                <li class="nav-item"><a href="#alerts" class="nav-link">Alerts</a></li>
+                <li class="nav-item"><a href="#reports" class="nav-link">Reports</a></li>
+                <li class="nav-item dropdown">
+                    <a href="#apps" class="nav-link">Apps ▼</a>
+                    <div class="dropdown-menu">
+                        <!-- Apps will be dynamically loaded here -->
+                        <a href="#" class="dropdown-item" style="color: #999; cursor: default;">Loading apps...</a>
+                    </div>
+                </li>
+                <li class="nav-item"><a href="#settings" class="nav-link">Settings</a></li>
+            </ul>
+            <div class="nav-search">
+                <input type="text" id="nav-search-input" placeholder="Search events, alerts..." />
+                <button onclick="performSearch()">Search</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Search App Page -->
+    <div id="search-app-page" class="search-app-page hidden">
+        <div class="search-page-container">
+            <h1 class="search-page-title">Search Everything</h1>
+            <div class="search-bar-wrapper">
+                <textarea id="main-search-input" class="main-search-bar" rows="3" placeholder="Type your search query...&#10;Use Shift+Enter for new line&#10;Press Enter to search"></textarea>
+                <button onclick="executeSearch()" class="main-search-button">Search</button>
+            </div>
+            <div id="search-results" class="search-results"></div>
+            <a href="#dashboard" class="back-link" onclick="hideSearchApp()">← Back to Dashboard</a>
+        </div>
+    </div>
+
+    <div class="container" id="main-content">
         <header>
             <h1>SIEM Dashboard</h1>
             <p class="subtitle">Security Information and Event Management</p>

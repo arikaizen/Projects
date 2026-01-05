@@ -47,10 +47,185 @@ async function sendData() {
     }
 }
 
-// Load status on page load
+// Search functionality
+function performSearch() {
+    const searchInput = document.getElementById('nav-search-input');
+    const query = searchInput.value.trim();
+
+    if (!query) {
+        alert('Please enter a search term');
+        return;
+    }
+
+    // Display search results in the response display
+    const responseDiv = document.getElementById('response-display');
+    responseDiv.innerHTML = `
+        <p><strong>Search Results for:</strong> "${query}"</p>
+        <p style="color: #666;">Search functionality ready for implementation</p>
+        <p style="color: #666;">This will search through events, alerts, and logs</p>
+    `;
+
+    // Scroll to results
+    responseDiv.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Show Search App
+function showSearchApp() {
+    document.getElementById('search-app-page').classList.remove('hidden');
+    document.getElementById('main-content').style.display = 'none';
+    document.getElementById('main-search-input').focus();
+}
+
+// Hide Search App
+function hideSearchApp() {
+    document.getElementById('search-app-page').classList.add('hidden');
+    document.getElementById('main-content').style.display = 'block';
+}
+
+// Execute Search from Search App
+function executeSearch() {
+    const searchInput = document.getElementById('main-search-input');
+    const query = searchInput.value.trim();
+    const resultsDiv = document.getElementById('search-results');
+
+    if (!query) {
+        resultsDiv.innerHTML = '<p style="color: #999;">Please enter a search term</p>';
+        return;
+    }
+
+    // Add expanded class for animation
+    searchInput.classList.add('expanded');
+
+    // Simulate search
+    resultsDiv.innerHTML = `
+        <h3>Search Results for: "${query}"</h3>
+        <div style="margin-top: 20px;">
+            <div style="padding: 15px; border-left: 4px solid #667eea; background: #f8f9fa; margin-bottom: 10px;">
+                <strong>Event #1234</strong> - Security alert detected at 10:23 AM
+            </div>
+            <div style="padding: 15px; border-left: 4px solid #667eea; background: #f8f9fa; margin-bottom: 10px;">
+                <strong>Log Entry #5678</strong> - System activity logged at 11:45 AM
+            </div>
+            <div style="padding: 15px; border-left: 4px solid #667eea; background: #f8f9fa;">
+                <strong>Alert #9012</strong> - Suspicious activity detected at 2:15 PM
+            </div>
+        </div>
+        <p style="margin-top: 20px; color: #666;">Showing 3 results. Search functionality ready for backend integration.</p>
+    `;
+
+    // Remove expanded class after animation
+    setTimeout(() => {
+        searchInput.classList.remove('expanded');
+    }, 400);
+}
+
+// Load app content
+async function loadApp(appId) {
+    try {
+        const response = await fetch(`/api/apps/${appId}`);
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('App not found:', appId);
+            return;
+        }
+
+        // Show app page
+        const appPage = document.getElementById('search-app-page');
+        appPage.innerHTML = data.content.html;
+        appPage.classList.remove('hidden');
+        document.getElementById('main-content').style.display = 'none';
+
+        // Execute app JavaScript
+        if (data.content.js) {
+            const script = document.createElement('script');
+            script.textContent = data.content.js;
+            document.body.appendChild(script);
+        }
+
+        // Add app CSS
+        if (data.content.css) {
+            const style = document.createElement('style');
+            style.textContent = data.content.css;
+            document.head.appendChild(style);
+        }
+
+    } catch (error) {
+        console.error('Failed to load app:', error);
+    }
+}
+
+// Hide app and return to dashboard
+function hideApp() {
+    document.getElementById('search-app-page').classList.add('hidden');
+    document.getElementById('main-content').style.display = 'block';
+}
+
+// Load available apps and populate dropdown
+async function loadAvailableApps() {
+    try {
+        const response = await fetch('/api/apps');
+        const data = await response.json();
+
+        const dropdownMenu = document.querySelector('.dropdown-menu');
+        if (dropdownMenu && data.apps) {
+            // Clear existing items
+            dropdownMenu.innerHTML = '';
+
+            // Add each app
+            data.apps.forEach(app => {
+                const link = document.createElement('a');
+                link.href = `#${app.id}`;
+                link.className = 'dropdown-item';
+                link.textContent = `${app.icon} ${app.name}`;
+                link.setAttribute('data-app-id', app.id);
+                link.setAttribute('title', app.description);
+                dropdownMenu.appendChild(link);
+
+                // Add click handler
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    loadApp(app.id);
+                });
+            });
+
+            console.log(`Loaded ${data.apps.length} apps`);
+        }
+    } catch (error) {
+        console.error('Failed to load apps:', error);
+    }
+}
+
+// Navigation link handling
 document.addEventListener('DOMContentLoaded', function() {
     fetchStatus();
 
     // Refresh status every 5 seconds
     setInterval(fetchStatus, 5000);
+
+    // Load available apps
+    loadAvailableApps();
+
+    // Handle navigation links
+    const navLinks = document.querySelectorAll('.nav-link');
+    navLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            // Update active state
+            navLinks.forEach(l => l.classList.remove('active'));
+            this.classList.add('active');
+
+            // Handle navigation (placeholder for now)
+            const section = this.getAttribute('href').substring(1);
+            console.log('Navigating to:', section);
+        });
+    });
+
+    // Enable Enter key for navbar search
+    document.getElementById('nav-search-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            performSearch();
+        }
+    });
 });
