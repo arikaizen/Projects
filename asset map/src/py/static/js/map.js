@@ -231,4 +231,177 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Kick off initial load of markers.
   loadMarkers();
+
+  // Navigation link handling
+  const navLinks = document.querySelectorAll('.nav-link');
+  navLinks.forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+
+      // Update active state
+      navLinks.forEach(l => l.classList.remove('active'));
+      this.classList.add('active');
+
+      // Handle navigation
+      const section = this.getAttribute('href').substring(1);
+      console.log('Navigating to:', section);
+    });
+  });
+
+  // Handle dropdown items
+  const dropdownItems = document.querySelectorAll('.dropdown-item');
+  dropdownItems.forEach(item => {
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      const href = this.getAttribute('href');
+
+      if (href === '#search-app') {
+        showSearchApp();
+      } else {
+        console.log('Opening app:', href);
+      }
+    });
+  });
+
+  // Enable Enter key for navbar search
+  const searchInput = document.getElementById('nav-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        searchAssets();
+      }
+    });
+  }
+
+  // Enable Enter key for main search bar (Shift+Enter for new line, Enter to search)
+  const mainSearchInput = document.getElementById('main-search-input');
+  if (mainSearchInput) {
+    mainSearchInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        executeSearch();
+      }
+      // Shift+Enter will create new line (default behavior)
+    });
+  }
 });
+
+// Show Search App
+function showSearchApp() {
+  document.getElementById('search-app-page').classList.remove('hidden');
+  document.getElementById('main-content').style.display = 'none';
+  document.getElementById('main-search-input').focus();
+}
+
+// Hide Search App
+function hideSearchApp() {
+  document.getElementById('search-app-page').classList.add('hidden');
+  document.getElementById('main-content').style.display = 'block';
+}
+
+// Execute Search from Search App
+function executeSearch() {
+  const searchInput = document.getElementById('main-search-input');
+  const query = searchInput.value.trim();
+  const resultsDiv = document.getElementById('search-results');
+
+  if (!query) {
+    resultsDiv.innerHTML = '<p style="color: #999;">Please enter a search term</p>';
+    return;
+  }
+
+  // Add expanded class for animation
+  searchInput.classList.add('expanded');
+
+  // Search through markers
+  fetch('/api/markers')
+    .then(r => r.json())
+    .then(data => {
+      const markers = data.markers || [];
+      const matches = markers.filter(marker => {
+        const name = marker.properties?.name || '';
+        const idStr = String(marker.id);
+        return name.toLowerCase().includes(query.toLowerCase()) || idStr.includes(query);
+      });
+
+      if (matches.length > 0) {
+        let resultsHTML = `<h3>Found ${matches.length} asset(s) matching "${query}"</h3><div style="margin-top: 20px;">`;
+
+        matches.forEach(marker => {
+          const name = marker.properties?.name || 'Unnamed';
+          resultsHTML += `
+            <div style="padding: 15px; border-left: 4px solid #1f6feb; background: #f8f9fa; margin-bottom: 10px; cursor: pointer;"
+                 onclick="hideSearchApp(); setTimeout(() => { const map = document.querySelector('#map')._leaflet_map; if (map) map.setView([${marker.lat}, ${marker.lng}], 15); }, 100);">
+              <strong>${name}</strong> (ID: ${marker.id})<br/>
+              <small style="color: #666;">Location: ${marker.lat.toFixed(4)}, ${marker.lng.toFixed(4)}</small>
+            </div>
+          `;
+        });
+
+        resultsHTML += '</div>';
+        resultsDiv.innerHTML = resultsHTML;
+      } else {
+        resultsDiv.innerHTML = `
+          <h3>No results found</h3>
+          <p style="color: #666; margin-top: 20px;">No assets match "${query}". Try a different search term.</p>
+        `;
+      }
+
+      // Remove expanded class after animation
+      setTimeout(() => {
+        searchInput.classList.remove('expanded');
+      }, 400);
+    })
+    .catch(err => {
+      console.error('Search failed:', err);
+      resultsDiv.innerHTML = '<p style="color: red;">Search failed. Please try again.</p>';
+      setTimeout(() => {
+        searchInput.classList.remove('expanded');
+      }, 400);
+    });
+}
+
+// Search assets functionality (navbar search)
+// Purpose: Search through markers by name or properties and highlight matching ones
+function searchAssets() {
+  const searchInput = document.getElementById('nav-search-input');
+  const query = searchInput.value.trim().toLowerCase();
+
+  if (!query) {
+    alert('Please enter a search term');
+    return;
+  }
+
+  const statusEl = document.getElementById('status');
+  let matchCount = 0;
+
+  // Search through all markers
+  fetch('/api/markers')
+    .then(r => r.json())
+    .then(data => {
+      const markers = data.markers || [];
+      const matches = markers.filter(marker => {
+        const name = marker.properties?.name || '';
+        const idStr = String(marker.id);
+        return name.toLowerCase().includes(query) || idStr.includes(query);
+      });
+
+      matchCount = matches.length;
+
+      if (matches.length > 0) {
+        // Zoom to first match
+        const firstMatch = matches[0];
+        const map = document.querySelector('#map')._leaflet_map;
+        if (map) {
+          map.setView([firstMatch.lat, firstMatch.lng], 12);
+        }
+        statusEl.textContent = `Found ${matchCount} match(es) for "${query}". Zoomed to first result.`;
+      } else {
+        statusEl.textContent = `No matches found for "${query}".`;
+      }
+    })
+    .catch(err => {
+      console.error('Search failed:', err);
+      statusEl.textContent = 'Search failed. Please try again.';
+    });
+}

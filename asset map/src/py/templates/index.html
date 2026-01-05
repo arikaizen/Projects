@@ -16,13 +16,53 @@
   <link rel="stylesheet" href="/static/css/styles.css" />
 </head>
 <body>
-  <header class="app-header">
-    <h1>Asset Map — CSV persistence (local)</h1>
-  </header>
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="nav-brand">
+        <h2>Asset Map</h2>
+      </div>
+      <ul class="nav-menu">
+        <li class="nav-item"><a href="#map" class="nav-link active">Map View</a></li>
+        <li class="nav-item"><a href="#list" class="nav-link">List View</a></li>
+        <li class="nav-item"><a href="#analytics" class="nav-link">Analytics</a></li>
+        <li class="nav-item dropdown">
+          <a href="#apps" class="nav-link">Apps ▼</a>
+          <div class="dropdown-menu">
+            <a href="#search-app" class="dropdown-item">Search</a>
+            <a href="#filter-app" class="dropdown-item">Filter</a>
+            <a href="#reports-app" class="dropdown-item">Reports</a>
+          </div>
+        </li>
+        <li class="nav-item"><a href="#export" class="nav-link">Export</a></li>
+      </ul>
+      <div class="nav-search">
+        <input type="text" id="nav-search-input" placeholder="Search assets by location, name..." />
+        <button onclick="searchAssets()">Search</button>
+      </div>
+    </div>
+  </nav>
 
-  <main>
-    <div id="map"></div>
-  </main>
+  <!-- Search App Page -->
+  <div id="search-app-page" class="search-app-page hidden">
+    <div class="search-page-container">
+      <h1 class="search-page-title">Search Assets</h1>
+      <div class="search-bar-wrapper">
+        <textarea id="main-search-input" class="main-search-bar" rows="3" placeholder="Type your search query...&#10;Use Shift+Enter for new line&#10;Press Enter to search"></textarea>
+        <button onclick="executeSearch()" class="main-search-button">Search</button>
+      </div>
+      <div id="search-results" class="search-results"></div>
+      <a href="#map" class="back-link" onclick="hideSearchApp()">← Back to Map</a>
+    </div>
+  </div>
+
+  <div id="main-content">
+    <header class="app-header">
+      <h1>Asset Map — CSV persistence (local)</h1>
+    </header>
+
+    <main>
+      <div id="map"></div>
+    </main>
 
   <footer class="app-footer">
     <small id="status">Click the map to add markers. Drag markers to update location. Use popup to edit/delete.</small>

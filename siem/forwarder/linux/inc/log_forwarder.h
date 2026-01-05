@@ -1,52 +1,14 @@
-#ifndef LOG_FORWARDER_H
-#define LOG_FORWARDER_H
-
-#include <string>
-#include <vector>
-#include "event_log_reader.h"
-
-// Windows socket headers - ORDER MATTERS
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
-// Link with Winsock library
-#pragma comment(lib, "ws2_32.lib")
-
-class LogForwarder {
-public:
-    LogForwarder(const std::string& server, int port);
-    ~LogForwarder();
-
-    bool initialize();
-    bool connect();
-    bool sendEvent(const EventData& event);
-    bool sendEvents(const std::vector<EventData>& events);
-    void disconnect();
-
-private:
-    std::string serverAddress;
-    int serverPort;
-    SOCKET clientSocket;
-    bool connected;
-    bool wsaInitialized;
-
-    std::string formatEventAsJson(const EventData& event);
-
 /**
  * @file log_forwarder.h
- * @brief Network log forwarder for SIEM integration
+ * @brief Network log forwarder for SIEM integration (Linux)
  *
  * This module provides TCP socket communication functionality to forward
- * Windows Event Logs to a remote SIEM server.
+ * Linux system logs to a remote SIEM server.
  */
 
 #ifndef LOG_FORWARDER_H
 #define LOG_FORWARDER_H
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include <string>
 
 /**
@@ -59,7 +21,7 @@ private:
  */
 class LogForwarder {
 private:
-    SOCKET sock;                    ///< TCP socket handle
+    int sock;                       ///< TCP socket file descriptor
     bool connected;                 ///< Connection status flag
     std::string serverAddress;      ///< SIEM server IP address or hostname
     int serverPort;                 ///< SIEM server port number
@@ -78,7 +40,7 @@ public:
     ~LogForwarder();
 
     /**
-     * @brief Initialize Windows Sockets API (WSA)
+     * @brief Initialize network connection
      * @return true if initialization successful, false otherwise
      */
     bool initialize();

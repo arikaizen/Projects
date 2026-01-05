@@ -1,83 +1,6 @@
-#include <iostream>
-#include <cassert>
-#include "../inc/event_log_reader.h"
-#include "../inc/log_forwarder.h"
-
-void testEventLogReader() {
-    std::cout << "Testing EventLogReader..." << std::endl;
-
-    EventLogReader reader("Application");
-    assert(reader.initialize() && "Failed to initialize EventLogReader");
-
-    std::vector<EventData> events = reader.readEvents(5);
-    std::cout << "Read " << events.size() << " events" << std::endl;
-
-    for (const auto& event : events) {
-        std::cout << "Event ID: " << event.eventId
-                  << ", Source: " << event.source
-                  << ", Level: " << event.level << std::endl;
-    }
-
-    reader.close();
-    std::cout << "EventLogReader test passed!\n" << std::endl;
-}
-
-void testLogForwarder() {
-    std::cout << "Testing LogForwarder..." << std::endl;
-
-    LogForwarder forwarder("127.0.0.1", 5000);
-    assert(forwarder.initialize() && "Failed to initialize LogForwarder");
-
-    std::cout << "Note: Connection test requires SIEM server running on 127.0.0.1:5000" << std::endl;
-    std::cout << "Attempting connection..." << std::endl;
-
-    if (forwarder.connect()) {
-        std::cout << "Connection successful!" << std::endl;
-
-        // Create test event
-        EventData testEvent;
-        testEvent.timestamp = "2024-01-01T12:00:00";
-        testEvent.eventId = "1000";
-        testEvent.level = "Information";
-        testEvent.source = "TestSource";
-        testEvent.computer = "TestComputer";
-        testEvent.message = "Test event message";
-
-        if (forwarder.sendEvent(testEvent)) {
-            std::cout << "Test event sent successfully!" << std::endl;
-        } else {
-            std::cout << "Failed to send test event" << std::endl;
-        }
-
-        forwarder.disconnect();
-    } else {
-        std::cout << "Connection failed (server may not be running)" << std::endl;
-    }
-
-    std::cout << "LogForwarder test completed!\n" << std::endl;
-}
-
-int main() {
-    std::cout << "======================================\n";
-    std::cout << "Windows Event Log Forwarder Test Suite\n";
-    std::cout << "======================================\n\n";
-
-    try {
-        testEventLogReader();
-        testLogForwarder();
-
-        std::cout << "======================================\n";
-        std::cout << "All tests completed!\n";
-        std::cout << "======================================\n";
-    } catch (const std::exception& e) {
-        std::cerr << "Test failed with exception: " << e.what() << std::endl;
-        return 1;
-    }
-
-
 /**
  * @file test_forwarder.cpp
- * @brief Test program to verify Windows Event Log Forwarder functionality
+ * @brief Test program to verify Linux System Log Forwarder functionality
  *
  * This test acts as a mock SIEM server that listens on port 8089 and receives
  * forwarded logs. It verifies that:
@@ -87,18 +10,17 @@ int main() {
  *
  * Usage:
  *   1. Run this test program first (it acts as the SIEM server)
- *   2. Run the log_forwarder.exe to connect and forward logs
+ *   2. Run ./log_forwarder to connect and forward logs
  *   3. This program will display received logs and validate them
  */
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include <iostream>
 #include <string>
-#include <thread>
-#include <chrono>
-
-#pragma comment(lib, "ws2_32.lib")
+#include <cstring>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 const int TEST_PORT = 8089;
 const int BUFFER_SIZE = 4096;
@@ -110,17 +32,17 @@ const int BUFFER_SIZE = 4096;
  */
 bool validateLogFormat(const std::string& logData) {
     // Basic JSON validation - check for required fields
-    bool hasEventId = logData.find("\"event_id\"") != std::string::npos;
-    bool hasLevel = logData.find("\"level\"") != std::string::npos;
-    bool hasChannel = logData.find("\"channel\"") != std::string::npos;
-    bool hasComputer = logData.find("\"computer\"") != std::string::npos;
+    bool hasMessage = logData.find("\"message\"") != std::string::npos;
+    bool hasPriority = logData.find("\"priority\"") != std::string::npos;
+    bool hasUnit = logData.find("\"unit\"") != std::string::npos;
+    bool hasHostname = logData.find("\"hostname\"") != std::string::npos;
     bool hasTimestamp = logData.find("\"timestamp\"") != std::string::npos;
 
     // Check JSON structure
     bool hasOpenBrace = logData.find("{") != std::string::npos;
     bool hasCloseBrace = logData.find("}") != std::string::npos;
 
-    return hasEventId && hasLevel && hasChannel && hasComputer &&
+    return hasMessage && hasPriority && hasUnit && hasHostname &&
            hasTimestamp && hasOpenBrace && hasCloseBrace;
 }
 
@@ -128,7 +50,7 @@ bool validateLogFormat(const std::string& logData) {
  * @brief Handle incoming connection from log forwarder
  * @param clientSocket Socket connected to the forwarder
  */
-void handleClient(SOCKET clientSocket) {
+void handleClient(int clientSocket) {
     char buffer[BUFFER_SIZE];
     std::string receivedData;
     int logsReceived = 0;
@@ -138,7 +60,7 @@ void handleClient(SOCKET clientSocket) {
     std::cout << "[TEST] Client connected" << std::endl;
 
     while (true) {
-        int bytesReceived = recv(clientSocket, buffer, BUFFER_SIZE - 1, 0);
+        ssize_t bytesReceived = recv(clientSocket, buffer, BUFFER_SIZE - 1, 0);
 
         if (bytesReceived > 0) {
             buffer[bytesReceived] = '\0';
@@ -173,12 +95,12 @@ void handleClient(SOCKET clientSocket) {
             std::cout << "\n[TEST] Client disconnected" << std::endl;
             break;
         } else {
-            std::cout << "[TEST] recv failed: " << WSAGetLastError() << std::endl;
+            std::cerr << "[TEST] recv failed: " << strerror(errno) << std::endl;
             break;
         }
     }
 
-    closesocket(clientSocket);
+    close(clientSocket);
 
     // Print final results
     std::cout << "\n========================================" << std::endl;
@@ -200,60 +122,57 @@ void handleClient(SOCKET clientSocket) {
 
 int main() {
     std::cout << "========================================" << std::endl;
-    std::cout << "Windows Event Log Forwarder Test Suite" << std::endl;
+    std::cout << "Linux System Log Forwarder Test Suite" << std::endl;
     std::cout << "========================================" << std::endl;
     std::cout << "This program acts as a mock SIEM server" << std::endl;
     std::cout << "Listening on port: " << TEST_PORT << std::endl;
     std::cout << "========================================" << std::endl;
     std::cout << "\n";
 
-    // Initialize Winsock
-    WSADATA wsaData;
-    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (result != 0) {
-        std::cerr << "[TEST] WSAStartup failed: " << result << std::endl;
+    // Create socket
+    int listenSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (listenSocket == -1) {
+        std::cerr << "[TEST] socket failed: " << strerror(errno) << std::endl;
         return 1;
     }
 
-    // Create socket
-    SOCKET listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (listenSocket == INVALID_SOCKET) {
-        std::cerr << "[TEST] socket failed: " << WSAGetLastError() << std::endl;
-        WSACleanup();
+    // Allow address reuse
+    int opt = 1;
+    if (setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+        std::cerr << "[TEST] setsockopt failed: " << strerror(errno) << std::endl;
+        close(listenSocket);
         return 1;
     }
 
     // Bind socket
-    sockaddr_in serverAddr;
+    struct sockaddr_in serverAddr;
+    memset(&serverAddr, 0, sizeof(serverAddr));
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = INADDR_ANY;
     serverAddr.sin_port = htons(TEST_PORT);
 
-    if (bind(listenSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
-        std::cerr << "[TEST] bind failed: " << WSAGetLastError() << std::endl;
-        closesocket(listenSocket);
-        WSACleanup();
+    if (bind(listenSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) == -1) {
+        std::cerr << "[TEST] bind failed: " << strerror(errno) << std::endl;
+        close(listenSocket);
         return 1;
     }
 
     // Listen for connections
-    if (listen(listenSocket, SOMAXCONN) == SOCKET_ERROR) {
-        std::cerr << "[TEST] listen failed: " << WSAGetLastError() << std::endl;
-        closesocket(listenSocket);
-        WSACleanup();
+    if (listen(listenSocket, 5) == -1) {
+        std::cerr << "[TEST] listen failed: " << strerror(errno) << std::endl;
+        close(listenSocket);
         return 1;
     }
 
     std::cout << "[TEST] Mock SIEM server started successfully" << std::endl;
     std::cout << "[TEST] Waiting for log forwarder to connect..." << std::endl;
-    std::cout << "\n>> Now run: log_forwarder.exe\n" << std::endl;
+    std::cout << "\n>> Now run: ./log_forwarder\n" << std::endl;
 
     // Accept connection
-    SOCKET clientSocket = accept(listenSocket, NULL, NULL);
-    if (clientSocket == INVALID_SOCKET) {
-        std::cerr << "[TEST] accept failed: " << WSAGetLastError() << std::endl;
-        closesocket(listenSocket);
-        WSACleanup();
+    int clientSocket = accept(listenSocket, NULL, NULL);
+    if (clientSocket == -1) {
+        std::cerr << "[TEST] accept failed: " << strerror(errno) << std::endl;
+        close(listenSocket);
         return 1;
     }
 
@@ -261,8 +180,7 @@ int main() {
     handleClient(clientSocket);
 
     // Cleanup
-    closesocket(listenSocket);
-    WSACleanup();
+    close(listenSocket);
 
     std::cout << "\n[TEST] Test server shutting down..." << std::endl;
     std::cout << "Press Enter to exit..." << std::endl;
