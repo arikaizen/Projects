@@ -93,8 +93,12 @@ exit /b 1
 echo Using compiler: %COMPILER_TYPE%
 echo.
 
-REM Create build directory
-if not exist build mkdir build
+REM Clean and recreate build directory to avoid generator conflicts
+if exist build (
+    echo Cleaning old build directory...
+    rmdir /s /q build
+)
+mkdir build
 cd build
 
 REM Generate build files
