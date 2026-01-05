@@ -48,52 +48,52 @@ if %ERRORLEVEL% EQU 0 (
     SET MISSING_CMAKE=1
 )
 
-:check_vs
-REM Check for Visual Studio
-echo [3/4] Checking for Visual Studio...
-SET VS_FOUND=0
+:check_compiler
+REM Check for C++ Compiler (MinGW or Visual Studio)
+echo [3/4] Checking for C++ Compiler...
+SET COMPILER_FOUND=0
 
-REM Check for VS 2022
+REM Check for MinGW (recommended)
+where g++ >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    for /f "tokens=*" %%i in ('g++ --version') do (
+        echo   [OK] MinGW g++ found: %%i
+        SET COMPILER_FOUND=1
+        goto :check_winsdk
+    )
+)
+
+REM Check for Visual Studio as alternative
 if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" (
     echo   [OK] Visual Studio 2022 Community found
-    SET VS_FOUND=1
+    SET COMPILER_FOUND=1
     goto :check_winsdk
 )
 if exist "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat" (
     echo   [OK] Visual Studio 2022 Professional found
-    SET VS_FOUND=1
+    SET COMPILER_FOUND=1
     goto :check_winsdk
 )
 if exist "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" (
     echo   [OK] Visual Studio 2022 Enterprise found
-    SET VS_FOUND=1
+    SET COMPILER_FOUND=1
     goto :check_winsdk
 )
-
-REM Check for VS 2019
 if exist "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" (
     echo   [OK] Visual Studio 2019 Community found
-    SET VS_FOUND=1
+    SET COMPILER_FOUND=1
     goto :check_winsdk
 )
 if exist "C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat" (
     echo   [OK] Visual Studio 2019 Professional found
-    SET VS_FOUND=1
+    SET COMPILER_FOUND=1
     goto :check_winsdk
 )
 
-REM Check for MinGW as alternative
-where g++ >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    echo   [OK] MinGW-w64 found (alternative to Visual Studio)
-    SET VS_FOUND=1
-    goto :check_winsdk
-)
-
-if !VS_FOUND! EQU 0 (
-    echo   [MISSING] Visual Studio or MinGW not found
+if !COMPILER_FOUND! EQU 0 (
+    echo   [MISSING] C++ Compiler not found
     SET MISSING_TOOLS=1
-    SET MISSING_VS=1
+    SET MISSING_COMPILER=1
 )
 
 :check_winsdk
@@ -127,17 +127,12 @@ REM Handle missing tools
 echo [WARNING] Some prerequisites are missing
 echo.
 
+REM Note: .NET Framework only needed if installing Visual Studio (not needed for MinGW)
 if DEFINED MISSING_DOTNET (
-    echo Missing: .NET Framework 4.0 or higher
-    echo   Required for: Visual Studio installation
-    echo   Download from: https://dotnet.microsoft.com/download/dotnet-framework/net48
-    echo   Recommended: .NET Framework 4.8 Runtime
-    echo.
-    set /p INSTALL_DOTNET="Would you like to open the .NET Framework download page? (Y/N): "
-    if /i "!INSTALL_DOTNET!"=="Y" (
-        start https://go.microsoft.com/fwlink/?linkid=2088631
-        echo   Opening browser to .NET Framework download page...
-        echo   After installing, restart your computer and re-run this script
+    if DEFINED MISSING_COMPILER (
+        echo [INFO] .NET Framework 4.0 or higher not found
+        echo   Only required if you choose to install Visual Studio
+        echo   Not needed for MinGW (recommended)
         echo.
     )
 )
@@ -156,24 +151,28 @@ if DEFINED MISSING_CMAKE (
     )
 )
 
-if DEFINED MISSING_VS (
-    echo Missing: Visual Studio or MinGW
+if DEFINED MISSING_COMPILER (
+    echo Missing: C++ Compiler
     echo.
-    echo Option 1 - Visual Studio Community (Recommended):
-    echo   Download from: https://visualstudio.microsoft.com/downloads/
-    echo   Required components:
-    echo     - Desktop development with C++
-    echo     - Windows SDK
+    echo Option 1 - MinGW-w64 (Recommended - Lightweight ~500MB):
+    echo   Download: https://github.com/niXman/mingw-builds-binaries/releases
+    echo   Get: x86_64-*-posix-seh-ucrt-*.7z (latest version)
+    echo   Extract to: C:\mingw64
+    echo   Add to PATH: C:\mingw64\bin
     echo.
-    echo Option 2 - MinGW-w64 (Lightweight alternative):
-    echo   Download from: https://www.mingw-w64.org/downloads/
-    echo   Or use MSYS2: https://www.msys2.org/
+    echo   Alternative - MSYS2 (includes package manager):
+    echo   Download: https://www.msys2.org/
+    echo   After install, run: pacman -S mingw-w64-x86_64-gcc
     echo.
-    set /p INSTALL_VS="Would you like to open the Visual Studio download page? (Y/N): "
-    if /i "!INSTALL_VS!"=="Y" (
-        start https://visualstudio.microsoft.com/downloads/
-        echo   Opening browser to Visual Studio download page...
-        echo   Install "Desktop development with C++" workload
+    echo Option 2 - Visual Studio (Alternative - Large ~7GB):
+    echo   Download: https://visualstudio.microsoft.com/downloads/
+    echo   Requires: .NET Framework 4.8+ and "Desktop development with C++"
+    echo.
+    set /p INSTALL_CHOICE="Open MinGW download page? (Y/N): "
+    if /i "!INSTALL_CHOICE!"=="Y" (
+        start https://github.com/niXman/mingw-builds-binaries/releases
+        echo   Opening browser to MinGW download page...
+        echo   After installing, add to PATH and re-run this script
         echo.
     )
 )
