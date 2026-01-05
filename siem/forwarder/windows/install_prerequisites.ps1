@@ -60,41 +60,45 @@ try {
     $missingTools += "CMake"
 }
 
-# Check for Visual Studio
-Write-Host "[3/4] Checking for Visual Studio..." -ForegroundColor White
-$vsFound = $false
+# Check for C++ Compiler (MinGW or Visual Studio)
+Write-Host "[3/4] Checking for C++ Compiler..." -ForegroundColor White
+$compilerFound = $false
 
-$vsPaths = @(
-    "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
-    "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
-    "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
-    "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat",
-    "C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat"
-)
+# Check for MinGW (recommended)
+try {
+    $gccVersion = g++ --version 2>$null
+    if ($gccVersion) {
+        Write-Host "  [OK] MinGW g++ found: $($gccVersion[0])" -ForegroundColor Green
+        $compilerFound = $true
+    }
+} catch {
+    # MinGW not found, continue checking
+}
 
-foreach ($path in $vsPaths) {
-    if (Test-Path $path) {
-        $vsVersion = if ($path -like "*2022*") { "2022" } else { "2019" }
-        $vsEdition = if ($path -like "*Community*") { "Community" } elseif ($path -like "*Professional*") { "Professional" } else { "Enterprise" }
-        Write-Host "  [OK] Visual Studio $vsVersion $vsEdition found" -ForegroundColor Green
-        $vsFound = $true
-        break
+# Check for Visual Studio as alternative
+if (-not $compilerFound) {
+    $vsPaths = @(
+        "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat",
+        "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat",
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat",
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat",
+        "C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat"
+    )
+
+    foreach ($path in $vsPaths) {
+        if (Test-Path $path) {
+            $vsVersion = if ($path -like "*2022*") { "2022" } else { "2019" }
+            $vsEdition = if ($path -like "*Community*") { "Community" } elseif ($path -like "*Professional*") { "Professional" } else { "Enterprise" }
+            Write-Host "  [OK] Visual Studio $vsVersion $vsEdition found" -ForegroundColor Green
+            $compilerFound = $true
+            break
+        }
     }
 }
 
-# Check for MinGW as alternative
-if (-not $vsFound) {
-    try {
-        $gccVersion = g++ --version 2>$null
-        if ($gccVersion) {
-            Write-Host "  [OK] MinGW-w64 found (alternative to Visual Studio)" -ForegroundColor Green
-            $vsFound = $true
-        }
-    } catch {
-        Write-Host "  [MISSING] Visual Studio or MinGW not found" -ForegroundColor Red
-        $missingTools += "Visual Studio"
-        $adminRequired = $true
-    }
+if (-not $compilerFound) {
+    Write-Host "  [MISSING] C++ Compiler not found" -ForegroundColor Red
+    $missingTools += "Compiler"
 }
 
 # Check for Windows SDK
@@ -128,51 +132,12 @@ if ($missingTools.Count -eq 0) {
 Write-Host "[WARNING] Missing prerequisites detected" -ForegroundColor Yellow
 Write-Host ""
 
-# Install .NET Framework
+# Note: .NET Framework only needed for Visual Studio (not MinGW)
 if ($missingTools -contains ".NET Framework") {
-    Write-Host "Missing: .NET Framework 4.0 or higher" -ForegroundColor Red
-    Write-Host "  Required for: Visual Studio installation" -ForegroundColor Yellow
-    Write-Host ""
-
-    $installDotNet = Read-Host "Would you like to download and install .NET Framework 4.8? (Y/N)"
-
-    if ($installDotNet -eq "Y" -or $installDotNet -eq "y") {
-        Write-Host ""
-        Write-Host "Installing .NET Framework 4.8..." -ForegroundColor Yellow
-
-        # .NET Framework 4.8 Runtime installer URL
-        $dotnetUrl = "https://go.microsoft.com/fwlink/?linkid=2088631"
-        $dotnetInstaller = "$env:TEMP\ndp48-web.exe"
-
-        try {
-            Write-Host "  Downloading .NET Framework 4.8 installer..." -ForegroundColor Yellow
-            Download-FileWithProgress -Url $dotnetUrl -Destination $dotnetInstaller
-
-            Write-Host "  Running .NET Framework installer..." -ForegroundColor Yellow
-            Write-Host "  This may take several minutes..." -ForegroundColor Cyan
-            Write-Host "  A system restart will be required after installation" -ForegroundColor Yellow
-
-            Start-Process -FilePath $dotnetInstaller -ArgumentList "/q /norestart" -Wait
-
-            Write-Host "  .NET Framework installation complete!" -ForegroundColor Green
-            Write-Host "  IMPORTANT: You must restart your computer before installing Visual Studio" -ForegroundColor Red
-
-            # Clean up installer
-            Remove-Item $dotnetInstaller -ErrorAction SilentlyContinue
-
-            $restart = Read-Host "Restart computer now? (Y/N)"
-            if ($restart -eq "Y" -or $restart -eq "y") {
-                Write-Host "  Restarting computer..." -ForegroundColor Yellow
-                Restart-Computer -Force
-            }
-        } catch {
-            Write-Host "  [ERROR] Failed to install .NET Framework automatically" -ForegroundColor Red
-            Write-Host "  Please download manually from: https://dotnet.microsoft.com/download/dotnet-framework/net48" -ForegroundColor Yellow
-        }
-    } else {
-        Write-Host "  Manual installation required:" -ForegroundColor Yellow
-        Write-Host "  Download from: https://go.microsoft.com/fwlink/?linkid=2088631" -ForegroundColor White
-        Write-Host "  After installation, restart your computer" -ForegroundColor White
+    if ($missingTools -contains "Compiler") {
+        Write-Host "[INFO] .NET Framework 4.0 or higher not found" -ForegroundColor Yellow
+        Write-Host "  Only required if you choose to install Visual Studio" -ForegroundColor White
+        Write-Host "  Not needed for MinGW (recommended)" -ForegroundColor White
         Write-Host ""
     }
 }
@@ -218,26 +183,37 @@ if ($missingTools -contains "CMake") {
     }
 }
 
-# Handle Visual Studio
-if ($missingTools -contains "Visual Studio") {
+# Handle C++ Compiler installation
+if ($missingTools -contains "Compiler") {
     Write-Host ""
-    Write-Host "Missing: Visual Studio or MinGW" -ForegroundColor Red
+    Write-Host "Missing: C++ Compiler" -ForegroundColor Red
     Write-Host ""
-    Write-Host "Visual Studio requires manual installation (large download ~5GB)" -ForegroundColor Yellow
+    Write-Host "Option 1 - MinGW-w64 (Recommended - Lightweight ~500MB):" -ForegroundColor Cyan
+    Write-Host "  Manual installation:" -ForegroundColor White
+    Write-Host "    1. Download from: https://github.com/niXman/mingw-builds-binaries/releases" -ForegroundColor White
+    Write-Host "    2. Get file: x86_64-*-posix-seh-ucrt-*.7z" -ForegroundColor White
+    Write-Host "    3. Extract to C:\mingw64" -ForegroundColor White
+    Write-Host "    4. Add to PATH: C:\mingw64\bin" -ForegroundColor White
     Write-Host ""
-    Write-Host "Option 1 - Visual Studio Community 2022 (Recommended):" -ForegroundColor Cyan
+    Write-Host "  Alternative - MSYS2 (includes package manager):" -ForegroundColor White
+    Write-Host "    Download: https://www.msys2.org/" -ForegroundColor White
+    Write-Host "    After install: pacman -S mingw-w64-x86_64-gcc" -ForegroundColor White
+    Write-Host ""
+    Write-Host "Option 2 - Visual Studio (Alternative - Large ~7GB):" -ForegroundColor Cyan
+    Write-Host "  Requires: .NET Framework 4.8+ (not installed)" -ForegroundColor Yellow
     Write-Host "  Download: https://visualstudio.microsoft.com/downloads/" -ForegroundColor White
-    Write-Host "  Required workload: 'Desktop development with C++'" -ForegroundColor White
-    Write-Host ""
-    Write-Host "Option 2 - MinGW-w64 (Lightweight, ~500MB):" -ForegroundColor Cyan
-    Write-Host "  Download MSYS2: https://www.msys2.org/" -ForegroundColor White
-    Write-Host "  After installing MSYS2, run: pacman -S mingw-w64-x86_64-toolchain" -ForegroundColor White
+    Write-Host "  Install: 'Desktop development with C++' workload" -ForegroundColor White
     Write-Host ""
 
-    $openVS = Read-Host "Open Visual Studio download page in browser? (Y/N)"
-    if ($openVS -eq "Y" -or $openVS -eq "y") {
+    $choice = Read-Host "Choose: [1] Open MinGW download, [2] Open Visual Studio download, [N] Skip"
+
+    if ($choice -eq "1") {
+        Start-Process "https://github.com/niXman/mingw-builds-binaries/releases"
+        Write-Host "  Opening MinGW download page..." -ForegroundColor Green
+        Write-Host "  After extracting, add C:\mingw64\bin to your PATH" -ForegroundColor Yellow
+    } elseif ($choice -eq "2") {
         Start-Process "https://visualstudio.microsoft.com/downloads/"
-        Write-Host "  Browser opened to Visual Studio download page" -ForegroundColor Green
+        Write-Host "  Opening Visual Studio download page..." -ForegroundColor Green
         Write-Host "  Install 'Desktop development with C++' workload" -ForegroundColor Yellow
     }
 }
