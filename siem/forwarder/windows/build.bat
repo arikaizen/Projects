@@ -33,16 +33,7 @@ echo.
 SET COMPILER_TYPE=unknown
 SET CMAKE_GENERATOR=
 
-REM Check for MinGW (preferred)
-where g++ >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    echo [OK] Detected MinGW g++ compiler
-    SET COMPILER_TYPE=MinGW
-    SET CMAKE_GENERATOR=-G "MinGW Makefiles"
-    goto :found_compiler
-)
-
-REM Check for Visual Studio 2022
+REM Check for Visual Studio 2022 (preferred - includes Windows SDK)
 if exist "C:\Program Files\Microsoft Visual Studio\2022" (
     echo [OK] Detected Visual Studio 2022
     SET COMPILER_TYPE=VS2022
@@ -55,6 +46,16 @@ if exist "C:\Program Files (x86)\Microsoft Visual Studio\2019" (
     echo [OK] Detected Visual Studio 2019
     SET COMPILER_TYPE=VS2019
     SET CMAKE_GENERATOR=-G "Visual Studio 16 2019" -A x64
+    goto :found_compiler
+)
+
+REM Check for MinGW (fallback - may require Windows SDK)
+where g++ >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo [OK] Detected MinGW g++ compiler
+    echo [WARNING] MinGW detected - Windows SDK may be required for winevt.h
+    SET COMPILER_TYPE=MinGW
+    SET CMAKE_GENERATOR=-G "MinGW Makefiles"
     goto :found_compiler
 )
 
