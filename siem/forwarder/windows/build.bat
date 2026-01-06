@@ -64,51 +64,46 @@ REM ============================================================================
 REM STEP 2: Detect C++ Compiler
 REM ============================================================================
 REM The script checks for compilers in this priority order:
-REM   1. Visual Studio 2022 (best - includes Windows SDK)
-REM   2. Visual Studio 2019 (good - includes Windows SDK)
-REM   3. MinGW-w64 (requires separate Windows SDK or MinGW-w64 build)
+REM   1. MinGW-w64 (RECOMMENDED - ~200MB, includes Windows SDK)
+REM   2. Visual Studio 2022 (alternative - ~7GB, comprehensive)
+REM   3. Visual Studio 2019 (alternative - ~7GB, comprehensive)
 REM
 REM Why this order?
-REM   - Visual Studio includes Windows SDK which has winevt.h (Event Log API)
-REM   - Standard MinGW lacks Windows SDK headers; MinGW-w64 includes them
-REM   - We prefer VS if available to avoid SDK compatibility issues
+REM   - MinGW-w64 is lightweight and perfect for Windows 10
+REM   - Includes winevt.h and all necessary Windows Event Log headers
+REM   - Visual Studio is heavier but works if already installed
 
 echo [2/4] Detecting C++ compiler...
 SET COMPILER_TYPE=unknown
 SET CMAKE_GENERATOR=
 
-REM Check for Visual Studio 2022
+REM Check for MinGW-w64 FIRST (RECOMMENDED - lightweight, complete SDK)
+REM The 'where' command checks if g++.exe is in the system PATH
+REM MinGW-w64 includes winevt.h and all necessary Windows headers
+where g++ >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo       [OK] Detected MinGW g++ compiler
+    echo       Recommended: MinGW-w64 (lightweight, includes Windows SDK)
+    SET COMPILER_TYPE=MinGW
+    SET CMAKE_GENERATOR=-G "MinGW Makefiles"
+    goto :found_compiler
+)
+
+REM Check for Visual Studio 2022 (alternative - heavier option)
 REM Location: C:\Program Files\Microsoft Visual Studio\2022\
-REM If found, use Visual Studio 17 2022 generator for CMake
 if exist "C:\Program Files\Microsoft Visual Studio\2022" (
-    echo       [OK] Detected Visual Studio 2022
-    echo       Includes: Windows SDK, Event Log API (winevt.h)
+    echo       [OK] Detected Visual Studio 2022 (alternative to MinGW-w64)
     SET COMPILER_TYPE=VS2022
     SET CMAKE_GENERATOR=-G "Visual Studio 17 2022" -A x64
     goto :found_compiler
 )
 
-REM Check for Visual Studio 2019
+REM Check for Visual Studio 2019 (alternative - heavier option)
 REM Location: C:\Program Files (x86)\Microsoft Visual Studio\2019\
-REM If found, use Visual Studio 16 2019 generator for CMake
 if exist "C:\Program Files (x86)\Microsoft Visual Studio\2019" (
-    echo       [OK] Detected Visual Studio 2019
-    echo       Includes: Windows SDK, Event Log API (winevt.h)
+    echo       [OK] Detected Visual Studio 2019 (alternative to MinGW-w64)
     SET COMPILER_TYPE=VS2019
     SET CMAKE_GENERATOR=-G "Visual Studio 16 2019" -A x64
-    goto :found_compiler
-)
-
-REM Check for MinGW (g++ compiler)
-REM The 'where' command checks if g++.exe is in the system PATH
-REM NOTE: Standard MinGW may lack winevt.h; MinGW-w64 includes it
-where g++ >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    echo       [OK] Detected MinGW g++ compiler
-    echo       [WARNING] Ensure you have MinGW-w64 (includes Windows SDK headers)
-    echo       [WARNING] Standard MinGW lacks winevt.h and will fail to compile
-    SET COMPILER_TYPE=MinGW
-    SET CMAKE_GENERATOR=-G "MinGW Makefiles"
     goto :found_compiler
 )
 
