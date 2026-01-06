@@ -174,9 +174,13 @@ A C++ application that reads Windows Event Logs and forwards them to the SIEM se
 ### Windows Build Requirements
 
 - **CMake** (3.10 or higher): [Download CMake](https://cmake.org/download/)
-- **Visual Studio 2019** or later with C++ development tools
-  - Or **MinGW-w64** for GCC compilation
-- **Windows SDK** (included with Visual Studio)
+- **Compiler** (choose one):
+  - **MinGW-w64** (Recommended - ~200MB, includes Windows SDK headers)
+    - Download: [MinGW-w64 Builds](https://github.com/niXman/mingw-builds-binaries/releases)
+    - Get: `x86_64-*-release-posix-seh-ucrt-*.7z`
+    - Extract to `C:\mingw64`
+    - Add `C:\mingw64\bin` to PATH
+  - **Visual Studio 2019+** with C++ development tools (~7GB, includes Windows SDK)
 
 ### SIEM Server Requirements
 
