@@ -254,6 +254,37 @@ REM Return to project root directory
 cd ..
 
 REM ============================================================================
+REM Verify Output Files Were Created
+REM ============================================================================
+REM Check that both executables were successfully built
+REM Sometimes make succeeds partially but doesn't create all targets
+
+echo.
+echo Verifying build outputs...
+
+if not exist "bin\log_forwarder.exe" (
+    echo.
+    echo ============================================================
+    echo ERROR: log_forwarder.exe was not created
+    echo ============================================================
+    echo.
+    echo The build process completed but log_forwarder.exe is missing.
+    echo.
+    echo MANUAL BUILD WORKAROUND:
+    echo   You can compile manually with this command:
+    echo.
+    echo   cd siem\forwarder\windows
+    echo   g++ -I./inc src/main.cpp src/log_forwarder.cpp src/event_log_reader.cpp src/json_utils.cpp src/forwarder_api.cpp -o bin/log_forwarder.exe -lwevtapi -lws2_32 -std=c++17
+    echo.
+    pause
+    exit /b 1
+)
+
+if not exist "bin\test_forwarder.exe" (
+    echo [WARNING] test_forwarder.exe was not created
+)
+
+REM ============================================================================
 REM SUCCESS: Build Complete
 REM ============================================================================
 REM Display success message and output file locations
