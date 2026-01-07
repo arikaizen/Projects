@@ -9,9 +9,9 @@
 #ifndef LOG_FORWARDER_H
 #define LOG_FORWARDER_H
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <string>
+#include <winsock2.h>  // SOCKET, closesocket
+#include <ws2tcpip.h>  // addrinfo, getaddrinfo hints
+#include <string>      // std::string
 
 /**
  * @class LogForwarder
@@ -35,6 +35,12 @@ public:
      * @param port SIEM server port number
      */
     LogForwarder(const std::string& server, int port);
+
+    // Deleted copy/move to prevent socket duplication
+    LogForwarder(const LogForwarder&) = delete;            // copy ctor
+    LogForwarder& operator=(const LogForwarder&) = delete; // copy assign
+    LogForwarder(LogForwarder&&) = delete;                 // move ctor
+    LogForwarder& operator=(LogForwarder&&) = delete;      // move assign
 
     /**
      * @brief Destroy the Log Forwarder object and cleanup resources

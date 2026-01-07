@@ -18,10 +18,10 @@
  *   log_forwarder.exe 192.168.1.100 8089
  */
 
-#include "forwarder_api.h"
-#include "logger.h"
-#include <cstdlib>
-#include <iostream>
+#include "forwarder_api.h" // runForwarder, constants
+#include "logger.h"        // initializeGlobalLogger, g_logger
+#include <cstdlib>          // std::atoi
+#include <iostream>         // std::cout, std::cerr
 
 /**
  * @brief Main entry point

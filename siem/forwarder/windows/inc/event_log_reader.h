@@ -9,9 +9,9 @@
 #ifndef EVENT_LOG_READER_H
 #define EVENT_LOG_READER_H
 
-#include <windows.h>
-#include <winevt.h>
-#include <string>
+#include <windows.h>   // HANDLE, DWORD, ERROR_*, WideCharToMultiByte
+#include <winevt.h>    // EVT_HANDLE, EVT_SYSTEM_PROPERTY_ID, EVT_VARIANT, Evt* types
+#include <string>      // std::string
 
 /**
  * @brief Extract a specific property from a Windows Event Log event

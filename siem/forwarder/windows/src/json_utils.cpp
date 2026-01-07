@@ -5,9 +5,9 @@
  * Provides string escaping and formatting for JSON compliance.
  */
 
-#include "json_utils.h"
-#include <sstream>
-#include <iomanip>
+#include "json_utils.h" // escapeJson declarations
+#include <sstream>       // std::ostringstream
+#include <iomanip>       // std::setw, std::setfill, std::hex
 
 std::string escapeJson(const std::string& str) {
     std::ostringstream oss;
