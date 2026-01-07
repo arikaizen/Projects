@@ -5,31 +5,34 @@
  * Provides high-level functions to initialize and run the log forwarding service.
  */
 
-#include "forwarder_api.h"
-#include "event_log_reader.h"
-#include "logger.h"
-#include <iostream>
-#include <chrono>
-#include <thread>
+#include "forwarder_api.h"  // runForwarder, forwardWindowsLogs declarations
+#include "event_log_reader.h" // formatEventAsJson, getEventProperty
+#include "logger.h"         // g_logger usage
+#include <windows.h>         // GetLastError, DWORD, ERROR_NO_MORE_ITEMS
+#include <iostream>          // std::cout, std::cerr
+#include <chrono>            // std::chrono::milliseconds
+#include <thread>            // std::this_thread::sleep_for
 
 void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath) {
-    EVT_HANDLE hSubscription = NULL;
-    EVT_HANDLE hEvents[10];
+    EVT_HANDLE hSubscription = nullptr;
+    EVT_HANDLE hEvents[10] = {nullptr};
     DWORD dwReturned = 0;
 
     // Subscribe to the Windows Event Log channel
+    // EvtSubscribe: Create a subscription to Windows Event Log channel. Returns EVT_HANDLE on success, NULL on failure.
     hSubscription = EvtSubscribe(
-        NULL,                           // Session (NULL = localhost)
-        NULL,                           // Signal event (NULL = use EvtNext)
+        nullptr,                        // Session (NULL = localhost)
+        nullptr,                        // Signal event (NULL = use EvtNext)
         channelPath.c_str(),            // Channel path
         L"*",                           // Query (all events)
-        NULL,                           // Bookmark
-        NULL,                           // Context
-        NULL,                           // Callback
+        nullptr,                        // Bookmark
+        nullptr,                        // Context
+        nullptr,                        // Callback
         EvtSubscribeToFutureEvents      // Subscribe to future events only
     );
 
-    if (hSubscription == NULL) {
+    if (nullptr == hSubscription) {
+        // GetLastError: Retrieve error code from last failed Windows API call (from <windows.h>). Returns platform-specific error code.
         DWORD error = GetLastError();
         std::cerr << "[EventLogReader] Failed to subscribe to event log channel" << std::endl;
         std::cerr << "[EventLogReader] Error code: " << error << std::endl;
@@ -51,6 +54,7 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
     // Main event processing loop
     while (true) {
         // Get next batch of events (up to 10)
+        // EvtNext: Retrieve next batch of events from subscription. Returns TRUE if events found, FALSE otherwise.
         if (EvtNext(hSubscription, 10, hEvents, INFINITE, 0, &dwReturned)) {
             // Process each event in the batch
             for (DWORD i = 0; i < dwReturned; i++) {
@@ -89,10 +93,12 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
                 }
 
                 // Close event handle
+                // EvtClose: Close event log handle and release resources. Returns TRUE on success, FALSE on failure.
                 EvtClose(hEvents[i]);
             }
         } else {
             // Handle EvtNext failure
+            // GetLastError: Retrieve error code from last failed Windows API call (from <windows.h>). Returns platform-specific error code.
             DWORD status = GetLastError();
             if (status != ERROR_NO_MORE_ITEMS) {
                 std::cerr << "[EventLogReader] EvtNext failed with error: " << status << std::endl;
@@ -105,6 +111,7 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
 
     // Cleanup subscription handle
     if (hSubscription) {
+        // EvtClose: Close event log handle and release resources. Returns TRUE on success, FALSE on failure.
         EvtClose(hSubscription);
     }
 }
