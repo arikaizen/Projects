@@ -6,6 +6,7 @@
  */
 
 #include "log_forwarder.h"
+#include "logger.h"
 #include <iostream>
 
 #pragma comment(lib, "ws2_32.lib")
@@ -23,9 +24,16 @@ bool LogForwarder::initialize() {
     int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (result != 0) {
         std::cerr << "[LogForwarder] WSAStartup failed with error: " << result << std::endl;
+        if (g_logger) {
+            g_logger->error("LogForwarder", "WSAStartup failed",
+                          "Error code: " + std::to_string(result));
+        }
         return false;
     }
     std::cout << "[LogForwarder] Windows Sockets initialized successfully" << std::endl;
+    if (g_logger) {
+        g_logger->info("LogForwarder", "Windows Sockets initialized successfully", "");
+    }
     return true;
 }
 
@@ -43,6 +51,10 @@ bool LogForwarder::connect() {
     int iResult = getaddrinfo(serverAddress.c_str(), portStr.c_str(), &hints, &result);
     if (iResult != 0) {
         std::cerr << "[LogForwarder] getaddrinfo failed with error: " << iResult << std::endl;
+        if (g_logger) {
+            g_logger->error("LogForwarder", "Failed to resolve server address",
+                          serverAddress + ":" + portStr + " Error: " + std::to_string(iResult));
+        }
         return false;
     }
 
@@ -71,12 +83,20 @@ bool LogForwarder::connect() {
     if (sock == INVALID_SOCKET) {
         std::cerr << "[LogForwarder] Unable to connect to SIEM server at "
                   << serverAddress << ":" << serverPort << std::endl;
+        if (g_logger) {
+            g_logger->error("LogForwarder", "Unable to connect to SIEM server",
+                          serverAddress + ":" + std::to_string(serverPort));
+        }
         return false;
     }
 
     connected = true;
     std::cout << "[LogForwarder] Connected to SIEM server at "
               << serverAddress << ":" << serverPort << std::endl;
+    if (g_logger) {
+        g_logger->info("LogForwarder", "Connected to SIEM server",
+                      serverAddress + ":" + std::to_string(serverPort));
+    }
     return true;
 }
 
@@ -85,6 +105,9 @@ void LogForwarder::disconnect() {
         closesocket(sock);
         sock = INVALID_SOCKET;
         std::cout << "[LogForwarder] Disconnected from SIEM server" << std::endl;
+        if (g_logger) {
+            g_logger->info("LogForwarder", "Disconnected from SIEM server", "");
+        }
     }
     connected = false;
     WSACleanup();
@@ -93,6 +116,9 @@ void LogForwarder::disconnect() {
 bool LogForwarder::sendLog(const std::string& logData) {
     if (!connected || sock == INVALID_SOCKET) {
         std::cerr << "[LogForwarder] Cannot send: Not connected to server" << std::endl;
+        if (g_logger) {
+            g_logger->warning("LogForwarder", "Cannot send log - not connected", "");
+        }
         return false;
     }
 
@@ -102,9 +128,22 @@ bool LogForwarder::sendLog(const std::string& logData) {
     // Send data over TCP socket
     int result = send(sock, message.c_str(), (int)message.length(), 0);
     if (result == SOCKET_ERROR) {
-        std::cerr << "[LogForwarder] send() failed with error: " << WSAGetLastError() << std::endl;
+        int error = WSAGetLastError();
+        std::cerr << "[LogForwarder] send() failed with error: " << error << std::endl;
+        if (g_logger) {
+            g_logger->error("LogForwarder", "Failed to send log",
+                          "Error code: " + std::to_string(error));
+        }
         connected = false;
         return false;
+    }
+
+    if (g_logger) {
+        // Log successful sends with truncated data for readability
+        std::string truncated = logData.substr(0, 100);
+        if (logData.length() > 100) truncated += "...";
+        g_logger->debug("LogForwarder", "Log sent successfully",
+                       "Bytes: " + std::to_string(result) + " Data: " + truncated);
     }
 
     return true;

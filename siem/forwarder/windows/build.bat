@@ -58,10 +58,10 @@ REM ============================================================================
 REM STEP 3: Compile the Project
 REM ============================================================================
 echo [3/3] Compiling project...
-echo       Running: g++ -I./inc src/main.cpp src/log_forwarder.cpp src/event_log_reader.cpp src/json_utils.cpp src/forwarder_api.cpp -o bin/log_forwarder.exe -lwevtapi -lws2_32 -std=c++17
+echo       Running: g++ -I./inc src/main.cpp src/log_forwarder.cpp src/event_log_reader.cpp src/json_utils.cpp src/forwarder_api.cpp src/logger.cpp -o bin/log_forwarder.exe -lwevtapi -lws2_32 -std=c++17
 echo.
 
-g++ -I./inc src/main.cpp src/log_forwarder.cpp src/event_log_reader.cpp src/json_utils.cpp src/forwarder_api.cpp -o bin/log_forwarder.exe -lwevtapi -lws2_32 -std=c++17
+g++ -I./inc src/main.cpp src/log_forwarder.cpp src/event_log_reader.cpp src/json_utils.cpp src/forwarder_api.cpp src/logger.cpp -o bin/log_forwarder.exe -lwevtapi -lws2_32 -std=c++17
 
 REM Check if compilation succeeded
 if %ERRORLEVEL% NEQ 0 (
