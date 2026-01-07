@@ -19,7 +19,9 @@
  */
 
 #include "forwarder_api.h"
+#include "logger.h"
 #include <cstdlib>
+#include <iostream>
 
 /**
  * @brief Main entry point
@@ -28,6 +30,14 @@
  * @return 0 on success, non-zero on error
  */
 int main(int argc, char* argv[]) {
+    // Initialize logger first
+    if (!initializeGlobalLogger("forwarder_logs.csv")) {
+        std::cerr << "[Main] Failed to initialize logger" << std::endl;
+        return 1;
+    }
+
+    g_logger->info("Main", "Windows Event Log Forwarder starting", "");
+
     // Default configuration
     std::string serverAddress = DEFAULT_SIEM_SERVER;
     int serverPort = DEFAULT_SIEM_PORT;
@@ -35,11 +45,23 @@ int main(int argc, char* argv[]) {
     // Parse command-line arguments
     if (argc >= 2) {
         serverAddress = argv[1];
+        g_logger->info("Main", "Using custom server address", serverAddress);
     }
     if (argc >= 3) {
         serverPort = std::atoi(argv[2]);
+        g_logger->info("Main", "Using custom server port", std::to_string(serverPort));
     }
 
+    std::string target = serverAddress + ":" + std::to_string(serverPort);
+    g_logger->info("Main", "Target SIEM server", target);
+
     // Run the forwarder (this call blocks indefinitely)
-    return runForwarder(serverAddress, serverPort);
+    int result = runForwarder(serverAddress, serverPort);
+
+    // Shutdown logger on exit
+    g_logger->info("Main", "Windows Event Log Forwarder shutting down",
+                   "Exit code: " + std::to_string(result));
+    shutdownGlobalLogger();
+
+    return result;
 }
