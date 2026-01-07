@@ -7,6 +7,7 @@
 
 #include "forwarder_api.h"
 #include "event_log_reader.h"
+#include "logger.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -29,14 +30,23 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
     );
 
     if (hSubscription == NULL) {
+        DWORD error = GetLastError();
         std::cerr << "[EventLogReader] Failed to subscribe to event log channel" << std::endl;
-        std::cerr << "[EventLogReader] Error code: " << GetLastError() << std::endl;
+        std::cerr << "[EventLogReader] Error code: " << error << std::endl;
         std::cerr << "[EventLogReader] Tip: Run as Administrator to access Security logs" << std::endl;
+        if (g_logger) {
+            g_logger->error("EventLogReader", "Failed to subscribe to event log channel",
+                          "Error code: " + std::to_string(error) + " - Run as Administrator");
+        }
         return;
     }
 
     std::cout << "[EventLogReader] Successfully subscribed to event log channel" << std::endl;
     std::cout << "[EventLogReader] Monitoring Windows Event Logs..." << std::endl;
+    if (g_logger) {
+        g_logger->info("EventLogReader", "Successfully subscribed to event log",
+                      "Monitoring for future events");
+    }
 
     // Main event processing loop
     while (true) {
@@ -50,9 +60,16 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
                 // Check connection status and reconnect if needed
                 if (!forwarder.isConnected()) {
                     std::cout << "[ForwarderAPI] Connection lost, attempting to reconnect..." << std::endl;
+                    if (g_logger) {
+                        g_logger->warning("ForwarderAPI", "Connection lost, attempting reconnection", "");
+                    }
                     if (!forwarder.connect()) {
                         std::cerr << "[ForwarderAPI] Reconnection failed, waiting "
                                   << RECONNECT_DELAY_MS << "ms before retry..." << std::endl;
+                        if (g_logger) {
+                            g_logger->warning("ForwarderAPI", "Reconnection failed",
+                                            "Waiting " + std::to_string(RECONNECT_DELAY_MS) + "ms");
+                        }
                         std::this_thread::sleep_for(std::chrono::milliseconds(RECONNECT_DELAY_MS));
                         continue;
                     }
@@ -61,8 +78,14 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
                 // Forward log to SIEM server
                 if (forwarder.sendLog(jsonLog)) {
                     std::cout << "[ForwarderAPI] Forwarded: " << jsonLog << std::endl;
+                    if (g_logger) {
+                        g_logger->info("ForwarderAPI", "Event forwarded successfully", "");
+                    }
                 } else {
                     std::cerr << "[ForwarderAPI] Failed to forward log" << std::endl;
+                    if (g_logger) {
+                        g_logger->error("ForwarderAPI", "Failed to forward event", "");
+                    }
                 }
 
                 // Close event handle
@@ -100,11 +123,19 @@ int runForwarder(const std::string& serverAddress, int serverPort) {
 
     if (!forwarder.initialize()) {
         std::cerr << "[ForwarderAPI] Failed to initialize forwarder" << std::endl;
+        if (g_logger) {
+            g_logger->error("ForwarderAPI", "Failed to initialize forwarder", "");
+        }
         return 1;
     }
 
     // Attempt initial connection with retry logic
     std::cout << "[ForwarderAPI] Attempting to connect to SIEM server..." << std::endl;
+    if (g_logger) {
+        g_logger->info("ForwarderAPI", "Attempting initial connection to SIEM server",
+                      serverAddress + ":" + std::to_string(serverPort));
+    }
+
     while (!forwarder.connect()) {
         std::cout << "[ForwarderAPI] Connection failed, retrying in "
                   << RECONNECT_DELAY_MS << "ms..." << std::endl;
@@ -113,11 +144,17 @@ int runForwarder(const std::string& serverAddress, int serverPort) {
 
     std::cout << "[ForwarderAPI] Connection established successfully!" << std::endl;
     std::cout << "\n";
+    if (g_logger) {
+        g_logger->info("ForwarderAPI", "Initial connection established successfully", "");
+    }
 
     // Start monitoring Windows Event Logs
     // Currently monitoring System channel only
     // Future enhancement: spawn threads for multiple channels
     std::cout << "[ForwarderAPI] Starting event log monitoring..." << std::endl;
+    if (g_logger) {
+        g_logger->info("ForwarderAPI", "Starting event log monitoring", "Channel: System");
+    }
     forwardWindowsLogs(forwarder, L"System");
 
     return 0;
