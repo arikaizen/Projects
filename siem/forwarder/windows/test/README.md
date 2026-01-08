@@ -57,6 +57,78 @@ This directory contains comprehensive unit tests for the Windows Event Log Forwa
 
 **Total**: 60+ unit tests
 
+## Real-Time Console Monitor
+
+### 🖥️ test_realtime_console.cpp
+**Purpose**: Standalone test program that reads Windows Event Logs and prints them to the console in real-time with color coding.
+
+This is NOT a unit test but a demonstration/testing tool that:
+- Monitors Windows Event Logs without requiring a SIEM server
+- Prints events as JSON directly to the console
+- Supports both real-time and historical modes
+- Uses ANSI color codes for visual clarity
+- Perfect for testing event log reading functionality
+
+**Features**:
+- ✅ Real-time event monitoring
+- ✅ Historical event reading (all events or recent N hours)
+- ✅ Color-coded console output
+- ✅ Event counter and timing information
+- ✅ Multiple channel support (System, Application, Security)
+- ✅ Command-line configuration
+
+**Usage**:
+```bash
+# Build the console test program
+build_realtime_console.bat
+
+# Run with defaults (System log, real-time mode)
+..\bin\test_realtime_console.exe
+
+# Monitor Application log in real-time
+..\bin\test_realtime_console.exe Application realtime
+
+# Read last 12 hours from System log
+..\bin\test_realtime_console.exe System recent 12
+
+# Read ALL historical events from Security log
+..\bin\test_realtime_console.exe Security all
+
+# Show help
+..\bin\test_realtime_console.exe --help
+```
+
+**Example Output**:
+```
+========================================
+  Windows Event Log Real-Time Monitor
+========================================
+
+[Monitor] Channel: System
+[Monitor] Mode: REAL-TIME (Future events only)
+[Monitor] Waiting for new events... (Press Ctrl+C to stop)
+
+[Event #1 | +0s]
+{"event_id":"7036","level":"4","channel":"System","computer":"DESKTOP-ABC123",...}
+
+[Event #2 | +5s]
+{"event_id":"7040","level":"4","channel":"System","computer":"DESKTOP-ABC123",...}
+```
+
+**When to use**:
+- Testing event log reader functionality
+- Verifying events are being generated
+- Debugging JSON formatting
+- Demonstrating the forwarder capabilities without SIEM server
+- Troubleshooting permission issues (Security log access)
+
+**Build separately** from unit tests using:
+```bash
+build_realtime_console.bat
+```
+
+---
+
 ## Requirements
 
 ### 1. Compiler
@@ -137,11 +209,14 @@ test/
 ├── test_log_forwarder.cpp     # Network forwarder tests
 ├── test_event_log_reader.cpp  # Event log reading tests
 ├── test_main.cpp              # Test runner entry point
-├── build_tests.bat            # Build and run script
+├── test_realtime_console.cpp  # Real-time console monitor (standalone)
+├── build_tests.bat            # Build and run unit tests
+├── build_realtime_console.bat # Build console monitor
 ├── README.md                  # This file
 ├── googletest/                # Google Test framework (you download)
 └── bin/                       # Build output (created automatically)
-    ├── test_runner.exe        # Test executable
+    ├── test_runner.exe        # Unit test executable
+    ├── test_realtime_console.exe  # Console monitor executable
     ├── *.o                    # Object files
     └── test_*.csv             # Test log files (temporary)
 ```
