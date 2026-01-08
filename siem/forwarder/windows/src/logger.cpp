@@ -5,12 +5,12 @@
  * Provides thread-safe CSV logging functionality for the forwarder.
  */
 
-#include "logger.h"
-#include <iostream>
-#include <sstream>
-#include <iomanip>
-#include <ctime>
-#include <chrono>
+#include "logger.h"   // Logger definitions
+#include <iostream>    // std::cerr
+#include <sstream>     // std::ostringstream
+#include <iomanip>     // std::put_time, std::setfill, std::setw
+#include <ctime>       // std::tm, localtime_s
+#include <chrono>      // system_clock, duration_cast
 
 // Global logger instance
 Logger* g_logger = nullptr;
@@ -50,12 +50,16 @@ bool Logger::initialize() {
 std::string Logger::getCurrentTimestamp() {
     auto now = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                  now.time_since_epoch()) % 1000;
 
     std::tm tm_buf;
+    // localtime_s: Convert time_t to local time. Returns 0 on success, nonzero error code on failure. Fills tm_buf structure with broken-down time.
     localtime_s(&tm_buf, &time_t_now);
 
     std::ostringstream oss;
-    oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S");
+    oss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S")
+        << '.' << std::setfill('0') << std::setw(3) << ms.count();
     return oss.str();
 }
 

@@ -9,9 +9,9 @@
 #ifndef LOGGER_H
 #define LOGGER_H
 
-#include <string>
-#include <fstream>
-#include <mutex>
+#include <string>   // std::string
+#include <fstream>  // std::ofstream
+#include <mutex>    // std::mutex, std::lock_guard
 
 /**
  * @enum LogLevel
@@ -32,8 +32,8 @@ enum class LogLevel {
  * CSV format: Timestamp,Level,Component,Message,Details
  *
  * Example CSV output:
- * 2026-01-07 14:30:45,INFO,LogForwarder,Connected to server,192.168.1.100:8089
- * 2026-01-07 14:30:46,INFO,EventReader,Event forwarded,EventID=4624
+ * 2026-01-07 14:30:45.123,INFO,LogForwarder,Connected to server,192.168.1.100:8089
+ * 2026-01-07 14:30:46.987,INFO,EventReader,Event forwarded,EventID=4624
  */
 class Logger {
 private:
@@ -43,8 +43,8 @@ private:
     bool isOpen;                        ///< File open status
 
     /**
-     * @brief Get current timestamp in CSV format
-     * @return Formatted timestamp string (YYYY-MM-DD HH:MM:SS)
+    * @brief Get current timestamp in CSV format
+    * @return Formatted timestamp string (YYYY-MM-DD HH:MM:SS.sss)
      */
     std::string getCurrentTimestamp();
 
@@ -68,6 +68,12 @@ public:
      * @param filepath Path to CSV log file (default: forwarder_logs.csv)
      */
     Logger(const std::string& filepath = "forwarder_logs.csv");
+
+    // Deleted copy/move to avoid shared file handles
+    Logger(const Logger&) = delete;            // copy ctor
+    Logger& operator=(const Logger&) = delete; // copy assign
+    Logger(Logger&&) = delete;                 // move ctor
+    Logger& operator=(Logger&&) = delete;      // move assign
 
     /**
      * @brief Destroy the Logger object and close file

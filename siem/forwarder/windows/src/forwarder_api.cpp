@@ -6,12 +6,13 @@
  * with support for both real-time and historical event reading.
  */
 
-#include "forwarder_api.h"
-#include "event_log_reader.h"
-#include "logger.h"
-#include <iostream>
-#include <chrono>
-#include <thread>
+#include "forwarder_api.h"  // runForwarder, forwardWindowsLogs declarations
+#include "event_log_reader.h" // formatEventAsJson, getEventProperty
+#include "logger.h"         // g_logger usage
+#include <windows.h>         // GetLastError, DWORD, ERROR_NO_MORE_ITEMS
+#include <iostream>          // std::cout, std::cerr
+#include <chrono>            // std::chrono::milliseconds
+#include <thread>            // std::this_thread::sleep_for
 
 void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath,
                         const EventQueryConfig& config) {
@@ -76,7 +77,8 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
         );
     }
 
-    if (hSubscription == NULL) {
+    if (nullptr == hSubscription) {
+        // GetLastError: Retrieve error code from last failed Windows API call (from <windows.h>). Returns platform-specific error code.
         DWORD error = GetLastError();
         std::cerr << "[EventLogReader] Failed to subscribe/query event log channel" << std::endl;
         std::cerr << "[EventLogReader] Error code: " << error << std::endl;
@@ -147,10 +149,12 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
                 }
 
                 // Close event handle
+                // EvtClose: Close event log handle and release resources. Returns TRUE on success, FALSE on failure.
                 EvtClose(hEvents[i]);
             }
         } else {
             // Handle EvtNext failure
+            // GetLastError: Retrieve error code from last failed Windows API call (from <windows.h>). Returns platform-specific error code.
             DWORD status = GetLastError();
             if (status == ERROR_NO_MORE_ITEMS) {
                 // For historical queries, this means we've read all matching events
@@ -191,6 +195,7 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
 
     // Cleanup subscription handle
     if (hSubscription) {
+        // EvtClose: Close event log handle and release resources. Returns TRUE on success, FALSE on failure.
         EvtClose(hSubscription);
     }
 }

@@ -6,31 +6,69 @@
  * in both real-time and historical modes.
  */
 
+
 #include "event_log_reader.h"
 #include "json_utils.h"
 #include <sstream>
 #include <iomanip>
 #include <ctime>
 
+// wevtapi.lib: EvtRender, EvtSubscribe, EvtNext, EvtClose
 #pragma comment(lib, "wevtapi.lib")
+/** 
+ * DWORD - unsigned log
+ * PEVT_VARIANT - pointer to EVT_VARIANT structure tagged union type that can hold many 
+   different value kinds (string, numbers, GUIDs, FILETIME, etc.).
+ 
+    typedef struct _EVT_VARIANT {
+    union {
+        ULONGLONG FileTimeVal;      // for EvtVarTypeFileTime
+        HANDLE    HandleVal;        // for EvtVarTypeHandle
+        UINT32    UInt32Val;        // for EvtVarTypeUInt32
+        UINT64    UInt64Val;        // for EvtVarTypeUInt64
+        INT32     Int32Val;         // for EvtVarTypeInt32
+        INT64     Int64Val;         // for EvtVarTypeInt64
+        FLOAT     FloatVal;         // for EvtVarTypeSingle
+        DOUBLE    DoubleVal;        // for EvtVarTypeDouble
+        BOOL      BoolVal;          // for EvtVarTypeBoolean
+        LPWSTR    StringVal;        // for EvtVarTypeString (wide string)
+        LPSTR     AnsiStringVal;    // for EvtVarTypeAnsiString
+        LPBYTE    BinaryVal;        // for EvtVarTypeBinary
+        GUID*     GuidVal;          // for EvtVarTypeGuid
+        size_t    SizeTVal;         // for EvtVarTypeSizeT
+        WCHAR*    XmlVal;           // for EvtVarTypeXml
+        LPWSTR*   StringArrayVal;   // for array types
+    };
+    DWORD PropertyLength;         // length for array/binary types
+    DWORD Type;                   // discriminant: tells you which field is valid
+    DWORD Reserved;               // reserved for future use
+    } EVT_VARIANT, *PEVT_VARIANT;
 
+
+ * 
+ * 
+ *
+ */
 std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyId) {
     DWORD dwBufferSize = 0;
     DWORD dwBufferUsed = 0;
     DWORD dwPropertyCount = 0;
-    PEVT_VARIANT pRenderedValues = NULL;
+    PEVT_VARIANT pRenderedValues = nullptr;
     std::string result = "";
 
     // First call to get required buffer size
-    if (!EvtRender(NULL, hEvent, EvtRenderEventValues, dwBufferSize,
+    // EvtRender: Extract event data into a buffer of EVT_VARIANT structures. Returns TRUE on success, FALSE on failure.
+    if (!EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
                    pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
+        // GetLastError: Retrieve error code from last failed Windows API call (from <windows.h>). Returns platform-specific error code.
         if (ERROR_INSUFFICIENT_BUFFER == GetLastError()) {
             dwBufferSize = dwBufferUsed;
-            pRenderedValues = (PEVT_VARIANT)malloc(dwBufferSize);
+            // Use new[] for buffer allocation (newer C++ style instead of malloc)
+            pRenderedValues = (PEVT_VARIANT)(new BYTE[dwBufferSize]);
 
-            if (pRenderedValues) {
+            if (nullptr != pRenderedValues) {
                 // Second call with allocated buffer
-                EvtRender(NULL, hEvent, EvtRenderEventValues, dwBufferSize,
+                EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
                          pRenderedValues, &dwBufferUsed, &dwPropertyCount);
             }
         }
@@ -43,10 +81,12 @@ std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyI
         // Convert property value to string based on type
         if (pProperty->Type == EvtVarTypeString && pProperty->StringVal) {
             // String type - convert from wide char to UTF-8
-            int size = WideCharToMultiByte(CP_UTF8, 0, pProperty->StringVal, -1, NULL, 0, NULL, NULL);
+            // WideCharToMultiByte: Convert wide-character string to multibyte (UTF-8) string. Returns number of bytes written on success, 0 on failure.
+            int size = WideCharToMultiByte(CP_UTF8, 0, pProperty->StringVal, -1, nullptr, 0, nullptr, nullptr);
             if (size > 0) {
                 char* buffer = new char[size];
-                WideCharToMultiByte(CP_UTF8, 0, pProperty->StringVal, -1, buffer, size, NULL, NULL);
+                // WideCharToMultiByte: Convert wide-character string to multibyte string. Returns number of bytes written on success, 0 on failure.
+                WideCharToMultiByte(CP_UTF8, 0, pProperty->StringVal, -1, buffer, size, nullptr, nullptr);
                 result = buffer;
                 delete[] buffer;
             }
@@ -61,7 +101,8 @@ std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyI
 
     // Cleanup
     if (pRenderedValues) {
-        free(pRenderedValues);
+        // Use delete[] to match new[] allocation (newer C++ style instead of free)
+        delete[](BYTE*)pRenderedValues;
     }
 
     return result;
@@ -81,16 +122,19 @@ std::string formatEventAsJson(EVT_HANDLE hEvent) {
     DWORD dwBufferSize = 0;
     DWORD dwBufferUsed = 0;
     DWORD dwPropertyCount = 0;
-    PEVT_VARIANT pRenderedValues = NULL;
+    PEVT_VARIANT pRenderedValues = nullptr;
 
-    if (!EvtRender(NULL, hEvent, EvtRenderEventValues, dwBufferSize,
+    // EvtRender: Extract event data into a buffer of EVT_VARIANT structures. Returns TRUE on success, FALSE on failure.
+    if (!EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
                    pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
+        // GetLastError: Retrieve error code from last failed Windows API call (from <windows.h>). Returns platform-specific error code.
         if (ERROR_INSUFFICIENT_BUFFER == GetLastError()) {
             dwBufferSize = dwBufferUsed;
-            pRenderedValues = (PEVT_VARIANT)malloc(dwBufferSize);
+            // Use new[] for buffer allocation (newer C++ style instead of malloc)
+            pRenderedValues = (PEVT_VARIANT)(new BYTE[dwBufferSize]);
 
             if (pRenderedValues) {
-                EvtRender(NULL, hEvent, EvtRenderEventValues, dwBufferSize,
+                EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
                          pRenderedValues, &dwBufferUsed, &dwPropertyCount);
 
                 // Get timestamp from TimeCreated field
@@ -98,7 +142,8 @@ std::string formatEventAsJson(EVT_HANDLE hEvent) {
                     timestamp = pRenderedValues[EvtSystemTimeCreated].FileTimeVal;
                 }
 
-                free(pRenderedValues);
+                // Use delete[] to match new[] allocation (newer C++ style instead of free)
+                delete[](BYTE*)pRenderedValues;
             }
         }
     }
