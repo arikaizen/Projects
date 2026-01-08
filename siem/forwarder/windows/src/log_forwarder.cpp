@@ -5,10 +5,12 @@
  * Provides TCP socket communication functionality for forwarding logs to SIEM server.
  */
 
-#include "log_forwarder.h"
-#include "logger.h"
-#include <iostream>
+#include "log_forwarder.h" // socket lifecycle APIs
+#include "logger.h"        // g_logger helpers
+#include <iostream>         // std::cout, std::cerr
 
+// ws2_32.lib: WSAStartup, getaddrinfo, socket, connect, send, closesocket,
+//              WSACleanup, WSAGetLastError, freeaddrinfo
 #pragma comment(lib, "ws2_32.lib")
 
 LogForwarder::LogForwarder(const std::string& server, int port)
@@ -21,6 +23,7 @@ LogForwarder::~LogForwarder() {
 
 bool LogForwarder::initialize() {
     WSADATA wsaData;
+    // WSAStartup: Initialize Windows Sockets library (version 2.2). Returns 0 on success, nonzero error code on failure.
     int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (result != 0) {
         std::cerr << "[LogForwarder] WSAStartup failed with error: " << result << std::endl;
@@ -38,7 +41,7 @@ bool LogForwarder::initialize() {
 }
 
 bool LogForwarder::connect() {
-    struct addrinfo *result = NULL, *ptr = NULL, hints;
+    struct addrinfo *result = nullptr, *ptr = nullptr, hints;
 
     // Configure connection hints
     ZeroMemory(&hints, sizeof(hints));
@@ -48,6 +51,7 @@ bool LogForwarder::connect() {
 
     // Resolve server address
     std::string portStr = std::to_string(serverPort);
+    // getaddrinfo: Convert hostname/IP and port to address info structure. Returns 0 on success, nonzero error code on failure.
     int iResult = getaddrinfo(serverAddress.c_str(), portStr.c_str(), &hints, &result);
     if (iResult != 0) {
         std::cerr << "[LogForwarder] getaddrinfo failed with error: " << iResult << std::endl;
@@ -60,8 +64,9 @@ bool LogForwarder::connect() {
 
     // Attempt to connect to the server
     sock = INVALID_SOCKET;
-    for (ptr = result; ptr != NULL; ptr = ptr->ai_next) {
+    for (ptr = result; ptr != nullptr; ptr = ptr->ai_next) {
         // Create socket
+        // socket: Create a socket for communication. Returns socket handle on success, INVALID_SOCKET on failure.
         sock = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
         if (sock == INVALID_SOCKET) {
             std::cerr << "[LogForwarder] socket() failed with error: " << WSAGetLastError() << std::endl;
@@ -69,8 +74,10 @@ bool LogForwarder::connect() {
         }
 
         // Attempt connection
+        // connect: Establish TCP connection to remote server. Returns 0 on success, SOCKET_ERROR on failure.
         iResult = ::connect(sock, ptr->ai_addr, (int)ptr->ai_addrlen);
         if (iResult == SOCKET_ERROR) {
+            // closesocket: Close socket and release associated resources. Returns 0 on success, SOCKET_ERROR on failure.
             closesocket(sock);
             sock = INVALID_SOCKET;
             continue;
@@ -78,6 +85,7 @@ bool LogForwarder::connect() {
         break;  // Successfully connected
     }
 
+    // freeaddrinfo: Free allocated address info structure. Returns nothing (void).
     freeaddrinfo(result);
 
     if (sock == INVALID_SOCKET) {
@@ -102,6 +110,7 @@ bool LogForwarder::connect() {
 
 void LogForwarder::disconnect() {
     if (sock != INVALID_SOCKET) {
+        // closesocket: Close socket and release associated resources. Returns 0 on success, SOCKET_ERROR on failure.
         closesocket(sock);
         sock = INVALID_SOCKET;
         std::cout << "[LogForwarder] Disconnected from SIEM server" << std::endl;
@@ -110,6 +119,7 @@ void LogForwarder::disconnect() {
         }
     }
     connected = false;
+    // WSACleanup: Uninitialize Windows Sockets library and release resources. Returns 0 on success, nonzero error code on failure.
     WSACleanup();
 }
 
@@ -126,8 +136,10 @@ bool LogForwarder::sendLog(const std::string& logData) {
     std::string message = logData + "\n";
 
     // Send data over TCP socket
+    // send: Transmit data over TCP socket. Returns number of bytes sent on success, SOCKET_ERROR on failure.
     int result = send(sock, message.c_str(), (int)message.length(), 0);
     if (result == SOCKET_ERROR) {
+        // WSAGetLastError: Retrieve error code from last failed Winsock operation. Returns platform-specific error code (WSAECONNRESET, WSAENOTCONN, etc).
         int error = WSAGetLastError();
         std::cerr << "[LogForwarder] send() failed with error: " << error << std::endl;
         if (g_logger) {

@@ -9,7 +9,7 @@
 #ifndef JSON_UTILS_H
 #define JSON_UTILS_H
 
-#include <string>
+#include <string> // std::string
 
 /**
  * @brief Escape special characters in a string for JSON compliance
