@@ -2,7 +2,8 @@
  * @file forwarder_api.cpp
  * @brief Implementation of main Windows Event Log Forwarder API
  *
- * Provides high-level functions to initialize and run the log forwarding service.
+ * Provides high-level functions to initialize and run the log forwarding service
+ * with support for both real-time and historical event reading.
  */
 
 #include "forwarder_api.h"
@@ -12,46 +13,101 @@
 #include <chrono>
 #include <thread>
 
-void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath) {
+void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath,
+                        const EventQueryConfig& config) {
     EVT_HANDLE hSubscription = NULL;
     EVT_HANDLE hEvents[10];
     DWORD dwReturned = 0;
+    int eventCount = 0;
 
-    // Subscribe to the Windows Event Log channel
-    hSubscription = EvtSubscribe(
-        NULL,                           // Session (NULL = localhost)
-        NULL,                           // Signal event (NULL = use EvtNext)
-        channelPath.c_str(),            // Channel path
-        L"*",                           // Query (all events)
-        NULL,                           // Bookmark
-        NULL,                           // Context
-        NULL,                           // Callback
-        EvtSubscribeToFutureEvents      // Subscribe to future events only
-    );
+    // Build query based on configuration
+    std::wstring query = buildHistoricalQuery(config);
+
+    // Determine subscription mode based on configuration
+    if (config.mode == EventReadMode::REALTIME) {
+        // Subscribe to future events only (real-time monitoring)
+        std::cout << "[EventLogReader] Mode: REAL-TIME monitoring" << std::endl;
+        if (g_logger) {
+            g_logger->info("EventLogReader", "Mode: Real-time monitoring", "");
+        }
+
+        hSubscription = EvtSubscribe(
+            NULL,                           // Session (NULL = localhost)
+            NULL,                           // Signal event (NULL = use EvtNext)
+            channelPath.c_str(),            // Channel path
+            query.c_str(),                  // Query
+            NULL,                           // Bookmark
+            NULL,                           // Context
+            NULL,                           // Callback
+            EvtSubscribeToFutureEvents      // Subscribe to future events only
+        );
+    } else {
+        // Query historical events
+        const wchar_t* modeStr = L"UNKNOWN";
+        std::string modeDetail = "";
+
+        switch (config.mode) {
+            case EventReadMode::HISTORICAL_ALL:
+                modeStr = L"HISTORICAL (All Events)";
+                modeDetail = "Reading all historical events";
+                break;
+            case EventReadMode::HISTORICAL_RECENT:
+                modeStr = L"HISTORICAL (Recent)";
+                modeDetail = "Reading events from last " + std::to_string(config.hoursBack) + " hours";
+                break;
+            case EventReadMode::HISTORICAL_RANGE:
+                modeStr = L"HISTORICAL (Time Range)";
+                modeDetail = "Reading events within specified time range";
+                break;
+            default:
+                break;
+        }
+
+        std::wcout << L"[EventLogReader] Mode: " << modeStr << std::endl;
+        if (g_logger) {
+            g_logger->info("EventLogReader", "Mode: Historical query", modeDetail);
+        }
+
+        hSubscription = EvtQuery(
+            NULL,                           // Session (NULL = localhost)
+            channelPath.c_str(),            // Channel path
+            query.c_str(),                  // XPath query with time filtering
+            EvtQueryChannelPath | EvtQueryForwardDirection
+        );
+    }
 
     if (hSubscription == NULL) {
         DWORD error = GetLastError();
-        std::cerr << "[EventLogReader] Failed to subscribe to event log channel" << std::endl;
+        std::cerr << "[EventLogReader] Failed to subscribe/query event log channel" << std::endl;
         std::cerr << "[EventLogReader] Error code: " << error << std::endl;
         std::cerr << "[EventLogReader] Tip: Run as Administrator to access Security logs" << std::endl;
         if (g_logger) {
-            g_logger->error("EventLogReader", "Failed to subscribe to event log channel",
+            g_logger->error("EventLogReader", "Failed to subscribe/query event log channel",
                           "Error code: " + std::to_string(error) + " - Run as Administrator");
         }
         return;
     }
 
-    std::cout << "[EventLogReader] Successfully subscribed to event log channel" << std::endl;
-    std::cout << "[EventLogReader] Monitoring Windows Event Logs..." << std::endl;
+    std::cout << "[EventLogReader] Successfully subscribed/queried event log channel" << std::endl;
+    if (config.mode == EventReadMode::REALTIME) {
+        std::cout << "[EventLogReader] Monitoring Windows Event Logs (real-time)..." << std::endl;
+    } else {
+        std::cout << "[EventLogReader] Reading Windows Event Logs (historical)..." << std::endl;
+    }
+
     if (g_logger) {
-        g_logger->info("EventLogReader", "Successfully subscribed to event log",
-                      "Monitoring for future events");
+        g_logger->info("EventLogReader", "Successfully subscribed/queried event log",
+                      config.mode == EventReadMode::REALTIME ? "Real-time mode" : "Historical mode");
     }
 
     // Main event processing loop
-    while (true) {
+    bool continueProcessing = true;
+    while (continueProcessing) {
+        // For real-time mode, wait indefinitely. For historical mode, use short timeout
+        DWORD timeout = (config.mode == EventReadMode::REALTIME) ? INFINITE : 5000;
+
         // Get next batch of events (up to 10)
-        if (EvtNext(hSubscription, 10, hEvents, INFINITE, 0, &dwReturned)) {
+        if (EvtNext(hSubscription, 10, hEvents, timeout, 0, &dwReturned)) {
             // Process each event in the batch
             for (DWORD i = 0; i < dwReturned; i++) {
                 // Format event as JSON
@@ -77,9 +133,11 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
 
                 // Forward log to SIEM server
                 if (forwarder.sendLog(jsonLog)) {
-                    std::cout << "[ForwarderAPI] Forwarded: " << jsonLog << std::endl;
+                    eventCount++;
+                    std::cout << "[ForwarderAPI] Forwarded (" << eventCount << "): " << jsonLog << std::endl;
                     if (g_logger) {
-                        g_logger->info("ForwarderAPI", "Event forwarded successfully", "");
+                        g_logger->info("ForwarderAPI", "Event forwarded successfully",
+                                     "Total: " + std::to_string(eventCount));
                     }
                 } else {
                     std::cerr << "[ForwarderAPI] Failed to forward log" << std::endl;
@@ -94,13 +152,41 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
         } else {
             // Handle EvtNext failure
             DWORD status = GetLastError();
-            if (status != ERROR_NO_MORE_ITEMS) {
+            if (status == ERROR_NO_MORE_ITEMS) {
+                // For historical queries, this means we've read all matching events
+                if (config.mode != EventReadMode::REALTIME) {
+                    std::cout << "[EventLogReader] Finished reading historical events" << std::endl;
+                    std::cout << "[EventLogReader] Total events forwarded: " << eventCount << std::endl;
+                    if (g_logger) {
+                        g_logger->info("EventLogReader", "Finished reading historical events",
+                                     "Total forwarded: " + std::to_string(eventCount));
+                    }
+                    continueProcessing = false;
+                }
+            } else if (status == ERROR_TIMEOUT) {
+                // Timeout in historical mode - check if there are more events
+                if (config.mode != EventReadMode::REALTIME) {
+                    std::cout << "[EventLogReader] Query timeout - assuming no more events" << std::endl;
+                    std::cout << "[EventLogReader] Total events forwarded: " << eventCount << std::endl;
+                    if (g_logger) {
+                        g_logger->info("EventLogReader", "Query timeout - finished",
+                                     "Total forwarded: " + std::to_string(eventCount));
+                    }
+                    continueProcessing = false;
+                }
+            } else {
                 std::cerr << "[EventLogReader] EvtNext failed with error: " << status << std::endl;
+                if (g_logger) {
+                    g_logger->error("EventLogReader", "EvtNext failed",
+                                  "Error code: " + std::to_string(status));
+                }
             }
         }
 
-        // Small delay to prevent CPU spinning
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Small delay to prevent CPU spinning (only in real-time mode)
+        if (config.mode == EventReadMode::REALTIME) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
     }
 
     // Cleanup subscription handle
@@ -109,12 +195,31 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
     }
 }
 
-int runForwarder(const std::string& serverAddress, int serverPort) {
+int runForwarder(const std::string& serverAddress, int serverPort,
+                 const EventQueryConfig& config) {
     std::cout << "\n";
     std::cout << "========================================" << std::endl;
     std::cout << "Windows Event Log Forwarder for SIEM" << std::endl;
     std::cout << "========================================" << std::endl;
     std::cout << "Server: " << serverAddress << ":" << serverPort << std::endl;
+
+    // Display mode information
+    std::cout << "Mode: ";
+    switch (config.mode) {
+        case EventReadMode::REALTIME:
+            std::cout << "Real-Time Monitoring";
+            break;
+        case EventReadMode::HISTORICAL_ALL:
+            std::cout << "Historical (All Events)";
+            break;
+        case EventReadMode::HISTORICAL_RECENT:
+            std::cout << "Historical (Last " << config.hoursBack << " hours)";
+            break;
+        case EventReadMode::HISTORICAL_RANGE:
+            std::cout << "Historical (Time Range)";
+            break;
+    }
+    std::cout << std::endl;
     std::cout << "========================================" << std::endl;
     std::cout << "\n";
 
@@ -148,14 +253,19 @@ int runForwarder(const std::string& serverAddress, int serverPort) {
         g_logger->info("ForwarderAPI", "Initial connection established successfully", "");
     }
 
-    // Start monitoring Windows Event Logs
-    // Currently monitoring System channel only
-    // Future enhancement: spawn threads for multiple channels
-    std::cout << "[ForwarderAPI] Starting event log monitoring..." << std::endl;
+    // Start monitoring or querying Windows Event Logs
+    std::cout << "[ForwarderAPI] Starting event log processing..." << std::endl;
     if (g_logger) {
-        g_logger->info("ForwarderAPI", "Starting event log monitoring", "Channel: System");
+        std::string modeStr = (config.mode == EventReadMode::REALTIME) ? "Real-time" : "Historical";
+        g_logger->info("ForwarderAPI", "Starting event log processing",
+                      "Mode: " + modeStr + " | Channel: System");
     }
-    forwardWindowsLogs(forwarder, L"System");
+    forwardWindowsLogs(forwarder, L"System", config);
+
+    std::cout << "[ForwarderAPI] Event log processing completed" << std::endl;
+    if (g_logger) {
+        g_logger->info("ForwarderAPI", "Event log processing completed", "");
+    }
 
     return 0;
 }
