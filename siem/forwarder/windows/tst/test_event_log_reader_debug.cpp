@@ -183,6 +183,21 @@ void debugEventProperties() {
     std::cout << "getEventProperty(EvtSystemComputer): '" << computer << "'" << std::endl;
     std::cout << "getEventProperty(EvtSystemProviderName): '" << provider << "'" << std::endl;
 
+    std::cout << std::endl << "========================================" << std::endl;
+    std::cout << "Testing getRawEventXml() function:" << std::endl;
+    std::cout << "========================================" << std::endl << std::endl;
+
+    std::string rawXml = getRawEventXml(hEvent);
+    if (!rawXml.empty()) {
+        std::cout << "Raw Event XML:" << std::endl;
+        std::cout << "----------------------------------------" << std::endl;
+        std::cout << rawXml << std::endl;
+        std::cout << "----------------------------------------" << std::endl;
+        std::cout << "XML Length: " << rawXml.length() << " bytes" << std::endl;
+    } else {
+        std::cout << "ERROR: getRawEventXml() returned empty string" << std::endl;
+    }
+
     // Cleanup
     delete[](BYTE*)pRenderedValues;
     EvtClose(hContext);
