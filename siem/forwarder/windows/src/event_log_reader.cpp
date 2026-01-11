@@ -87,7 +87,7 @@ std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyI
     }
 
     // Extract the requested property
-    if (pRenderedValues && propertyId < dwPropertyCount) {
+    if (pRenderedValues && dwPropertyCount > 0 && propertyId < dwPropertyCount) {
         PEVT_VARIANT pProperty = &pRenderedValues[propertyId];
 
         // Convert property value to string based on type
@@ -98,8 +98,10 @@ std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyI
                     int size = WideCharToMultiByte(CP_UTF8, 0, pProperty->StringVal, -1, nullptr, 0, nullptr, nullptr);
                     if (size > 0) {
                         char* buffer = new char[size];
-                        WideCharToMultiByte(CP_UTF8, 0, pProperty->StringVal, -1, buffer, size, nullptr, nullptr);
-                        result = buffer;
+                        int bytesWritten = WideCharToMultiByte(CP_UTF8, 0, pProperty->StringVal, -1, buffer, size, nullptr, nullptr);
+                        if (bytesWritten > 0) {
+                            result = buffer;
+                        }
                         delete[] buffer;
                     }
                 }
@@ -152,7 +154,7 @@ std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyI
     if (pRenderedValues) {
         delete[](BYTE*)pRenderedValues;
     }
-    if (hContext) {
+    if (hContext && hContext != NULL) {
         EvtClose(hContext);
     }
 
@@ -177,7 +179,7 @@ std::string formatEventAsJson(EVT_HANDLE hEvent) {
 
     // Create render context for system properties
     EVT_HANDLE hContext = EvtCreateRenderContext(0, nullptr, EvtRenderContextSystem);
-    if (hContext != NULL) {
+    if (hContext != NULL && hContext != INVALID_HANDLE_VALUE) {
         // First call to get required buffer size
         if (!EvtRender(hContext, hEvent, EvtRenderEventValues, dwBufferSize,
                        pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {

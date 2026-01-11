@@ -13,7 +13,7 @@ std::string escapeJson(const std::string& str) {
     std::ostringstream oss;
 
     // Iterate through each character and escape as needed
-    for (char c : str) {
+    for (unsigned char c : str) {  // Use unsigned char to avoid negative values
         switch (c) {
             case '"':   oss << "\\\""; break;  // Quotation mark
             case '\\':  oss << "\\\\"; break;  // Backslash
@@ -24,7 +24,12 @@ std::string escapeJson(const std::string& str) {
             case '\t':  oss << "\\t";  break;  // Tab
             default:
                 // Escape control characters (0x00-0x1F) as Unicode
-                if ('\x00' <= c && c <= '\x1f') {
+                if (c <= 0x1f) {
+                    oss << "\\u"
+                        << std::hex << std::setw(4) << std::setfill('0')
+                        << static_cast<int>(c);
+                } else if (c >= 0x7f) {
+                    // Escape DEL and extended ASCII characters
                     oss << "\\u"
                         << std::hex << std::setw(4) << std::setfill('0')
                         << static_cast<int>(c);

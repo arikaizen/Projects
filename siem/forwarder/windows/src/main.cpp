@@ -80,7 +80,7 @@ int main(int argc, char* argv[]) {
     if (!initializeGlobalLogger("forwarder_logs.csv")) {
         std::cerr << "[Main] Failed to initialize logger" << std::endl;
         return 1;
-    }r
+    }
 
     g_logger->info("Main", "Windows Event Log Forwarder starting", "");
 

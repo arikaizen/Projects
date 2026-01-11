@@ -111,6 +111,7 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
         // Get next batch of events (up to 10)
         if (EvtNext(hSubscription, 10, hEvents, timeout, 0, &dwReturned)) {
             // Process each event in the batch
+            if (dwReturned > 0) {
             for (DWORD i = 0; i < dwReturned; i++) {
                 // Format event as JSON
                 std::string jsonLog = formatEventAsJson(hEvents[i]);
@@ -151,6 +152,7 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
                 // Close event handle
                 // EvtClose: Close event log handle and release resources. Returns TRUE on success, FALSE on failure.
                 EvtClose(hEvents[i]);
+            }
             }
         } else {
             // Handle EvtNext failure
