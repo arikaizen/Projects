@@ -79,23 +79,60 @@ std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyI
         PEVT_VARIANT pProperty = &pRenderedValues[propertyId];
 
         // Convert property value to string based on type
-        if (pProperty->Type == EvtVarTypeString && pProperty->StringVal) {
-            // String type - convert from wide char to UTF-8
-            // WideCharToMultiByte: Convert wide-character string to multibyte (UTF-8) string. Returns number of bytes written on success, 0 on failure.
-            int size = WideCharToMultiByte(CP_UTF8, 0, pProperty->StringVal, -1, nullptr, 0, nullptr, nullptr);
-            if (size > 0) {
-                char* buffer = new char[size];
-                // WideCharToMultiByte: Convert wide-character string to multibyte string. Returns number of bytes written on success, 0 on failure.
-                WideCharToMultiByte(CP_UTF8, 0, pProperty->StringVal, -1, buffer, size, nullptr, nullptr);
-                result = buffer;
-                delete[] buffer;
-            }
-        } else if (pProperty->Type == EvtVarTypeUInt16) {
-            result = std::to_string(pProperty->UInt16Val);
-        } else if (pProperty->Type == EvtVarTypeUInt32) {
-            result = std::to_string(pProperty->UInt32Val);
-        } else if (pProperty->Type == EvtVarTypeUInt64) {
-            result = std::to_string(pProperty->UInt64Val);
+        switch (pProperty->Type) {
+            case EvtVarTypeString:
+                if (pProperty->StringVal) {
+                    // String type - convert from wide char to UTF-8
+                    int size = WideCharToMultiByte(CP_UTF8, 0, pProperty->StringVal, -1, nullptr, 0, nullptr, nullptr);
+                    if (size > 0) {
+                        char* buffer = new char[size];
+                        WideCharToMultiByte(CP_UTF8, 0, pProperty->StringVal, -1, buffer, size, nullptr, nullptr);
+                        result = buffer;
+                        delete[] buffer;
+                    }
+                }
+                break;
+
+            case EvtVarTypeByte:
+                result = std::to_string(pProperty->ByteVal);
+                break;
+
+            case EvtVarTypeSByte:
+                result = std::to_string(pProperty->SByteVal);
+                break;
+
+            case EvtVarTypeInt16:
+                result = std::to_string(pProperty->Int16Val);
+                break;
+
+            case EvtVarTypeUInt16:
+                result = std::to_string(pProperty->UInt16Val);
+                break;
+
+            case EvtVarTypeInt32:
+                result = std::to_string(pProperty->Int32Val);
+                break;
+
+            case EvtVarTypeUInt32:
+                result = std::to_string(pProperty->UInt32Val);
+                break;
+
+            case EvtVarTypeInt64:
+                result = std::to_string(pProperty->Int64Val);
+                break;
+
+            case EvtVarTypeUInt64:
+                result = std::to_string(pProperty->UInt64Val);
+                break;
+
+            case EvtVarTypeBoolean:
+                result = pProperty->BooleanVal ? "true" : "false";
+                break;
+
+            default:
+                // Unsupported type - return empty string
+                result = "";
+                break;
         }
     }
 
