@@ -7,8 +7,8 @@
  */
 
 #include <gtest/gtest.h>
-#include "../inc/event_log_reader.h"
-#include "../inc/logger.h"
+#include "event_log_reader.h"
+#include "logger.h"
 #include <winevt.h>
 #include <string>
 

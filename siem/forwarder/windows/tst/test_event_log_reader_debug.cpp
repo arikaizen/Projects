@@ -3,7 +3,7 @@
  * @brief Debug version of event log reader test with detailed diagnostics
  */
 
-#include "../inc/event_log_reader.h"
+#include "event_log_reader.h"
 #include <iostream>
 #include <winevt.h>
 #include <windows.h>

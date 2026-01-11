@@ -7,8 +7,8 @@
  */
 
 #include <gtest/gtest.h>
-#include "../inc/log_forwarder.h"
-#include "../inc/logger.h"
+#include "log_forwarder.h"
+#include "logger.h"
 #include <thread>
 #include <chrono>
 #include <winsock2.h>
