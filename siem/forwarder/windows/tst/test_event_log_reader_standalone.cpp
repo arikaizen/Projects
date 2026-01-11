@@ -6,8 +6,8 @@
  * This is a simple executable that tests each function and prints results.
  */
 
-#include "../inc/event_log_reader.h"
-#include "../inc/logger.h"
+#include "event_log_reader.h"
+#include "logger.h"
 #include <iostream>
 #include <iomanip>
 #include <winevt.h>
