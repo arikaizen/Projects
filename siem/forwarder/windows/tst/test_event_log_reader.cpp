@@ -13,18 +13,48 @@
 #include "event_log_reader.h"
 #include "logger.h"
 
+// Windows Console Colors
+#define COLOR_RESET   "\033[0m"
+#define COLOR_RED     "\033[31m"
+#define COLOR_GREEN   "\033[32m"
+#define COLOR_YELLOW  "\033[33m"
+#define COLOR_BLUE    "\033[34m"
+#define COLOR_CYAN    "\033[36m"
+
 int passed = 0;
 int failed = 0;
+int skipped = 0;
 
-#define TEST_START(name) std::cout << "Testing: " << name << "... "
-#define TEST_PASS() { std::cout << "[PASS]" << std::endl; passed++; }
-#define TEST_FAIL(msg) { std::cout << "[FAIL] " << msg << std::endl; failed++; }
+void enableConsoleColors() {
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode;
+    GetConsoleMode(hConsole, &mode);
+    mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(hConsole, mode);
+}
+
+#define TEST_START(name) std::cout << COLOR_CYAN << "Testing: " << COLOR_RESET << name << "... "
+#define TEST_PASS() { std::cout << COLOR_GREEN << "[PASS]" << COLOR_RESET << std::endl; passed++; }
+#define TEST_FAIL(msg) { std::cout << COLOR_RED << "[FAIL]" << COLOR_RESET << " " << msg << std::endl; failed++; }
+#define TEST_SKIP(msg) { std::cout << COLOR_YELLOW << "[SKIP]" << COLOR_RESET << " " << msg << std::endl; skipped++; }
 
 #define ASSERT_TRUE(condition, msg) \
-    if (!(condition)) { TEST_FAIL(msg); return false; }
+    if (!(condition)) { \
+        std::cout << COLOR_RED << "[FAIL]" << COLOR_RESET << " " << msg << std::endl; \
+        std::cout << "  " << COLOR_YELLOW << "Location: " << COLOR_RESET << __FILE__ << ":" << __LINE__ << std::endl; \
+        std::cout << "  " << COLOR_YELLOW << "Condition: " << COLOR_RESET << #condition << std::endl; \
+        failed++; \
+        return false; \
+    }
 
 #define ASSERT_FALSE(condition, msg) \
-    if (condition) { TEST_FAIL(msg); return false; }
+    if (condition) { \
+        std::cout << COLOR_RED << "[FAIL]" << COLOR_RESET << " " << msg << std::endl; \
+        std::cout << "  " << COLOR_YELLOW << "Location: " << COLOR_RESET << __FILE__ << ":" << __LINE__ << std::endl; \
+        std::cout << "  " << COLOR_YELLOW << "Condition: " << COLOR_RESET << "!(" << #condition << ")" << std::endl; \
+        failed++; \
+        return false; \
+    }
 
 // Helper: Get a real event from System log for testing
 EVT_HANDLE getTestEvent() {
@@ -60,7 +90,7 @@ bool test_GetEventProperty_EventID_ReturnsValue() {
     TEST_START("getEventProperty - EventID returns value");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -84,7 +114,7 @@ bool test_GetEventProperty_Level_ReturnsValue() {
     TEST_START("getEventProperty - Level returns value");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -104,7 +134,7 @@ bool test_GetEventProperty_Channel_ReturnsValue() {
     TEST_START("getEventProperty - Channel returns value");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -124,7 +154,7 @@ bool test_GetEventProperty_Computer_ReturnsValue() {
     TEST_START("getEventProperty - Computer returns value");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -144,7 +174,7 @@ bool test_GetEventProperty_TimeCreated_ReturnsValue() {
     TEST_START("getEventProperty - TimeCreated returns value");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -164,7 +194,7 @@ bool test_GetEventProperty_ProviderName_ReturnsValue() {
     TEST_START("getEventProperty - ProviderName returns value");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -197,7 +227,7 @@ bool test_FormatEventAsJson_ReturnsValidJson() {
     TEST_START("formatEventAsJson - Returns valid JSON");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -225,7 +255,7 @@ bool test_FormatEventAsJson_IncludesStandardFields() {
     TEST_START("formatEventAsJson - Includes standard fields");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -273,7 +303,7 @@ bool test_FormatEventAsJson_EscapesSpecialChars() {
     TEST_START("formatEventAsJson - Escapes special characters");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -283,19 +313,45 @@ bool test_FormatEventAsJson_EscapesSpecialChars() {
     // JSON should not have unescaped quotes (except field delimiters)
     size_t pos = 0;
     while ((pos = json.find("\"", pos + 1)) != std::string::npos) {
-        // Check if this quote is escaped or is a field delimiter
+        // Check if this quote is escaped
         if (pos > 0 && json[pos - 1] == '\\') {
             // This is an escaped quote, which is good
             pos++;
             continue;
         }
-        // Unescaped quotes should be field delimiters (preceded by : or ,)
+
+        // Unescaped quotes should be field delimiters
+        // Valid patterns: {"key", :"value", ,"value", "value"}
+        bool isValidDelimiter = false;
+
         if (pos > 0) {
             char prevChar = json[pos - 1];
-            ASSERT_TRUE(prevChar == ':' || prevChar == ',' ||
-                       prevChar == '{' || prevChar == '[',
-                       "Unescaped quote not a field delimiter");
+            isValidDelimiter = (prevChar == ':' || prevChar == ',' ||
+                               prevChar == '{' || prevChar == '[');
+        } else {
+            isValidDelimiter = true; // First character
         }
+
+        if (!isValidDelimiter && pos + 1 < json.length()) {
+            char nextChar = json[pos + 1];
+            isValidDelimiter = (nextChar == ':' || nextChar == ',' ||
+                               nextChar == '}' || nextChar == ']');
+        }
+
+        if (!isValidDelimiter) {
+            std::cout << COLOR_RED << "[FAIL]" << COLOR_RESET << " Unescaped quote not a field delimiter" << std::endl;
+            std::cout << "  " << COLOR_YELLOW << "Position: " << COLOR_RESET << pos << std::endl;
+            std::cout << "  " << COLOR_YELLOW << "Context: " << COLOR_RESET;
+
+            // Show context around the problematic quote
+            size_t start = (pos > 20) ? pos - 20 : 0;
+            size_t end = (pos + 20 < json.length()) ? pos + 20 : json.length();
+            std::cout << json.substr(start, end - start) << std::endl;
+
+            failed++;
+            return false;
+        }
+
         pos++;
     }
 
@@ -317,7 +373,7 @@ bool test_FormatEventAsJson_MultipleEvents() {
     );
 
     if (hResults == NULL) {
-        std::cout << "[SKIP] Cannot query System log" << std::endl;
+        TEST_SKIP("Cannot query System log");
         return true;
     }
 
@@ -348,7 +404,7 @@ bool test_FormatEventAsJson_ConsistentOutput() {
     TEST_START("formatEventAsJson - Consistent output");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -370,7 +426,7 @@ bool test_GetEventProperty_DifferentTypes() {
     TEST_START("getEventProperty - Different data types");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -399,7 +455,7 @@ bool test_FormatEventAsJson_NoControlCharacters() {
     TEST_START("formatEventAsJson - No control characters");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -428,7 +484,7 @@ bool test_GetRawEventXml_ReturnsXml() {
     TEST_START("getRawEventXml - Returns XML");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -451,7 +507,7 @@ bool test_GetRawEventXml_ContainsStandardElements() {
     TEST_START("getRawEventXml - Contains standard elements");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -488,7 +544,7 @@ bool test_GetRawEventXml_ConsistentOutput() {
     TEST_START("getRawEventXml - Consistent output");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -509,7 +565,7 @@ bool test_GetEventMessage_ReturnsMessage() {
     TEST_START("getEventMessage - Returns message");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -544,7 +600,7 @@ bool test_FormatEventAsPlainText_ReturnsText() {
     TEST_START("formatEventAsPlainText - Returns text");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -564,7 +620,7 @@ bool test_FormatEventAsPlainText_ContainsStandardFields() {
     TEST_START("formatEventAsPlainText - Contains standard fields");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -605,7 +661,7 @@ bool test_FormatEventAsPlainText_ConsistentOutput() {
     TEST_START("formatEventAsPlainText - Consistent output");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -626,7 +682,7 @@ bool test_FormatEventAsPlainText_IncludesSeparators() {
     TEST_START("formatEventAsPlainText - Includes separators");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -647,7 +703,7 @@ bool test_AllFormats_WorkOnSameEvent() {
     TEST_START("All formats - Work on same event");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -675,7 +731,7 @@ bool test_DifferentFormats_ContainSameEventID() {
     TEST_START("Different formats - Contain same event ID");
     EVT_HANDLE hEvent = getTestEvent();
     if (hEvent == NULL) {
-        std::cout << "[SKIP] No events available in System log" << std::endl;
+        TEST_SKIP("No events available in System log");
         return true;
     }
 
@@ -698,9 +754,12 @@ bool test_DifferentFormats_ContainSameEventID() {
 }
 
 int main() {
-    std::cout << "========================================" << std::endl;
-    std::cout << "Event Log Reader Tests" << std::endl;
-    std::cout << "========================================" << std::endl << std::endl;
+    // Enable console colors on Windows
+    enableConsoleColors();
+
+    std::cout << COLOR_BLUE << "========================================" << COLOR_RESET << std::endl;
+    std::cout << COLOR_BLUE << "Event Log Reader Tests" << COLOR_RESET << std::endl;
+    std::cout << COLOR_BLUE << "========================================" << COLOR_RESET << std::endl << std::endl;
 
     initializeGlobalLogger("test_event_log_reader.csv");
 
@@ -737,9 +796,35 @@ int main() {
     shutdownGlobalLogger();
     std::remove("test_event_log_reader.csv");
 
-    std::cout << std::endl << "========================================" << std::endl;
-    std::cout << "Results: " << passed << " passed, " << failed << " failed" << std::endl;
-    std::cout << "========================================" << std::endl;
+    // Print summary
+    std::cout << std::endl << COLOR_BLUE << "========================================" << COLOR_RESET << std::endl;
+    std::cout << COLOR_BLUE << "Test Summary" << COLOR_RESET << std::endl;
+    std::cout << COLOR_BLUE << "========================================" << COLOR_RESET << std::endl;
 
-    return (failed == 0) ? 0 : 1;
+    int total = passed + failed + skipped;
+    std::cout << "Total:   " << total << " tests" << std::endl;
+    std::cout << COLOR_GREEN << "Passed:  " << passed << COLOR_RESET << std::endl;
+
+    if (failed > 0) {
+        std::cout << COLOR_RED << "Failed:  " << failed << COLOR_RESET << std::endl;
+    } else {
+        std::cout << "Failed:  " << failed << std::endl;
+    }
+
+    if (skipped > 0) {
+        std::cout << COLOR_YELLOW << "Skipped: " << skipped << COLOR_RESET << std::endl;
+    }
+
+    std::cout << COLOR_BLUE << "========================================" << COLOR_RESET << std::endl;
+
+    if (failed == 0 && passed > 0) {
+        std::cout << COLOR_GREEN << "All tests passed!" << COLOR_RESET << std::endl;
+        return 0;
+    } else if (failed > 0) {
+        std::cout << COLOR_RED << "Some tests failed!" << COLOR_RESET << std::endl;
+        return 1;
+    } else {
+        std::cout << COLOR_YELLOW << "No tests were run!" << COLOR_RESET << std::endl;
+        return 1;
+    }
 }
