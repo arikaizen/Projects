@@ -56,25 +56,33 @@ std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyI
     PEVT_VARIANT pRenderedValues = nullptr;
     std::string result = "";
 
+    // Create render context for system properties
+    EVT_HANDLE hContext = EvtCreateRenderContext(0, nullptr, EvtRenderContextSystem);
+    if (hContext == NULL) {
+        return "";  // Failed to create context
+    }
+
     // First call to get required buffer size
-    // EvtRender: Extract event data into a buffer of EVT_VARIANT structures. Returns TRUE on success, FALSE on failure.
-    if (!EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
+    if (!EvtRender(hContext, hEvent, EvtRenderEventValues, dwBufferSize,
                    pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
-        // GetLastError: Retrieve error code from last failed Windows API call (from <windows.h>). Returns platform-specific error code.
         if (ERROR_INSUFFICIENT_BUFFER == GetLastError()) {
             dwBufferSize = dwBufferUsed;
-            // Use new[] for buffer allocation (newer C++ style instead of malloc)
             pRenderedValues = (PEVT_VARIANT)(new BYTE[dwBufferSize]);
 
             if (nullptr != pRenderedValues) {
-                // Second call with allocated buffer - CHECK if it succeeds!
-                if (!EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
+                // Second call with allocated buffer
+                if (!EvtRender(hContext, hEvent, EvtRenderEventValues, dwBufferSize,
                              pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
                     // Second call also failed - cleanup and return empty
                     delete[](BYTE*)pRenderedValues;
+                    EvtClose(hContext);
                     return "";
                 }
             }
+        } else {
+            // Unexpected error
+            EvtClose(hContext);
+            return "";
         }
     }
 
@@ -142,8 +150,10 @@ std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyI
 
     // Cleanup
     if (pRenderedValues) {
-        // Use delete[] to match new[] allocation (newer C++ style instead of free)
         delete[](BYTE*)pRenderedValues;
+    }
+    if (hContext) {
+        EvtClose(hContext);
     }
 
     return result;
@@ -165,29 +175,31 @@ std::string formatEventAsJson(EVT_HANDLE hEvent) {
     DWORD dwPropertyCount = 0;
     PEVT_VARIANT pRenderedValues = nullptr;
 
-    // EvtRender: Extract event data into a buffer of EVT_VARIANT structures. Returns TRUE on success, FALSE on failure.
-    if (!EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
-                   pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
-        // GetLastError: Retrieve error code from last failed Windows API call (from <windows.h>). Returns platform-specific error code.
-        if (ERROR_INSUFFICIENT_BUFFER == GetLastError()) {
-            dwBufferSize = dwBufferUsed;
-            // Use new[] for buffer allocation (newer C++ style instead of malloc)
-            pRenderedValues = (PEVT_VARIANT)(new BYTE[dwBufferSize]);
+    // Create render context for system properties
+    EVT_HANDLE hContext = EvtCreateRenderContext(0, nullptr, EvtRenderContextSystem);
+    if (hContext != NULL) {
+        // First call to get required buffer size
+        if (!EvtRender(hContext, hEvent, EvtRenderEventValues, dwBufferSize,
+                       pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
+            if (ERROR_INSUFFICIENT_BUFFER == GetLastError()) {
+                dwBufferSize = dwBufferUsed;
+                pRenderedValues = (PEVT_VARIANT)(new BYTE[dwBufferSize]);
 
-            if (pRenderedValues) {
-                // Second call with allocated buffer - CHECK if it succeeds!
-                if (EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
-                            pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
-                    // Get timestamp from TimeCreated field (only if render succeeded)
-                    if (dwPropertyCount > EvtSystemTimeCreated) {
-                        timestamp = pRenderedValues[EvtSystemTimeCreated].FileTimeVal;
+                if (pRenderedValues) {
+                    // Second call with allocated buffer
+                    if (EvtRender(hContext, hEvent, EvtRenderEventValues, dwBufferSize,
+                                pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
+                        // Get timestamp from TimeCreated field (only if render succeeded)
+                        if (dwPropertyCount > EvtSystemTimeCreated) {
+                            timestamp = pRenderedValues[EvtSystemTimeCreated].FileTimeVal;
+                        }
                     }
-                }
 
-                // Use delete[] to match new[] allocation (newer C++ style instead of free)
-                delete[](BYTE*)pRenderedValues;
+                    delete[](BYTE*)pRenderedValues;
+                }
             }
         }
+        EvtClose(hContext);
     }
 
     // Build JSON object
