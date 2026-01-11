@@ -10,13 +10,9 @@
 #ifndef FORWARDER_API_H
 #define FORWARDER_API_H
 
-<<<<<<< HEAD
-=======
-#include "log_forwarder.h"
-#include "event_log_reader.h"
->>>>>>> 5454161f30b913507af7e7499a9c70ccc8b7784f
 #include <string>
 #include "log_forwarder.h"
+#include "event_log_reader.h"
 
 // Default configuration constants
 const char* const DEFAULT_SIEM_SERVER = "127.0.0.1";  ///< Default SIEM server address

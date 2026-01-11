@@ -149,6 +149,17 @@ bool LogForwarder::sendLog(const std::string& logData) {
         connected = false;
         return false;
     }
+    
+    // Verify all bytes were sent
+    if (result != (int)message.length()) {
+        std::cerr << "[LogForwarder] Partial send: " << result << "/" << message.length() << " bytes" << std::endl;
+        if (g_logger) {
+            g_logger->warning("LogForwarder", "Partial send detected",
+                            "Sent: " + std::to_string(result) + "/" + std::to_string(message.length()) + " bytes");
+        }
+        // Note: In production, you may want to retry sending remaining bytes
+        return false;
+    }
 
     if (g_logger) {
         // Log successful sends with truncated data for readability
