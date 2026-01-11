@@ -20,7 +20,7 @@
 enum class LogLevel {
     INFO,       ///< Informational messages
     WARNING,    ///< Warning messages
-    ERROR,      ///< Error messages
+    ERR,        ///< Error messages (renamed from ERROR to avoid Windows macro conflict)
     DEBUG       ///< Debug messages
 };
 

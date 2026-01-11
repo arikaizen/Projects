@@ -67,7 +67,7 @@ std::string Logger::logLevelToString(LogLevel level) {
     switch (level) {
         case LogLevel::INFO:    return "INFO";
         case LogLevel::WARNING: return "WARNING";
-        case LogLevel::ERROR:   return "ERROR";
+        case LogLevel::ERR:     return "ERROR";
         case LogLevel::DEBUG:   return "DEBUG";
         default:                return "UNKNOWN";
     }
@@ -128,7 +128,7 @@ void Logger::warning(const std::string& component, const std::string& message,
 
 void Logger::error(const std::string& component, const std::string& message,
                    const std::string& details) {
-    log(LogLevel::ERROR, component, message, details);
+    log(LogLevel::ERR, component, message, details);
 }
 
 void Logger::debug(const std::string& component, const std::string& message,
