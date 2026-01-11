@@ -141,6 +141,11 @@ std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyI
                 result = pProperty->BooleanVal ? "true" : "false";
                 break;
 
+            case EvtVarTypeFileTime:
+                // FileTime is a 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601
+                result = std::to_string(pProperty->FileTimeVal);
+                break;
+
             default:
                 // Unsupported type - return empty string
                 result = "";
