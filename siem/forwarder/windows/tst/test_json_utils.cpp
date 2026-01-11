@@ -6,7 +6,7 @@
  */
 
 #include <gtest/gtest.h>
-#include "../inc/json_utils.h"
+#include "json_utils.h"
 
 // Test fixture for JSON utils tests
 class JsonUtilsTest : public ::testing::Test {

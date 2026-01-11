@@ -6,7 +6,7 @@
  */
 
 #include <gtest/gtest.h>
-#include "../inc/logger.h"
+#include "logger.h"
 #include <fstream>
 #include <thread>
 #include <vector>
