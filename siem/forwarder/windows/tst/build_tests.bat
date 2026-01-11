@@ -16,7 +16,7 @@ REM   If test_name is provided, only that test will run
 REM   Otherwise, all tests will run
 REM
 REM Output:
-REM   - test/bin/test_runner.exe  (Test executable)
+REM   - tst/bin/test_runner.exe  (Test executable)
 REM ============================================================================
 
 echo ====================================
@@ -53,11 +53,11 @@ if not exist "googletest" (
     echo ERROR: Google Test not found!
     echo ============================================================
     echo.
-    echo Please download and extract Google Test to the test directory.
+    echo Please download and extract Google Test to the tst directory.
     echo.
     echo Instructions:
     echo   1. Download: https://github.com/google/googletest/releases
-    echo   2. Extract to: test/googletest/
+    echo   2. Extract to: tst/googletest/
     echo   3. Run this script again
     echo.
     echo Or run: git clone https://github.com/google/googletest.git
