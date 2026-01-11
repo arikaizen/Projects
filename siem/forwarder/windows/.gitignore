@@ -1,0 +1,18 @@
+# Google Test library (third-party dependency)
+tst/googletest/
+
+# Build outputs
+*.o
+*.exe
+*.a
+bin/
+tst/bin/
+
+# Test outputs
+*.csv
+
+# Windows-specific
+*.obj
+*.lib
+*.dll
+*.pdb
