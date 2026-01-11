@@ -20,8 +20,8 @@
  *   test_realtime_console.exe Application recent
  */
 
-#include "../inc/event_log_reader.h"
-#include "../inc/logger.h"
+#include "event_log_reader.h"
+#include "logger.h"
 #include <windows.h>
 #include <winevt.h>
 #include <iostream>
