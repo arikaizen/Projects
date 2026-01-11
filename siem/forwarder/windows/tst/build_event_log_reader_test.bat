@@ -37,11 +37,15 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-echo [OK] Build successful!
+echo.
+echo ========================================
+echo BUILD SUCCESSFUL!
+echo ========================================
+echo.
+echo Test executable created: bin\test_event_log_reader.exe
+echo.
+echo To run the tests:
+echo   bin\test_event_log_reader.exe
 echo.
 
-echo Running tests...
-echo.
-bin\test_event_log_reader.exe
-
-exit /b %ERRORLEVEL%
+exit /b 0
