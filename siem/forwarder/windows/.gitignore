@@ -1,6 +1,3 @@
-# Google Test library (third-party dependency)
-tst/googletest/
-
 # Build outputs
 *.o
 *.exe
