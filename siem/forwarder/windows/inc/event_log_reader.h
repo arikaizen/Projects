@@ -68,6 +68,39 @@ std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyI
 std::string formatEventAsJson(EVT_HANDLE hEvent);
 
 /**
+ * @brief Get raw XML representation of a Windows Event Log event
+ *
+ * Retrieves the complete event data in XML format as stored by Windows.
+ * This includes all event properties, user data, and system information.
+ *
+ * @param hEvent Handle to the Windows Event Log event
+ * @return UTF-8 encoded XML string containing the complete event data
+ */
+std::string getRawEventXml(EVT_HANDLE hEvent);
+
+/**
+ * @brief Get formatted message text from a Windows Event Log event
+ *
+ * Retrieves the human-readable message description from the event.
+ * This is the same text you see in Event Viewer.
+ *
+ * @param hEvent Handle to the Windows Event Log event
+ * @return UTF-8 encoded message string
+ */
+std::string getEventMessage(EVT_HANDLE hEvent);
+
+/**
+ * @brief Format a Windows Event Log event as plain text
+ *
+ * Formats event data as human-readable plain text (not JSON).
+ * Useful for console output or text-based log forwarding.
+ *
+ * @param hEvent Handle to the Windows Event Log event
+ * @return Plain text formatted string with event details
+ */
+std::string formatEventAsPlainText(EVT_HANDLE hEvent);
+
+/**
  * @brief Build XPath query for historical event filtering
  *
  * Creates an XPath query string based on the query configuration

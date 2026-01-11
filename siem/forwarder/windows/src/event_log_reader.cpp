@@ -161,6 +161,198 @@ std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyI
     return result;
 }
 
+std::string getRawEventXml(EVT_HANDLE hEvent) {
+    DWORD dwBufferSize = 0;
+    DWORD dwBufferUsed = 0;
+    DWORD dwPropertyCount = 0;
+    LPWSTR pRenderedContent = nullptr;
+    std::string result = "";
+
+    // First call to get required buffer size
+    if (!EvtRender(NULL, hEvent, EvtRenderEventXml, dwBufferSize,
+                   pRenderedContent, &dwBufferUsed, &dwPropertyCount)) {
+        if (ERROR_INSUFFICIENT_BUFFER == GetLastError()) {
+            dwBufferSize = dwBufferUsed;
+            pRenderedContent = (LPWSTR)malloc(dwBufferSize);
+
+            if (pRenderedContent != nullptr) {
+                // Second call with allocated buffer
+                if (EvtRender(NULL, hEvent, EvtRenderEventXml, dwBufferSize,
+                             pRenderedContent, &dwBufferUsed, &dwPropertyCount)) {
+                    // Convert wide string to UTF-8
+                    int size = WideCharToMultiByte(CP_UTF8, 0, pRenderedContent, -1,
+                                                   nullptr, 0, nullptr, nullptr);
+                    if (size > 0) {
+                        char* buffer = new char[size];
+                        WideCharToMultiByte(CP_UTF8, 0, pRenderedContent, -1,
+                                          buffer, size, nullptr, nullptr);
+                        result = buffer;
+                        delete[] buffer;
+                    }
+                } else {
+                    // Second call failed
+                    free(pRenderedContent);
+                    return "";
+                }
+                free(pRenderedContent);
+            }
+        } else {
+            // Unexpected error
+            return "";
+        }
+    }
+
+    return result;
+}
+
+std::string getEventMessage(EVT_HANDLE hEvent) {
+    DWORD dwBufferSize = 0;
+    DWORD dwBufferUsed = 0;
+    LPWSTR pMessage = nullptr;
+    std::string result = "";
+
+    // Get the publisher metadata (required for EvtFormatMessage)
+    std::wstring providerNameW;
+    std::string providerName = getEventProperty(hEvent, EvtSystemProviderName);
+
+    if (!providerName.empty()) {
+        // Convert provider name to wide string
+        int size = MultiByteToWideChar(CP_UTF8, 0, providerName.c_str(), -1, nullptr, 0);
+        if (size > 0) {
+            wchar_t* wbuffer = new wchar_t[size];
+            MultiByteToWideChar(CP_UTF8, 0, providerName.c_str(), -1, wbuffer, size);
+            providerNameW = wbuffer;
+            delete[] wbuffer;
+        }
+    }
+
+    // Open publisher metadata
+    EVT_HANDLE hPublisher = NULL;
+    if (!providerNameW.empty()) {
+        hPublisher = EvtOpenPublisherMetadata(NULL, providerNameW.c_str(), NULL, 0, 0);
+    }
+
+    // First call to get required buffer size
+    if (!EvtFormatMessage(hPublisher, hEvent, 0, 0, NULL, EvtFormatMessageEvent,
+                         dwBufferSize, pMessage, &dwBufferUsed)) {
+        if (ERROR_INSUFFICIENT_BUFFER == GetLastError()) {
+            dwBufferSize = dwBufferUsed;
+            pMessage = (LPWSTR)malloc(dwBufferSize * sizeof(WCHAR));
+
+            if (pMessage != nullptr) {
+                // Second call with allocated buffer
+                if (EvtFormatMessage(hPublisher, hEvent, 0, 0, NULL, EvtFormatMessageEvent,
+                                   dwBufferSize, pMessage, &dwBufferUsed)) {
+                    // Convert wide string to UTF-8
+                    int size = WideCharToMultiByte(CP_UTF8, 0, pMessage, -1, nullptr, 0, nullptr, nullptr);
+                    if (size > 0) {
+                        char* buffer = new char[size];
+                        WideCharToMultiByte(CP_UTF8, 0, pMessage, -1, buffer, size, nullptr, nullptr);
+                        result = buffer;
+                        delete[] buffer;
+                    }
+                }
+                free(pMessage);
+            }
+        }
+    }
+
+    if (hPublisher) {
+        EvtClose(hPublisher);
+    }
+
+    return result;
+}
+
+std::string formatEventAsPlainText(EVT_HANDLE hEvent) {
+    std::ostringstream text;
+
+    // Extract event properties
+    std::string eventId = getEventProperty(hEvent, EvtSystemEventID);
+    std::string level = getEventProperty(hEvent, EvtSystemLevel);
+    std::string channel = getEventProperty(hEvent, EvtSystemChannel);
+    std::string computer = getEventProperty(hEvent, EvtSystemComputer);
+    std::string provider = getEventProperty(hEvent, EvtSystemProviderName);
+
+    // Extract timestamp
+    ULONGLONG timestamp = 0;
+    DWORD dwBufferSize = 0;
+    DWORD dwBufferUsed = 0;
+    DWORD dwPropertyCount = 0;
+    PEVT_VARIANT pRenderedValues = nullptr;
+
+    EVT_HANDLE hContext = EvtCreateRenderContext(0, nullptr, EvtRenderContextSystem);
+    if (hContext != NULL) {
+        if (!EvtRender(hContext, hEvent, EvtRenderEventValues, dwBufferSize,
+                       pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
+            if (ERROR_INSUFFICIENT_BUFFER == GetLastError()) {
+                dwBufferSize = dwBufferUsed;
+                pRenderedValues = (PEVT_VARIANT)(new BYTE[dwBufferSize]);
+
+                if (pRenderedValues) {
+                    if (EvtRender(hContext, hEvent, EvtRenderEventValues, dwBufferSize,
+                                pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
+                        if (dwPropertyCount > EvtSystemTimeCreated) {
+                            timestamp = pRenderedValues[EvtSystemTimeCreated].FileTimeVal;
+                        }
+                    }
+                    delete[](BYTE*)pRenderedValues;
+                }
+            }
+        }
+        EvtClose(hContext);
+    }
+
+    // Convert timestamp to readable format
+    std::string timeStr = "Unknown";
+    if (timestamp != 0) {
+        FILETIME ft;
+        ft.dwLowDateTime = (DWORD)(timestamp & 0xFFFFFFFF);
+        ft.dwHighDateTime = (DWORD)(timestamp >> 32);
+
+        SYSTEMTIME st;
+        if (FileTimeToSystemTime(&ft, &st)) {
+            char buffer[64];
+            sprintf(buffer, "%04d-%02d-%02d %02d:%02d:%02d",
+                    st.wYear, st.wMonth, st.wDay,
+                    st.wHour, st.wMinute, st.wSecond);
+            timeStr = buffer;
+        }
+    }
+
+    // Convert level to text
+    std::string levelStr = "Unknown";
+    if (!level.empty()) {
+        int levelNum = std::stoi(level);
+        switch (levelNum) {
+            case 1: levelStr = "Critical"; break;
+            case 2: levelStr = "Error"; break;
+            case 3: levelStr = "Warning"; break;
+            case 4: levelStr = "Information"; break;
+            case 5: levelStr = "Verbose"; break;
+            default: levelStr = "Level " + level; break;
+        }
+    }
+
+    // Get event message
+    std::string message = getEventMessage(hEvent);
+
+    // Format as plain text
+    text << "========================================" << std::endl;
+    text << "Event ID:    " << eventId << std::endl;
+    text << "Level:       " << levelStr << std::endl;
+    text << "Time:        " << timeStr << std::endl;
+    text << "Channel:     " << channel << std::endl;
+    text << "Computer:    " << computer << std::endl;
+    text << "Provider:    " << provider << std::endl;
+    if (!message.empty()) {
+        text << "Message:     " << message << std::endl;
+    }
+    text << "========================================";
+
+    return text.str();
+}
+
 std::string formatEventAsJson(EVT_HANDLE hEvent) {
     std::ostringstream json;
 
