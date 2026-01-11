@@ -68,6 +68,18 @@ void debugEventProperties() {
 
     EVT_HANDLE hEvent = hEvents[0];
 
+    // Create render context for system properties
+    EVT_HANDLE hContext = EvtCreateRenderContext(0, nullptr, EvtRenderContextSystem);
+    if (hContext == NULL) {
+        std::cout << "ERROR: Failed to create render context" << std::endl;
+        std::cout << "Error code: " << GetLastError() << std::endl;
+        EvtClose(hEvent);
+        EvtClose(hResults);
+        return;
+    }
+
+    std::cout << "Render context created successfully" << std::endl << std::endl;
+
     // Render event properties
     DWORD dwBufferSize = 0;
     DWORD dwBufferUsed = 0;
@@ -75,7 +87,7 @@ void debugEventProperties() {
     PEVT_VARIANT pRenderedValues = nullptr;
 
     // First call to get buffer size
-    if (!EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
+    if (!EvtRender(hContext, hEvent, EvtRenderEventValues, dwBufferSize,
                    pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
         if (ERROR_INSUFFICIENT_BUFFER == GetLastError()) {
             std::cout << "First EvtRender call: Need buffer size " << dwBufferUsed << " bytes" << std::endl;
@@ -83,13 +95,14 @@ void debugEventProperties() {
             pRenderedValues = (PEVT_VARIANT)(new BYTE[dwBufferSize]);
 
             if (pRenderedValues != nullptr) {
-                if (EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
+                if (EvtRender(hContext, hEvent, EvtRenderEventValues, dwBufferSize,
                              pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
                     std::cout << "Second EvtRender call: SUCCESS" << std::endl;
                     std::cout << "Property count: " << dwPropertyCount << std::endl << std::endl;
                 } else {
                     std::cout << "Second EvtRender call: FAILED with error " << GetLastError() << std::endl;
                     delete[](BYTE*)pRenderedValues;
+                    EvtClose(hContext);
                     EvtClose(hEvent);
                     EvtClose(hResults);
                     return;
@@ -97,6 +110,7 @@ void debugEventProperties() {
             }
         } else {
             std::cout << "First EvtRender call: Unexpected error " << GetLastError() << std::endl;
+            EvtClose(hContext);
             EvtClose(hEvent);
             EvtClose(hResults);
             return;
@@ -171,6 +185,7 @@ void debugEventProperties() {
 
     // Cleanup
     delete[](BYTE*)pRenderedValues;
+    EvtClose(hContext);
     EvtClose(hEvent);
     EvtClose(hResults);
 
