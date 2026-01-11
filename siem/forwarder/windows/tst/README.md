@@ -140,22 +140,22 @@ The tests use Google Test (gtest) framework. You need to download it:
 
 **Option A - Git Clone (Recommended)**:
 ```bash
-cd test/
+cd tst/
 git clone https://github.com/google/googletest.git
 ```
 
 **Option B - Manual Download**:
 1. Go to: https://github.com/google/googletest/releases
 2. Download the latest release
-3. Extract to `test/googletest/`
+3. Extract to `tst/googletest/`
 
 ## Building and Running Tests
 
 ### Quick Start
 
-1. **Navigate to test directory**:
+1. **Navigate to tst directory**:
    ```bash
-   cd siem/forwarder/windows/test
+   cd siem/forwarder/windows/tst
    ```
 
 2. **Install Google Test** (if not already done):
@@ -203,7 +203,7 @@ build_tests.bat -*Thread*
 ## Test Organization
 
 ```
-test/
+tst/
 ├── test_json_utils.cpp        # JSON utility tests
 ├── test_logger.cpp            # Logger tests
 ├── test_log_forwarder.cpp     # Network forwarder tests
