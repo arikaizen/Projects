@@ -3,12 +3,18 @@
  * @brief Main Windows Event Log Forwarder API
  *
  * This is the primary API for the Windows Event Log Forwarder system.
- * It provides high-level functions to initialize and run the log forwarding service.
+ * It provides high-level functions to initialize and run the log forwarding service
+ * with support for both real-time and historical event reading.
  */
 
 #ifndef FORWARDER_API_H
 #define FORWARDER_API_H
 
+<<<<<<< HEAD
+=======
+#include "log_forwarder.h"
+#include "event_log_reader.h"
+>>>>>>> 5454161f30b913507af7e7499a9c70ccc8b7784f
 #include <string>
 #include "log_forwarder.h"
 
@@ -20,31 +26,37 @@ const int RECONNECT_DELAY_MS = 5000;                  ///< Reconnection delay in
 /**
  * @brief Monitor and forward Windows Event Logs from a specific channel
  *
- * Subscribes to a Windows Event Log channel and continuously monitors for new events.
+ * Subscribes to or queries a Windows Event Log channel based on the query configuration.
  * Events are formatted as JSON and forwarded to the SIEM server via the provided
  * LogForwarder instance. Automatically handles reconnection on network failures.
  *
  * @param forwarder Reference to initialized LogForwarder instance
  * @param channelPath Windows Event Log channel path (e.g., L"System", L"Application", L"Security")
+ * @param config Query configuration specifying read mode and time range
  *
- * @note This function runs in an infinite loop and will block until terminated
+ * @note For real-time mode, this function runs in an infinite loop and will block until terminated
+ * @note For historical modes, this function returns after processing all matching events
  * @note Requires administrator privileges for Security channel
  */
-void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath);
+void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath,
+                        const EventQueryConfig& config = EventQueryConfig());
 
 /**
  * @brief Initialize and run the Windows Event Log Forwarder
  *
  * This is the main entry point for the forwarder API. It initializes the network
  * connection, establishes connection to the SIEM server, and begins monitoring
- * Windows Event Logs.
+ * or querying Windows Event Logs based on the configuration.
  *
  * @param serverAddress SIEM server IP address or hostname
  * @param serverPort SIEM server port number
+ * @param config Query configuration specifying read mode and time range
  * @return 0 on successful completion, non-zero on error
  *
- * @note This function will block indefinitely while monitoring logs
+ * @note For real-time mode, this function will block indefinitely while monitoring logs
+ * @note For historical modes, this function returns after forwarding all matching events
  */
-int runForwarder(const std::string& serverAddress, int serverPort);
+int runForwarder(const std::string& serverAddress, int serverPort,
+                 const EventQueryConfig& config = EventQueryConfig());
 
 #endif // FORWARDER_API_H
