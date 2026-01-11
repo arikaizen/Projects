@@ -67,9 +67,13 @@ std::string getEventProperty(EVT_HANDLE hEvent, EVT_SYSTEM_PROPERTY_ID propertyI
             pRenderedValues = (PEVT_VARIANT)(new BYTE[dwBufferSize]);
 
             if (nullptr != pRenderedValues) {
-                // Second call with allocated buffer
-                EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
-                         pRenderedValues, &dwBufferUsed, &dwPropertyCount);
+                // Second call with allocated buffer - CHECK if it succeeds!
+                if (!EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
+                             pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
+                    // Second call also failed - cleanup and return empty
+                    delete[](BYTE*)pRenderedValues;
+                    return "";
+                }
             }
         }
     }
@@ -171,12 +175,13 @@ std::string formatEventAsJson(EVT_HANDLE hEvent) {
             pRenderedValues = (PEVT_VARIANT)(new BYTE[dwBufferSize]);
 
             if (pRenderedValues) {
-                EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
-                         pRenderedValues, &dwBufferUsed, &dwPropertyCount);
-
-                // Get timestamp from TimeCreated field
-                if (dwPropertyCount > EvtSystemTimeCreated) {
-                    timestamp = pRenderedValues[EvtSystemTimeCreated].FileTimeVal;
+                // Second call with allocated buffer - CHECK if it succeeds!
+                if (EvtRender(nullptr, hEvent, EvtRenderEventValues, dwBufferSize,
+                            pRenderedValues, &dwBufferUsed, &dwPropertyCount)) {
+                    // Get timestamp from TimeCreated field (only if render succeeded)
+                    if (dwPropertyCount > EvtSystemTimeCreated) {
+                        timestamp = pRenderedValues[EvtSystemTimeCreated].FileTimeVal;
+                    }
                 }
 
                 // Use delete[] to match new[] allocation (newer C++ style instead of free)
