@@ -85,19 +85,18 @@ void monitorEventsToConsole(const std::wstring& channelPath, const EventQueryCon
         std::cout << COLOR_YELLOW << "[Monitor] Waiting for new events... (Press Ctrl+C to stop)" << COLOR_RESET << std::endl;
         std::cout << "\n";
 
-        // For real-time monitoring with pull model, use EvtQuery with EvtQueryReverseDirection
-        // and start from the end to only get new events as they arrive
-        hSubscription = EvtQuery(
-            NULL,
-            channelPath.c_str(),
-            L"*",
-            EvtQueryChannelPath | EvtQueryReverseDirection
+        // Use EvtSubscribe for true real-time monitoring that waits for new events
+        // The query must be a valid XPath expression or NULL (not "*")
+        hSubscription = EvtSubscribe(
+            NULL,                           // Session (local computer)
+            NULL,                           // SignalEvent (use EvtNext for pull model)
+            channelPath.c_str(),            // Channel path
+            NULL,                           // Query (NULL means all events - "*" causes error 87!)
+            NULL,                           // Bookmark (start from now)
+            NULL,                           // Context (not used without callback)
+            NULL,                           // Callback (NULL = pull model with EvtNext)
+            EvtSubscribeToFutureEvents      // Only future events
         );
-
-        // For real-time mode, seek to the end first to skip existing events
-        if (hSubscription != NULL) {
-            EvtSeek(hSubscription, 0, NULL, 0, EvtSeekRelativeToLast);
-        }
     } else {
         std::cout << COLOR_GREEN << "[Monitor] Mode: HISTORICAL" << COLOR_RESET << std::endl;
         std::cout << COLOR_YELLOW << "[Monitor] Reading historical events..." << COLOR_RESET << std::endl;
