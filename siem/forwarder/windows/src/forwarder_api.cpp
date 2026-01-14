@@ -32,17 +32,16 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
             g_logger->info("EventLogReader", "Mode: Real-time monitoring", "");
         }
 
-        // For real-time subscriptions, pass NULL instead of "*" for the query parameter
-        // to avoid ERROR_INVALID_PARAMETER (error code 87)
+        // For real-time subscriptions with pull model (EvtNext), use "*" as the query
         hSubscription = EvtSubscribe(
             NULL,                           // Session (NULL = localhost)
             NULL,                           // Signal event (NULL = use EvtNext)
             channelPath.c_str(),            // Channel path
-            NULL,                           // Query (NULL for all events, not "*")
+            L"*",                           // Wildcard to match all events
             NULL,                           // Bookmark
             NULL,                           // Context
             NULL,                           // Callback
-            EvtSubscribeToFutureEvents      // Subscribe to future events only
+            EvtSubscribeToFutureEvents | EvtSubscribeStrict  // Flags
         );
     } else {
         // Query historical events
