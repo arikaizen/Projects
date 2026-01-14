@@ -35,7 +35,8 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
             g_logger->info("EventLogReader", "Real-time monitoring started", "");
         }
 
-        std::wstring lastTimestamp = getTimeString(0);  // Current time
+        // Start from 2 seconds ago to catch any events happening right as we start
+        std::wstring lastTimestamp = getTimeString(-2);
 
         // Real-time polling loop
         while (true) {
