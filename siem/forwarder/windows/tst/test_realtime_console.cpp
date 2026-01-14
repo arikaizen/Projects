@@ -69,122 +69,152 @@ void printUsage() {
  * @param config Query configuration (real-time or historical)
  */
 void monitorEventsToConsole(const std::wstring& channelPath, const EventQueryConfig& config) {
-    EVT_HANDLE hSubscription = NULL;
+    EVT_HANDLE hQuery = NULL;
     EVT_HANDLE hEvents[10];
     DWORD dwReturned = 0;
     int eventCount = 0;
 
-    // Build query based on configuration
-    std::wstring query = buildHistoricalQuery(config);
-
     std::wcout << COLOR_GREEN << L"[Monitor] Channel: " << channelPath << COLOR_RESET << std::endl;
 
-    // Determine subscription mode
+    // For real-time monitoring, use polling with EvtQuery
     if (config.mode == EventReadMode::REALTIME) {
         std::cout << COLOR_GREEN << "[Monitor] Mode: REAL-TIME (Future events only)" << COLOR_RESET << std::endl;
         std::cout << COLOR_YELLOW << "[Monitor] Waiting for new events... (Press Ctrl+C to stop)" << COLOR_RESET << std::endl;
         std::cout << "\n";
+        std::cout << COLOR_GREEN << "[Monitor] Successfully started monitoring" << COLOR_RESET << std::endl;
+        std::cout << COLOR_BLUE << "========================================" << COLOR_RESET << std::endl;
+        std::cout << "\n";
 
-        // Use EvtSubscribe for true real-time monitoring that waits for new events
-        // The query must be a valid XPath expression or NULL (not "*")
-        hSubscription = EvtSubscribe(
-            NULL,                           // Session (local computer)
-            NULL,                           // SignalEvent (use EvtNext for pull model)
-            channelPath.c_str(),            // Channel path
-            NULL,                           // Query (NULL means all events - "*" causes error 87!)
-            NULL,                           // Bookmark (start from now)
-            NULL,                           // Context (not used without callback)
-            NULL,                           // Callback (NULL = pull model with EvtNext)
-            EvtSubscribeToFutureEvents      // Only future events
-        );
+        auto startTime = std::chrono::steady_clock::now();
+        std::wstring lastTimestamp = getTimeString(0);  // Current time
+
+        // Real-time polling loop
+        while (true) {
+            // Build query for events after last timestamp
+            std::wostringstream queryStream;
+            queryStream << L"*[System[TimeCreated[@SystemTime>'" << lastTimestamp << L"']]]";
+            std::wstring query = queryStream.str();
+
+            // Query for new events
+            hQuery = EvtQuery(
+                NULL,
+                channelPath.c_str(),
+                query.c_str(),
+                EvtQueryChannelPath | EvtQueryForwardDirection
+            );
+
+            if (hQuery != NULL) {
+                // Read events from this query
+                while (EvtNext(hQuery, 10, hEvents, 1000, 0, &dwReturned)) {
+                    for (DWORD i = 0; i < dwReturned; i++) {
+                        eventCount++;
+
+                        // Format event as JSON
+                        std::string jsonLog = formatEventAsJson(hEvents[i]);
+
+                        // Get current timestamp
+                        auto now = std::chrono::steady_clock::now();
+                        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - startTime).count();
+
+                        // Print event with color
+                        std::cout << COLOR_MAGENTA << "[Event #" << eventCount
+                                 << " | +" << elapsed << "s]" << COLOR_RESET << std::endl;
+                        std::cout << COLOR_BLUE << jsonLog << COLOR_RESET << std::endl;
+                        std::cout << "\n";
+
+                        // Close event handle
+                        EvtClose(hEvents[i]);
+                    }
+                }
+
+                EvtClose(hQuery);
+                hQuery = NULL;
+            }
+
+            // Update timestamp for next query
+            lastTimestamp = getTimeString(0);
+
+            // Sleep briefly before next poll (500ms)
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
     } else {
+        // Historical mode
         std::cout << COLOR_GREEN << "[Monitor] Mode: HISTORICAL" << COLOR_RESET << std::endl;
         std::cout << COLOR_YELLOW << "[Monitor] Reading historical events..." << COLOR_RESET << std::endl;
         std::cout << "\n";
 
-        hSubscription = EvtQuery(
+        std::wstring query = buildHistoricalQuery(config);
+        hQuery = EvtQuery(
             NULL,
             channelPath.c_str(),
             query.c_str(),
             EvtQueryChannelPath | EvtQueryForwardDirection
         );
-    }
 
-    if (hSubscription == NULL) {
-        DWORD error = GetLastError();
-        std::cerr << COLOR_RED << "[ERROR] Failed to subscribe/query event log" << COLOR_RESET << std::endl;
-        std::cerr << COLOR_RED << "[ERROR] Error code: " << error << COLOR_RESET << std::endl;
-        std::cerr << COLOR_YELLOW << "[TIP] Run as Administrator to access Security logs" << COLOR_RESET << std::endl;
-        return;
-    }
+        if (hQuery == NULL) {
+            DWORD error = GetLastError();
+            std::cerr << COLOR_RED << "[ERROR] Failed to query event log" << COLOR_RESET << std::endl;
+            std::cerr << COLOR_RED << "[ERROR] Error code: " << error << COLOR_RESET << std::endl;
+            return;
+        }
 
-    std::cout << COLOR_GREEN << "[Monitor] Successfully started monitoring" << COLOR_RESET << std::endl;
-    std::cout << COLOR_BLUE << "========================================" << COLOR_RESET << std::endl;
-    std::cout << "\n";
+        std::cout << COLOR_GREEN << "[Monitor] Successfully started query" << COLOR_RESET << std::endl;
+        std::cout << COLOR_BLUE << "========================================" << COLOR_RESET << std::endl;
+        std::cout << "\n";
 
-    // Main event processing loop
-    bool continueProcessing = true;
-    auto startTime = std::chrono::steady_clock::now();
+        auto startTime = std::chrono::steady_clock::now();
+        bool continueProcessing = true;
 
-    while (continueProcessing) {
-        DWORD timeout = (config.mode == EventReadMode::REALTIME) ? INFINITE : 5000;
+        while (continueProcessing) {
+            if (EvtNext(hQuery, 10, hEvents, 5000, 0, &dwReturned)) {
+                for (DWORD i = 0; i < dwReturned; i++) {
+                    eventCount++;
 
-        if (EvtNext(hSubscription, 10, hEvents, timeout, 0, &dwReturned)) {
-            for (DWORD i = 0; i < dwReturned; i++) {
-                eventCount++;
+                    // Format event as JSON
+                    std::string jsonLog = formatEventAsJson(hEvents[i]);
 
-                // Format event as JSON
-                std::string jsonLog = formatEventAsJson(hEvents[i]);
+                    // Get current timestamp
+                    auto now = std::chrono::steady_clock::now();
+                    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - startTime).count();
 
-                // Get current timestamp
-                auto now = std::chrono::steady_clock::now();
-                auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - startTime).count();
+                    // Print event with color
+                    std::cout << COLOR_MAGENTA << "[Event #" << eventCount
+                             << " | +" << elapsed << "s]" << COLOR_RESET << std::endl;
+                    std::cout << COLOR_BLUE << jsonLog << COLOR_RESET << std::endl;
+                    std::cout << "\n";
 
-                // Print event with color
-                std::cout << COLOR_MAGENTA << "[Event #" << eventCount
-                         << " | +" << elapsed << "s]" << COLOR_RESET << std::endl;
-                std::cout << COLOR_BLUE << jsonLog << COLOR_RESET << std::endl;
-                std::cout << "\n";
+                    // Close event handle
+                    EvtClose(hEvents[i]);
+                }
+            } else {
+                DWORD status = GetLastError();
 
-                // Close event handle
-                EvtClose(hEvents[i]);
-            }
-        } else {
-            DWORD status = GetLastError();
-
-            if (status == ERROR_NO_MORE_ITEMS) {
-                if (config.mode != EventReadMode::REALTIME) {
+                if (status == ERROR_NO_MORE_ITEMS) {
                     std::cout << COLOR_GREEN << "[Monitor] Finished reading historical events" << COLOR_RESET << std::endl;
                     std::cout << COLOR_GREEN << "[Monitor] Total events read: " << eventCount << COLOR_RESET << std::endl;
                     continueProcessing = false;
-                }
-            } else if (status == ERROR_TIMEOUT) {
-                if (config.mode != EventReadMode::REALTIME) {
+                } else if (status == ERROR_TIMEOUT) {
                     std::cout << COLOR_GREEN << "[Monitor] Query timeout - finished" << COLOR_RESET << std::endl;
                     std::cout << COLOR_GREEN << "[Monitor] Total events read: " << eventCount << COLOR_RESET << std::endl;
                     continueProcessing = false;
+                } else {
+                    std::cerr << COLOR_RED << "[ERROR] EvtNext failed with error: " << status << COLOR_RESET << std::endl;
+                    continueProcessing = false;
                 }
-            } else if (status != ERROR_NO_MORE_ITEMS) {
-                std::cerr << COLOR_RED << "[ERROR] EvtNext failed with error: " << status << COLOR_RESET << std::endl;
             }
         }
 
-        // Small delay for real-time mode
-        if (config.mode == EventReadMode::REALTIME) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Cleanup
+        if (hQuery) {
+            EvtClose(hQuery);
         }
-    }
 
-    // Cleanup
-    if (hSubscription) {
-        EvtClose(hSubscription);
+        std::cout << "\n";
+        std::cout << COLOR_BLUE << "========================================" << COLOR_RESET << std::endl;
+        std::cout << COLOR_GREEN << "[Monitor] Monitoring session complete" << COLOR_RESET << std::endl;
+        std::cout << COLOR_BLUE << "========================================" << COLOR_RESET << std::endl;
+        std::cout << "\n";
     }
-
-    std::cout << "\n";
-    std::cout << COLOR_BLUE << "========================================" << COLOR_RESET << std::endl;
-    std::cout << COLOR_GREEN << "[Monitor] Monitoring session complete" << COLOR_RESET << std::endl;
-    std::cout << COLOR_BLUE << "========================================" << COLOR_RESET << std::endl;
-    std::cout << "\n";
 }
 
 int main(int argc, char* argv[]) {
