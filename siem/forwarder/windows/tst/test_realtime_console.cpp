@@ -85,18 +85,19 @@ void monitorEventsToConsole(const std::wstring& channelPath, const EventQueryCon
         std::cout << COLOR_YELLOW << "[Monitor] Waiting for new events... (Press Ctrl+C to stop)" << COLOR_RESET << std::endl;
         std::cout << "\n";
 
-        // For real-time subscriptions with pull model (EvtNext), use "*" as the query
-        // The issue might be permissions - ensure running as Administrator
-        hSubscription = EvtSubscribe(
-            NULL,
+        // For real-time monitoring with pull model, use EvtQuery with EvtQueryReverseDirection
+        // and start from the end to only get new events as they arrive
+        hSubscription = EvtQuery(
             NULL,
             channelPath.c_str(),
-            L"*",  // Wildcard to match all events
-            NULL,
-            NULL,
-            NULL,
-            EvtSubscribeToFutureEvents | EvtSubscribeStrict
+            L"*",
+            EvtQueryChannelPath | EvtQueryReverseDirection
         );
+
+        // For real-time mode, seek to the end first to skip existing events
+        if (hSubscription != NULL) {
+            EvtSeek(hSubscription, 0, NULL, 0, EvtSeekRelativeToLast);
+        }
     } else {
         std::cout << COLOR_GREEN << "[Monitor] Mode: HISTORICAL" << COLOR_RESET << std::endl;
         std::cout << COLOR_YELLOW << "[Monitor] Reading historical events..." << COLOR_RESET << std::endl;
