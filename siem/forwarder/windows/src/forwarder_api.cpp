@@ -11,41 +11,105 @@
 #include "logger.h"         // g_logger usage
 #include <windows.h>         // GetLastError, DWORD, ERROR_NO_MORE_ITEMS
 #include <iostream>          // std::cout, std::cerr
+#include <sstream>           // std::wostringstream
 #include <chrono>            // std::chrono::milliseconds
 #include <thread>            // std::this_thread::sleep_for
 
 void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath,
                         const EventQueryConfig& config) {
-    EVT_HANDLE hSubscription = NULL;
+    EVT_HANDLE hQuery = NULL;
     EVT_HANDLE hEvents[10];
     DWORD dwReturned = 0;
     int eventCount = 0;
 
-    // Build query based on configuration
-    std::wstring query = buildHistoricalQuery(config);
-
-    // Determine subscription mode based on configuration
+    // For real-time monitoring, use polling with EvtQuery
     if (config.mode == EventReadMode::REALTIME) {
-        // Subscribe to future events only (real-time monitoring)
         std::cout << "[EventLogReader] Mode: REAL-TIME monitoring" << std::endl;
         if (g_logger) {
             g_logger->info("EventLogReader", "Mode: Real-time monitoring", "");
         }
 
-        // Use EvtSubscribe for true real-time monitoring
-        // CRITICAL: Query parameter must be NULL (not "*") to avoid ERROR_INVALID_PARAMETER (87)
-        hSubscription = EvtSubscribe(
-            NULL,                           // Session (local computer)
-            NULL,                           // SignalEvent (use EvtNext for pull model)
-            channelPath.c_str(),            // Channel path
-            NULL,                           // Query (NULL = all events, "*" causes error 87!)
-            NULL,                           // Bookmark (start from now)
-            NULL,                           // Context (not used without callback)
-            NULL,                           // Callback (NULL = pull model with EvtNext)
-            EvtSubscribeToFutureEvents      // Only future events
-        );
+        std::cout << "[EventLogReader] Successfully started real-time monitoring" << std::endl;
+        std::cout << "[EventLogReader] Monitoring Windows Event Logs (real-time)..." << std::endl;
+        if (g_logger) {
+            g_logger->info("EventLogReader", "Real-time monitoring started", "");
+        }
+
+        std::wstring lastTimestamp = getTimeString(0);  // Current time
+
+        // Real-time polling loop
+        while (true) {
+            // Build query for events after last timestamp
+            std::wostringstream queryStream;
+            queryStream << L"*[System[TimeCreated[@SystemTime>'" << lastTimestamp << L"']]]";
+            std::wstring query = queryStream.str();
+
+            // Query for new events
+            hQuery = EvtQuery(
+                NULL,
+                channelPath.c_str(),
+                query.c_str(),
+                EvtQueryChannelPath | EvtQueryForwardDirection
+            );
+
+            if (hQuery != NULL) {
+                // Read events from this query
+                while (EvtNext(hQuery, 10, hEvents, 1000, 0, &dwReturned)) {
+                    for (DWORD i = 0; i < dwReturned; i++) {
+                        // Format event as JSON
+                        std::string jsonLog = formatEventAsJson(hEvents[i]);
+
+                        // Check connection status and reconnect if needed
+                        if (!forwarder.isConnected()) {
+                            std::cout << "[ForwarderAPI] Connection lost, attempting to reconnect..." << std::endl;
+                            if (g_logger) {
+                                g_logger->warning("ForwarderAPI", "Connection lost, attempting reconnection", "");
+                            }
+                            if (!forwarder.connect()) {
+                                std::cerr << "[ForwarderAPI] Reconnection failed, waiting "
+                                          << RECONNECT_DELAY_MS << "ms before retry..." << std::endl;
+                                if (g_logger) {
+                                    g_logger->warning("ForwarderAPI", "Reconnection failed",
+                                                    "Waiting " + std::to_string(RECONNECT_DELAY_MS) + "ms");
+                                }
+                                std::this_thread::sleep_for(std::chrono::milliseconds(RECONNECT_DELAY_MS));
+                                EvtClose(hEvents[i]);
+                                continue;
+                            }
+                        }
+
+                        // Forward log to SIEM server
+                        if (forwarder.sendLog(jsonLog)) {
+                            eventCount++;
+                            std::cout << "[ForwarderAPI] Forwarded (" << eventCount << "): " << jsonLog << std::endl;
+                            if (g_logger) {
+                                g_logger->info("ForwarderAPI", "Event forwarded successfully",
+                                             "Total: " + std::to_string(eventCount));
+                            }
+                        } else {
+                            std::cerr << "[ForwarderAPI] Failed to forward log" << std::endl;
+                            if (g_logger) {
+                                g_logger->error("ForwarderAPI", "Failed to forward event", "");
+                            }
+                        }
+
+                        // Close event handle
+                        EvtClose(hEvents[i]);
+                    }
+                }
+
+                EvtClose(hQuery);
+                hQuery = NULL;
+            }
+
+            // Update timestamp for next query
+            lastTimestamp = getTimeString(0);
+
+            // Sleep briefly before next poll (500ms)
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
     } else {
-        // Query historical events
+        // Historical mode - query once
         const wchar_t* modeStr = L"UNKNOWN";
         std::string modeDetail = "";
 
@@ -71,98 +135,82 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
             g_logger->info("EventLogReader", "Mode: Historical query", modeDetail);
         }
 
-        hSubscription = EvtQuery(
-            NULL,                           // Session (NULL = localhost)
-            channelPath.c_str(),            // Channel path
-            query.c_str(),                  // XPath query with time filtering
+        std::wstring query = buildHistoricalQuery(config);
+        hQuery = EvtQuery(
+            NULL,
+            channelPath.c_str(),
+            query.c_str(),
             EvtQueryChannelPath | EvtQueryForwardDirection
         );
-    }
 
-    if (nullptr == hSubscription) {
-        // GetLastError: Retrieve error code from last failed Windows API call (from <windows.h>). Returns platform-specific error code.
-        DWORD error = GetLastError();
-        std::cerr << "[EventLogReader] Failed to subscribe/query event log channel" << std::endl;
-        std::cerr << "[EventLogReader] Error code: " << error << std::endl;
-        std::cerr << "[EventLogReader] Tip: Run as Administrator to access Security logs" << std::endl;
-        if (g_logger) {
-            g_logger->error("EventLogReader", "Failed to subscribe/query event log channel",
-                          "Error code: " + std::to_string(error) + " - Run as Administrator");
+        if (nullptr == hQuery) {
+            DWORD error = GetLastError();
+            std::cerr << "[EventLogReader] Failed to query event log channel" << std::endl;
+            std::cerr << "[EventLogReader] Error code: " << error << std::endl;
+            if (g_logger) {
+                g_logger->error("EventLogReader", "Failed to query event log channel",
+                              "Error code: " + std::to_string(error));
+            }
+            return;
         }
-        return;
-    }
 
-    std::cout << "[EventLogReader] Successfully subscribed/queried event log channel" << std::endl;
-    if (config.mode == EventReadMode::REALTIME) {
-        std::cout << "[EventLogReader] Monitoring Windows Event Logs (real-time)..." << std::endl;
-    } else {
+        std::cout << "[EventLogReader] Successfully queried event log channel" << std::endl;
         std::cout << "[EventLogReader] Reading Windows Event Logs (historical)..." << std::endl;
-    }
+        if (g_logger) {
+            g_logger->info("EventLogReader", "Successfully queried event log", "Historical mode");
+        }
 
-    if (g_logger) {
-        g_logger->info("EventLogReader", "Successfully subscribed/queried event log",
-                      config.mode == EventReadMode::REALTIME ? "Real-time mode" : "Historical mode");
-    }
+        // Process historical events
+        bool continueProcessing = true;
+        while (continueProcessing) {
+            if (EvtNext(hQuery, 10, hEvents, 5000, 0, &dwReturned)) {
+                if (dwReturned > 0) {
+                    for (DWORD i = 0; i < dwReturned; i++) {
+                        // Format event as JSON
+                        std::string jsonLog = formatEventAsJson(hEvents[i]);
 
-    // Main event processing loop
-    bool continueProcessing = true;
-    while (continueProcessing) {
-        // For real-time mode, wait indefinitely. For historical mode, use short timeout
-        DWORD timeout = (config.mode == EventReadMode::REALTIME) ? INFINITE : 5000;
-
-        // Get next batch of events (up to 10)
-        if (EvtNext(hSubscription, 10, hEvents, timeout, 0, &dwReturned)) {
-            // Process each event in the batch
-            if (dwReturned > 0) {
-            for (DWORD i = 0; i < dwReturned; i++) {
-                // Format event as JSON
-                std::string jsonLog = formatEventAsJson(hEvents[i]);
-
-                // Check connection status and reconnect if needed
-                if (!forwarder.isConnected()) {
-                    std::cout << "[ForwarderAPI] Connection lost, attempting to reconnect..." << std::endl;
-                    if (g_logger) {
-                        g_logger->warning("ForwarderAPI", "Connection lost, attempting reconnection", "");
-                    }
-                    if (!forwarder.connect()) {
-                        std::cerr << "[ForwarderAPI] Reconnection failed, waiting "
-                                  << RECONNECT_DELAY_MS << "ms before retry..." << std::endl;
-                        if (g_logger) {
-                            g_logger->warning("ForwarderAPI", "Reconnection failed",
-                                            "Waiting " + std::to_string(RECONNECT_DELAY_MS) + "ms");
+                        // Check connection status and reconnect if needed
+                        if (!forwarder.isConnected()) {
+                            std::cout << "[ForwarderAPI] Connection lost, attempting to reconnect..." << std::endl;
+                            if (g_logger) {
+                                g_logger->warning("ForwarderAPI", "Connection lost, attempting reconnection", "");
+                            }
+                            if (!forwarder.connect()) {
+                                std::cerr << "[ForwarderAPI] Reconnection failed, waiting "
+                                          << RECONNECT_DELAY_MS << "ms before retry..." << std::endl;
+                                if (g_logger) {
+                                    g_logger->warning("ForwarderAPI", "Reconnection failed",
+                                                    "Waiting " + std::to_string(RECONNECT_DELAY_MS) + "ms");
+                                }
+                                std::this_thread::sleep_for(std::chrono::milliseconds(RECONNECT_DELAY_MS));
+                                EvtClose(hEvents[i]);
+                                continue;
+                            }
                         }
-                        std::this_thread::sleep_for(std::chrono::milliseconds(RECONNECT_DELAY_MS));
-                        continue;
+
+                        // Forward log to SIEM server
+                        if (forwarder.sendLog(jsonLog)) {
+                            eventCount++;
+                            std::cout << "[ForwarderAPI] Forwarded (" << eventCount << "): " << jsonLog << std::endl;
+                            if (g_logger) {
+                                g_logger->info("ForwarderAPI", "Event forwarded successfully",
+                                             "Total: " + std::to_string(eventCount));
+                            }
+                        } else {
+                            std::cerr << "[ForwarderAPI] Failed to forward log" << std::endl;
+                            if (g_logger) {
+                                g_logger->error("ForwarderAPI", "Failed to forward event", "");
+                            }
+                        }
+
+                        // Close event handle
+                        EvtClose(hEvents[i]);
                     }
                 }
-
-                // Forward log to SIEM server
-                if (forwarder.sendLog(jsonLog)) {
-                    eventCount++;
-                    std::cout << "[ForwarderAPI] Forwarded (" << eventCount << "): " << jsonLog << std::endl;
-                    if (g_logger) {
-                        g_logger->info("ForwarderAPI", "Event forwarded successfully",
-                                     "Total: " + std::to_string(eventCount));
-                    }
-                } else {
-                    std::cerr << "[ForwarderAPI] Failed to forward log" << std::endl;
-                    if (g_logger) {
-                        g_logger->error("ForwarderAPI", "Failed to forward event", "");
-                    }
-                }
-
-                // Close event handle
-                // EvtClose: Close event log handle and release resources. Returns TRUE on success, FALSE on failure.
-                EvtClose(hEvents[i]);
-            }
-            }
-        } else {
-            // Handle EvtNext failure
-            // GetLastError: Retrieve error code from last failed Windows API call (from <windows.h>). Returns platform-specific error code.
-            DWORD status = GetLastError();
-            if (status == ERROR_NO_MORE_ITEMS) {
-                // For historical queries, this means we've read all matching events
-                if (config.mode != EventReadMode::REALTIME) {
+            } else {
+                // Handle EvtNext failure
+                DWORD status = GetLastError();
+                if (status == ERROR_NO_MORE_ITEMS) {
                     std::cout << "[EventLogReader] Finished reading historical events" << std::endl;
                     std::cout << "[EventLogReader] Total events forwarded: " << eventCount << std::endl;
                     if (g_logger) {
@@ -170,10 +218,7 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
                                      "Total forwarded: " + std::to_string(eventCount));
                     }
                     continueProcessing = false;
-                }
-            } else if (status == ERROR_TIMEOUT) {
-                // Timeout in historical mode - check if there are more events
-                if (config.mode != EventReadMode::REALTIME) {
+                } else if (status == ERROR_TIMEOUT) {
                     std::cout << "[EventLogReader] Query timeout - assuming no more events" << std::endl;
                     std::cout << "[EventLogReader] Total events forwarded: " << eventCount << std::endl;
                     if (g_logger) {
@@ -181,26 +226,21 @@ void forwardWindowsLogs(LogForwarder& forwarder, const std::wstring& channelPath
                                      "Total forwarded: " + std::to_string(eventCount));
                     }
                     continueProcessing = false;
-                }
-            } else {
-                std::cerr << "[EventLogReader] EvtNext failed with error: " << status << std::endl;
-                if (g_logger) {
-                    g_logger->error("EventLogReader", "EvtNext failed",
-                                  "Error code: " + std::to_string(status));
+                } else {
+                    std::cerr << "[EventLogReader] EvtNext failed with error: " << status << std::endl;
+                    if (g_logger) {
+                        g_logger->error("EventLogReader", "EvtNext failed",
+                                      "Error code: " + std::to_string(status));
+                    }
+                    continueProcessing = false;
                 }
             }
         }
 
-        // Small delay to prevent CPU spinning (only in real-time mode)
-        if (config.mode == EventReadMode::REALTIME) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Cleanup query handle
+        if (hQuery) {
+            EvtClose(hQuery);
         }
-    }
-
-    // Cleanup subscription handle
-    if (hSubscription) {
-        // EvtClose: Close event log handle and release resources. Returns TRUE on success, FALSE on failure.
-        EvtClose(hSubscription);
     }
 }
 
