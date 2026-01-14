@@ -34,26 +34,29 @@ if exist venv (
     echo.
 )
 
-REM Activate virtual environment
-echo [INFO] Activating virtual environment...
-call venv\Scripts\activate.bat
-if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Failed to activate virtual environment
-    exit /b 1
-)
+REM Install using venv's python directly (no need to activate)
+echo [INFO] Installing packages in virtual environment...
 echo.
 
 REM Upgrade pip
 echo [INFO] Upgrading pip...
-python -m pip install --upgrade pip
+venv\Scripts\python.exe -m pip install --upgrade pip
+if %ERRORLEVEL% NEQ 0 (
+    echo [WARNING] Failed to upgrade pip, continuing anyway...
+)
 echo.
 
 REM Install dependencies
 echo [INFO] Installing dependencies from requirements.txt...
-pip install -r requirements.txt
+venv\Scripts\python.exe -m pip install -r requirements.txt
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Failed to install dependencies
-    exit /b 1
+    echo [INFO] Trying alternative method...
+    python -m pip install -r requirements.txt
+    if %ERRORLEVEL% NEQ 0 (
+        echo [ERROR] Still failed. Please check your Python installation.
+        exit /b 1
+    )
 )
 echo.
 
