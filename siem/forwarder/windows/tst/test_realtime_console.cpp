@@ -87,7 +87,8 @@ void monitorEventsToConsole(const std::wstring& channelPath, const EventQueryCon
         std::cout << "\n";
 
         auto startTime = std::chrono::steady_clock::now();
-        std::wstring lastTimestamp = getTimeString(0);  // Current time
+        // Start from 2 seconds ago to catch any events happening right as we start
+        std::wstring lastTimestamp = getTimeString(-2);
 
         // Real-time polling loop
         while (true) {
