@@ -16,19 +16,17 @@ if not exist venv (
     exit /b
 )
 
-REM Activate virtual environment
-echo [INFO] Activating virtual environment...
-call venv\Scripts\activate.bat
-
-REM Check if Flask is installed
-python -c "import flask" 2>nul
+REM Check if Flask is installed in venv
+echo [INFO] Checking Flask installation...
+venv\Scripts\python.exe -c "import flask" 2>nul
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Flask not installed in virtual environment
     echo [INFO] Run setup.bat to install dependencies
+    pause
     exit /b 1
 )
 
-REM Run the application
-echo [INFO] Starting application...
+REM Run the application using venv's python
+echo [INFO] Starting application with virtual environment...
 echo.
-python src\app.py
+venv\Scripts\python.exe src\app.py

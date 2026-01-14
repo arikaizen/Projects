@@ -64,16 +64,22 @@ echo ========================================
 echo Setup Complete!
 echo ========================================
 echo.
-echo To run the application:
-echo   1. Activate the virtual environment:
-echo      venv\Scripts\activate
+echo Flask and dependencies have been installed successfully!
 echo.
-echo   2. Run the application:
+echo To run the application, use one of these methods:
+echo.
+echo   Method 1 - Using run.bat (easiest):
+echo      run.bat
+echo.
+echo   Method 2 - Direct execution:
 echo      python src\app.py
 echo.
-echo   3. Access the web interface:
-echo      http://localhost:5000
+echo   Method 3 - With virtual environment:
+echo      venv\Scripts\activate
+echo      python src\app.py
 echo.
-echo   4. Log receiver listens on:
-echo      TCP port 8089
+echo Once running, access:
+echo   Web Interface: http://localhost:5000
+echo   Log Receiver:  TCP port 8089
 echo ========================================
+pause
