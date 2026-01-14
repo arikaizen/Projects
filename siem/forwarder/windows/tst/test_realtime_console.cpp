@@ -85,17 +85,17 @@ void monitorEventsToConsole(const std::wstring& channelPath, const EventQueryCon
         std::cout << COLOR_YELLOW << "[Monitor] Waiting for new events... (Press Ctrl+C to stop)" << COLOR_RESET << std::endl;
         std::cout << "\n";
 
-        // For real-time subscriptions, pass NULL instead of "*" for the query parameter
-        // to avoid ERROR_INVALID_PARAMETER (error code 87)
+        // For real-time subscriptions with pull model (EvtNext), use "*" as the query
+        // The issue might be permissions - ensure running as Administrator
         hSubscription = EvtSubscribe(
             NULL,
             NULL,
             channelPath.c_str(),
-            NULL,  // NULL for all events, not "*"
+            L"*",  // Wildcard to match all events
             NULL,
             NULL,
             NULL,
-            EvtSubscribeToFutureEvents
+            EvtSubscribeToFutureEvents | EvtSubscribeStrict
         );
     } else {
         std::cout << COLOR_GREEN << "[Monitor] Mode: HISTORICAL" << COLOR_RESET << std::endl;
