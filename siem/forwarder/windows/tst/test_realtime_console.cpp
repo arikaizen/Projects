@@ -85,11 +85,13 @@ void monitorEventsToConsole(const std::wstring& channelPath, const EventQueryCon
         std::cout << COLOR_YELLOW << "[Monitor] Waiting for new events... (Press Ctrl+C to stop)" << COLOR_RESET << std::endl;
         std::cout << "\n";
 
+        // For real-time subscriptions, pass NULL instead of "*" for the query parameter
+        // to avoid ERROR_INVALID_PARAMETER (error code 87)
         hSubscription = EvtSubscribe(
             NULL,
             NULL,
             channelPath.c_str(),
-            query.c_str(),
+            NULL,  // NULL for all events, not "*"
             NULL,
             NULL,
             NULL,
