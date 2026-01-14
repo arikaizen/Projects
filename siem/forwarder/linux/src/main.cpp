@@ -31,6 +31,7 @@ int main(int argc, char* argv[]) {
     // Default configuration
     std::string serverAddress = DEFAULT_SIEM_SERVER;
     int serverPort = DEFAULT_SIEM_PORT;
+    LogQueryConfig config;  // Defaults to REALTIME mode, SYSTEMD_JOURNAL source
 
     // Parse command-line arguments
     if (argc >= 2) {
@@ -40,6 +41,6 @@ int main(int argc, char* argv[]) {
         serverPort = std::atoi(argv[2]);
     }
 
-    // Run the forwarder (this call blocks indefinitely)
-    return runForwarder(serverAddress, serverPort);
+    // Run the forwarder (this call blocks indefinitely for real-time mode)
+    return runForwarder(serverAddress, serverPort, config);
 }
