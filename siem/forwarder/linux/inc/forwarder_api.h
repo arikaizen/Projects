@@ -10,6 +10,7 @@
 #define FORWARDER_API_H
 
 #include "log_forwarder.h"
+#include "journal_reader.h"
 #include <string>
 
 // Default configuration constants
@@ -25,24 +26,26 @@ const int RECONNECT_DELAY_MS = 5000;                  ///< Reconnection delay in
  * LogForwarder instance. Automatically handles reconnection on network failures.
  *
  * @param forwarder Reference to initialized LogForwarder instance
+ * @param config Log query configuration (source, mode, filters)
  *
- * @note This function runs in an infinite loop and will block until terminated
+ * @note This function runs in an infinite loop for real-time mode
  */
-void forwardSystemLogs(LogForwarder& forwarder);
+void forwardSystemLogs(LogForwarder& forwarder, const LogQueryConfig& config);
 
 /**
  * @brief Initialize and run the Linux System Log Forwarder
  *
  * This is the main entry point for the forwarder API. It initializes the network
  * connection, establishes connection to the SIEM server, and begins monitoring
- * system logs via journald.
+ * system logs.
  *
  * @param serverAddress SIEM server IP address or hostname
  * @param serverPort SIEM server port number
+ * @param config Log query configuration (source, mode, filters)
  * @return 0 on successful completion, non-zero on error
  *
- * @note This function will block indefinitely while monitoring logs
+ * @note This function will block indefinitely while monitoring logs in real-time mode
  */
-int runForwarder(const std::string& serverAddress, int serverPort);
+int runForwarder(const std::string& serverAddress, int serverPort, const LogQueryConfig& config);
 
 #endif // FORWARDER_API_H
