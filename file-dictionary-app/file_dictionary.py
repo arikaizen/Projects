@@ -42,13 +42,38 @@ You can configure the application in THREE ways (in order of priority):
        Create this JSON file in your home directory:
        {
            "default_directory": "/path/to/your/default/folder",
+           "default_template": "my_template.json",
            "supported_extensions": [".txt", ".md", ".json", ".py"],
            "window_width": 1280,
-           "window_height": 780
+           "window_height": 780,
+           "template_autosave_enabled": true
        }
 
 3. EDIT THE CONFIG CLASS BELOW (lowest priority):
        Scroll down to the 'Config' class and modify the default values.
+
+--------------------------------------------------------------------------------
+TEMPLATE EDITOR WORKFLOW
+--------------------------------------------------------------------------------
+
+The Template Editor lets you load a JSON template, fill in values, and save
+to a NEW file (without modifying the original template).
+
+WORKFLOW:
+    1. Open a directory containing your files and template(s)
+    2. Go to the "Template Editor" tab
+    3. Select a template from the dropdown and click "Load Template"
+    4. Edit the values for each key
+    5. Click "Save as New File" to create a new file with your values
+       (The original template remains unchanged!)
+
+AUTO-SAVE:
+    Your work-in-progress is automatically saved when you close the app.
+    If you reopen the app, your unsaved edits will be restored.
+
+CONFIGURE DEFAULT TEMPLATE:
+    To auto-load a template when the app starts, set in your config:
+        "default_template": "my_template.json"
 
 --------------------------------------------------------------------------------
 KEYBOARD SHORTCUTS
@@ -151,6 +176,22 @@ class Config:
     MIN_WORD_LENGTH: int = 2                   # Min word length to index
 
     # ┌─────────────────────────────────────────────────────────────────────────┐
+    # │  TEMPLATE SETTINGS                                                       │
+    # │  Configure default template and auto-save behavior.                      │
+    # └─────────────────────────────────────────────────────────────────────────┘
+    DEFAULT_TEMPLATE: Optional[str] = None
+    # Set this to the FILENAME of a template to auto-load when the app starts.
+    # The file must exist in the working directory.
+    # Example: DEFAULT_TEMPLATE = "my_template.json"
+
+    TEMPLATE_AUTOSAVE_ENABLED: bool = True
+    # When True, your work-in-progress edits are automatically saved
+    # so you don't lose them if you close the app.
+
+    TEMPLATE_AUTOSAVE_PATH: str = os.path.expanduser("~/.file_dictionary_autosave.json")
+    # Location where work-in-progress template edits are stored.
+
+    # ┌─────────────────────────────────────────────────────────────────────────┐
     # │  CONFIG FILE PATH                                                        │
     # │  Location of the optional JSON configuration file.                       │
     # └─────────────────────────────────────────────────────────────────────────┘
@@ -179,6 +220,10 @@ class Config:
                     cls.AUTOCOMPLETE_MAX_SUGGESTIONS = data['autocomplete_max_suggestions']
                 if 'min_word_length' in data:
                     cls.MIN_WORD_LENGTH = data['min_word_length']
+                if 'default_template' in data:
+                    cls.DEFAULT_TEMPLATE = data['default_template']
+                if 'template_autosave_enabled' in data:
+                    cls.TEMPLATE_AUTOSAVE_ENABLED = data['template_autosave_enabled']
 
             except (json.JSONDecodeError, OSError) as e:
                 print(f"Warning: Could not load config file: {e}", file=sys.stderr)
@@ -192,11 +237,13 @@ class Config:
         sample = {
             "_comment": "File Dictionary configuration file",
             "default_directory": "/path/to/your/files",
+            "default_template": "template.json",
             "supported_extensions": list(cls.SUPPORTED_EXTENSIONS),
             "window_width": cls.WINDOW_WIDTH,
             "window_height": cls.WINDOW_HEIGHT,
             "autocomplete_max_suggestions": cls.AUTOCOMPLETE_MAX_SUGGESTIONS,
             "min_word_length": cls.MIN_WORD_LENGTH,
+            "template_autosave_enabled": cls.TEMPLATE_AUTOSAVE_ENABLED,
         }
         return json.dumps(sample, indent=2)
 
@@ -639,14 +686,29 @@ class ContentViewer(tk.Frame):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TemplateEditor(tk.Frame):
-    """Load a JSON template and fill / extend its key-value pairs."""
+    """
+    Load a JSON template and fill / extend its key-value pairs.
+
+    Features:
+        - Load templates from JSON files in the working directory
+        - Edit key-value pairs with add/remove functionality
+        - Save to new file (preserves original template)
+        - Overwrite original template
+        - Auto-save work-in-progress (persists your edits)
+
+    The auto-save feature stores your current edits to a separate file
+    (~/.file_dictionary_autosave.json) so you don't lose work if you
+    close the app. This is restored automatically on startup.
+    """
 
     def __init__(self, parent, index: FileIndex, on_save=None, **kw):
         super().__init__(parent, **kw)
         self._index   = index
         self._on_save = on_save
         self._rows: List[Dict] = []
+        self._current_template: Optional[str] = None  # Track which template is loaded
         self._build()
+        self._load_autosave()  # Restore work-in-progress on startup
 
     # ── UI ────────────────────────────────────────────────────────────────
 
@@ -790,28 +852,62 @@ class TemplateEditor(tk.Frame):
         self.refresh_list()
 
     def _load(self):
+        """Load the template selected in the dropdown."""
         name = self._tmpl_var.get()
         if not name:
             messagebox.showinfo('No Template', 'Please select a JSON template from the list.')
             return
+        self._load_template(name)
+
+    def load_template_by_name(self, name: str) -> bool:
+        """
+        Load a template by filename (public method for external use).
+
+        Args:
+            name: The filename of the template (e.g., "my_template.json")
+
+        Returns:
+            True if loaded successfully, False otherwise
+        """
+        # Set the dropdown to this template
+        self._tmpl_var.set(name)
+        return self._load_template(name, show_errors=False)
+
+    def _load_template(self, name: str, show_errors: bool = True) -> bool:
+        """
+        Internal method to load a template by name.
+
+        Args:
+            name: Template filename
+            show_errors: Whether to show error dialogs
+
+        Returns:
+            True if loaded successfully
+        """
         raw = self._index.file_contents.get(name, '')
         if not raw and self._index.directory:
             try:
                 raw = Path(os.path.join(self._index.directory, name)).read_text(encoding='utf-8')
             except OSError as exc:
-                messagebox.showerror('Error', str(exc))
-                return
+                if show_errors:
+                    messagebox.showerror('Error', str(exc))
+                return False
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as exc:
-            messagebox.showerror('Invalid JSON', f'Cannot parse template:\n{exc}')
-            return
+            if show_errors:
+                messagebox.showerror('Invalid JSON', f'Cannot parse template:\n{exc}')
+            return False
         if not isinstance(data, dict):
-            messagebox.showerror('Invalid Template',
-                                 'Template must be a JSON object (key-value pairs at the top level).')
-            return
+            if show_errors:
+                messagebox.showerror('Invalid Template',
+                                     'Template must be a JSON object (key-value pairs at the top level).')
+            return False
         self._clear()
+        self._current_template = name
         self._load_dict(data)
+        self._clear_autosave()  # Clear autosave when loading fresh template
+        return True
 
     def _load_dict(self, data: dict, prefix: str = ''):
         for k, v in data.items():
@@ -822,6 +918,7 @@ class TemplateEditor(tk.Frame):
                 self._add_row(full_key, str(v) if v is not None else '')
 
     def _save_as(self):
+        """Save current key-value pairs to a NEW file (preserves original template)."""
         if not self._index.directory:
             messagebox.showinfo('No Directory', 'Please select a working directory first.')
             return
@@ -841,6 +938,7 @@ class TemplateEditor(tk.Frame):
             self._index.save_file(fname, content)
             if self._on_save:
                 self._on_save()
+            self._clear_autosave()  # Clear autosave after successful save
             messagebox.showinfo('Saved', f'Saved as  {fname}')
 
     def _overwrite(self):
@@ -855,7 +953,60 @@ class TemplateEditor(tk.Frame):
         self._index.save_file(name, content)
         if self._on_save:
             self._on_save()
+        self._clear_autosave()  # Clear autosave after successful save
         messagebox.showinfo('Saved', f"'{name}' has been updated.")
+
+    # ── auto-save persistence ─────────────────────────────────────────────
+
+    def _load_autosave(self) -> None:
+        """Load work-in-progress from autosave file on startup."""
+        if not Config.TEMPLATE_AUTOSAVE_ENABLED:
+            return
+        if not os.path.exists(Config.TEMPLATE_AUTOSAVE_PATH):
+            return
+        try:
+            with open(Config.TEMPLATE_AUTOSAVE_PATH, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                return
+            # Restore the template name if it was saved
+            template_name = data.pop('_template_name_', None)
+            if template_name:
+                self._tmpl_var.set(template_name)
+                self._current_template = template_name
+            # Restore the key-value pairs
+            for k, v in data.items():
+                self._add_row(k, str(v) if v is not None else '')
+        except (json.JSONDecodeError, OSError):
+            pass  # Silently ignore corrupt autosave
+
+    def do_autosave(self) -> None:
+        """
+        Save current work-in-progress to autosave file.
+        Call this when the app is closing or periodically.
+        """
+        if not Config.TEMPLATE_AUTOSAVE_ENABLED:
+            return
+        if not self._rows:
+            self._clear_autosave()
+            return
+        try:
+            data = self._collect()
+            # Also save which template was being edited
+            if self._current_template:
+                data['_template_name_'] = self._current_template
+            with open(Config.TEMPLATE_AUTOSAVE_PATH, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+        except OSError:
+            pass  # Silently ignore write errors
+
+    def _clear_autosave(self) -> None:
+        """Remove the autosave file after successful save."""
+        try:
+            if os.path.exists(Config.TEMPLATE_AUTOSAVE_PATH):
+                os.remove(Config.TEMPLATE_AUTOSAVE_PATH)
+        except OSError:
+            pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1013,6 +1164,9 @@ class FileDictionaryApp:
         self._style()
         self._build()
 
+        # Register close handler to save work-in-progress
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
         # If an initial directory was provided, open it
         if self._initial_directory:
             self._load_directory(self._initial_directory)
@@ -1143,6 +1297,13 @@ class FileDictionaryApp:
         self.root.title(f'File Dictionary — {os.path.basename(directory)}')
         self._status.config(text=f'Loaded {len(self.index.files)} files from {directory}')
 
+        # Load default template if configured and exists in this directory
+        if Config.DEFAULT_TEMPLATE and Config.DEFAULT_TEMPLATE in self.index.files:
+            self._tmpl_editor.load_template_by_name(Config.DEFAULT_TEMPLATE)
+            self._status.config(
+                text=f'Loaded {len(self.index.files)} files — Template: {Config.DEFAULT_TEMPLATE}'
+            )
+
     def _refresh(self):
         if self.index.directory:
             self.index.rebuild()
@@ -1153,6 +1314,11 @@ class FileDictionaryApp:
     def _on_tab(self, _=None):
         if self._nb.index('current') == 1:
             self._tmpl_editor.refresh_list()
+
+    def _on_close(self):
+        """Handle window close: save work-in-progress and exit."""
+        self._tmpl_editor.do_autosave()
+        self.root.destroy()
 
     def run(self):
         self.root.mainloop()
