@@ -1,31 +1,224 @@
 #!/usr/bin/env python3
 """
-File Dictionary Application
-A local Python app for managing, searching, and viewing text files with
-template (JSON) support and interactive autocomplete search.
+================================================================================
+FILE DICTIONARY APPLICATION
+================================================================================
+
+A local Python desktop application for managing, searching, and viewing text
+files with JSON template support and interactive autocomplete search.
+
+FEATURES:
+    - Browse and search files by filename or content keywords
+    - Live autocomplete suggestions as you type
+    - Scrollable file viewer with find-in-file highlighting
+    - JSON template editor: load templates, fill in key-value pairs, save
+
+--------------------------------------------------------------------------------
+QUICK START
+--------------------------------------------------------------------------------
+
+    # Run with default settings (opens directory picker):
+    python file_dictionary.py
+
+    # Run with a specific directory:
+    python file_dictionary.py /path/to/your/files
+
+    # Run with a specific directory using flag:
+    python file_dictionary.py --directory /path/to/your/files
+
+    # Show help:
+    python file_dictionary.py --help
+
+--------------------------------------------------------------------------------
+CONFIGURATION
+--------------------------------------------------------------------------------
+
+You can configure the application in THREE ways (in order of priority):
+
+1. COMMAND-LINE ARGUMENTS (highest priority):
+       python file_dictionary.py --directory /my/files
+
+2. CONFIGURATION FILE (~/.file_dictionary_config.json):
+       Create this JSON file in your home directory:
+       {
+           "default_directory": "/path/to/your/default/folder",
+           "supported_extensions": [".txt", ".md", ".json", ".py"],
+           "window_width": 1280,
+           "window_height": 780
+       }
+
+3. EDIT THE CONFIG CLASS BELOW (lowest priority):
+       Scroll down to the 'Config' class and modify the default values.
+
+--------------------------------------------------------------------------------
+KEYBOARD SHORTCUTS
+--------------------------------------------------------------------------------
+
+    Ctrl+F     Focus the find-in-file search bar
+    Enter      Execute search / go to next match
+    Escape     Clear search / close autocomplete dropdown
+
+--------------------------------------------------------------------------------
+SUPPORTED FILE TYPES
+--------------------------------------------------------------------------------
+
+By default, the application indexes these file extensions:
+    .txt, .md, .json, .csv, .py, .yaml, .yml, .html, .css, .js, .xml,
+    .rst, .ini, .cfg, .toml, .sh, .bat, .log, .text, .sql
+
+You can customize this list via the configuration file or by editing
+the Config.SUPPORTED_EXTENSIONS set below.
+
+================================================================================
 """
 
+import argparse
 import json
 import os
 import re
+import sys
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from pathlib import Path
 from typing import Optional, List, Dict, Set
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# FILE INDEX  –  indexing + search engine
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONFIGURATION  –  Edit these values to customize the application
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class Config:
+    """
+    Application configuration settings.
+
+    INSTRUCTIONS:
+        1. Edit the values below to change default behavior
+        2. Or create ~/.file_dictionary_config.json to override at runtime
+        3. Or use command-line arguments (highest priority)
+    """
+
+    # ┌─────────────────────────────────────────────────────────────────────────┐
+    # │  DEFAULT DIRECTORY                                                       │
+    # │  Set this to automatically open a folder when the app starts.            │
+    # │  Leave as None to show the directory picker on startup.                  │
+    # └─────────────────────────────────────────────────────────────────────────┘
+    DEFAULT_DIRECTORY: Optional[str] = None
+    # Example: DEFAULT_DIRECTORY = "/home/user/Documents/my-files"
+    # Example: DEFAULT_DIRECTORY = "C:\\Users\\YourName\\Documents\\files"
+
+    # ┌─────────────────────────────────────────────────────────────────────────┐
+    # │  SUPPORTED FILE EXTENSIONS                                               │
+    # │  Only files with these extensions will be indexed and displayed.         │
+    # │  Add or remove extensions as needed.                                     │
+    # └─────────────────────────────────────────────────────────────────────────┘
+    SUPPORTED_EXTENSIONS: Set[str] = {
+        '.txt',     # Plain text
+        '.md',      # Markdown
+        '.json',    # JSON (also used for templates)
+        '.csv',     # Comma-separated values
+        '.py',      # Python source
+        '.yaml',    # YAML config
+        '.yml',     # YAML config (alternate extension)
+        '.html',    # HTML
+        '.css',     # CSS stylesheets
+        '.js',      # JavaScript
+        '.xml',     # XML
+        '.rst',     # reStructuredText
+        '.ini',     # INI config files
+        '.cfg',     # Config files
+        '.toml',    # TOML config
+        '.sh',      # Shell scripts
+        '.bat',     # Batch scripts
+        '.log',     # Log files
+        '.text',    # Text files (alternate extension)
+        '.sql',     # SQL scripts
+    }
+
+    # ┌─────────────────────────────────────────────────────────────────────────┐
+    # │  WINDOW SETTINGS                                                         │
+    # │  Customize the initial window size.                                      │
+    # └─────────────────────────────────────────────────────────────────────────┘
+    WINDOW_WIDTH: int = 1280
+    WINDOW_HEIGHT: int = 780
+    WINDOW_MIN_WIDTH: int = 900
+    WINDOW_MIN_HEIGHT: int = 600
+
+    # ┌─────────────────────────────────────────────────────────────────────────┐
+    # │  SEARCH SETTINGS                                                         │
+    # │  Tune how search and autocomplete behave.                                │
+    # └─────────────────────────────────────────────────────────────────────────┘
+    AUTOCOMPLETE_MAX_SUGGESTIONS: int = 15    # Max items in autocomplete dropdown
+    MIN_WORD_LENGTH: int = 2                   # Min word length to index
+
+    # ┌─────────────────────────────────────────────────────────────────────────┐
+    # │  CONFIG FILE PATH                                                        │
+    # │  Location of the optional JSON configuration file.                       │
+    # └─────────────────────────────────────────────────────────────────────────┘
+    CONFIG_FILE_PATH: str = os.path.expanduser("~/.file_dictionary_config.json")
+
+    @classmethod
+    def load_from_file(cls) -> None:
+        """
+        Load configuration from the JSON config file if it exists.
+        This overrides the default values set above.
+        """
+        if os.path.exists(cls.CONFIG_FILE_PATH):
+            try:
+                with open(cls.CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+                if 'default_directory' in data:
+                    cls.DEFAULT_DIRECTORY = data['default_directory']
+                if 'supported_extensions' in data:
+                    cls.SUPPORTED_EXTENSIONS = set(data['supported_extensions'])
+                if 'window_width' in data:
+                    cls.WINDOW_WIDTH = data['window_width']
+                if 'window_height' in data:
+                    cls.WINDOW_HEIGHT = data['window_height']
+                if 'autocomplete_max_suggestions' in data:
+                    cls.AUTOCOMPLETE_MAX_SUGGESTIONS = data['autocomplete_max_suggestions']
+                if 'min_word_length' in data:
+                    cls.MIN_WORD_LENGTH = data['min_word_length']
+
+            except (json.JSONDecodeError, OSError) as e:
+                print(f"Warning: Could not load config file: {e}", file=sys.stderr)
+
+    @classmethod
+    def create_sample_config_file(cls) -> str:
+        """
+        Generate a sample configuration file content.
+        Users can save this to ~/.file_dictionary_config.json
+        """
+        sample = {
+            "_comment": "File Dictionary configuration file",
+            "default_directory": "/path/to/your/files",
+            "supported_extensions": list(cls.SUPPORTED_EXTENSIONS),
+            "window_width": cls.WINDOW_WIDTH,
+            "window_height": cls.WINDOW_HEIGHT,
+            "autocomplete_max_suggestions": cls.AUTOCOMPLETE_MAX_SUGGESTIONS,
+            "min_word_length": cls.MIN_WORD_LENGTH,
+        }
+        return json.dumps(sample, indent=2)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FILE INDEX  –  Indexing and search engine
+# ═══════════════════════════════════════════════════════════════════════════════
 
 class FileIndex:
-    """Scans a directory and builds a searchable index of text files."""
+    """
+    Scans a directory and builds a searchable index of text files.
 
-    SUPPORTED = {
-        '.txt', '.md', '.json', '.csv', '.py', '.yaml', '.yml',
-        '.html', '.css', '.js', '.xml', '.rst', '.ini', '.cfg',
-        '.toml', '.sh', '.bat', '.log', '.text', '.sql',
-    }
+    The index supports two types of search:
+        - Filename search: matches against file names
+        - Content search: matches words found inside files
+
+    Attributes:
+        directory (str): The currently indexed directory path
+        files (List[str]): Sorted list of indexed filenames
+        word_index (Dict[str, Set[str]]): Maps words to files containing them
+        file_contents (Dict[str, str]): Maps filenames to their full text content
+    """
 
     def __init__(self):
         self.directory: Optional[str] = None
@@ -36,10 +229,20 @@ class FileIndex:
     # ── directory management ──────────────────────────────────────────────
 
     def set_directory(self, directory: str) -> None:
+        """
+        Set the working directory and rebuild the index.
+
+        Args:
+            directory: Absolute path to the folder containing files to index
+        """
         self.directory = directory
         self.rebuild()
 
     def rebuild(self) -> None:
+        """
+        Re-scan the current directory and rebuild all indexes.
+        Call this after files are added, modified, or deleted externally.
+        """
         self.files.clear()
         self.word_index.clear()
         self.file_contents.clear()
@@ -47,10 +250,17 @@ class FileIndex:
             return
         entries = sorted(os.scandir(self.directory), key=lambda e: e.name.lower())
         for entry in entries:
-            if entry.is_file() and Path(entry.name).suffix.lower() in self.SUPPORTED:
+            if entry.is_file() and Path(entry.name).suffix.lower() in Config.SUPPORTED_EXTENSIONS:
                 self._index_file(entry.name, entry.path)
 
     def _index_file(self, name: str, path: str) -> None:
+        """
+        Read a file and add its content to the search indexes.
+
+        Args:
+            name: The filename (without path)
+            path: The full path to the file
+        """
         try:
             content = Path(path).read_text(encoding='utf-8', errors='replace')
         except OSError:
@@ -59,7 +269,9 @@ class FileIndex:
         if name not in self.files:
             self.files.append(name)
             self.files.sort(key=str.lower)
-        for word in set(re.findall(r'\b\w{2,}\b', content.lower())):
+        # Index words of minimum length (configured in Config.MIN_WORD_LENGTH)
+        pattern = rf'\b\w{{{Config.MIN_WORD_LENGTH},}}\b'
+        for word in set(re.findall(pattern, content.lower())):
             self.word_index.setdefault(word, set()).add(name)
 
     # ── search ────────────────────────────────────────────────────────────
@@ -84,16 +296,27 @@ class FileIndex:
     # ── autocomplete ──────────────────────────────────────────────────────
 
     def autocomplete(self, prefix: str, mode: str) -> List[str]:
+        """
+        Get autocomplete suggestions for the search box.
+
+        Args:
+            prefix: The text the user has typed so far
+            mode: Either 'filename' or 'content'
+
+        Returns:
+            List of suggested completions (max Config.AUTOCOMPLETE_MAX_SUGGESTIONS)
+        """
         if not prefix:
             return []
         p = prefix.lower()
+        max_suggestions = Config.AUTOCOMPLETE_MAX_SUGGESTIONS
         if mode == 'filename':
             exact   = [f for f in self.files if f.lower().startswith(p)]
             partial = [f for f in self.files if p in f.lower() and f not in exact]
-            return (exact + partial)[:15]
+            return (exact + partial)[:max_suggestions]
         else:                                                # content / keyword
             words = sorted(w for w in self.word_index if w.startswith(p))
-            return words[:20]
+            return words[:max_suggestions + 5]  # slightly more for keyword mode
 
     # ── write back ────────────────────────────────────────────────────────
 
@@ -764,17 +987,35 @@ class SearchPanel(tk.Frame):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class FileDictionaryApp:
+    """
+    Main application class for the File Dictionary GUI.
 
-    def __init__(self, root: tk.Tk):
-        self.root  = root
+    This class orchestrates all the UI components and handles the main
+    application logic including directory selection, file browsing, and
+    coordination between the search panel, content viewer, and template editor.
+
+    Args:
+        root: The tkinter root window
+        initial_directory: Optional path to open on startup
+    """
+
+    def __init__(self, root: tk.Tk, initial_directory: Optional[str] = None):
+        self.root = root
         self.index = FileIndex()
+        self._initial_directory = initial_directory
+
+        # Configure window
         root.title('File Dictionary')
-        root.geometry('1280x780')
-        root.minsize(900, 600)
+        root.geometry(f'{Config.WINDOW_WIDTH}x{Config.WINDOW_HEIGHT}')
+        root.minsize(Config.WINDOW_MIN_WIDTH, Config.WINDOW_MIN_HEIGHT)
         root.configure(bg='#1E1E1E')
 
         self._style()
         self._build()
+
+        # If an initial directory was provided, open it
+        if self._initial_directory:
+            self._load_directory(self._initial_directory)
 
     # ── styles ────────────────────────────────────────────────────────────
 
@@ -882,15 +1123,25 @@ class FileDictionaryApp:
         self._status.config(text=f'Viewing  {filename}')
 
     def _choose_dir(self):
+        """Open a directory picker dialog and load the selected directory."""
         d = filedialog.askdirectory(title='Select Working Directory')
         if d:
-            self.index.set_directory(d)
-            short = d if len(d) < 60 else '…' + d[-57:]
-            self._dir_lbl.config(text=short, fg='#A9B7C6')
-            self._search_panel.populate(self.index.files)
-            self._tmpl_editor.refresh_list()
-            self.root.title(f'File Dictionary — {os.path.basename(d)}')
-            self._status.config(text=f'Loaded {len(self.index.files)} files from {d}')
+            self._load_directory(d)
+
+    def _load_directory(self, directory: str):
+        """
+        Load and index a directory.
+
+        Args:
+            directory: Path to the directory to load
+        """
+        self.index.set_directory(directory)
+        short = directory if len(directory) < 60 else '…' + directory[-57:]
+        self._dir_lbl.config(text=short, fg='#A9B7C6')
+        self._search_panel.populate(self.index.files)
+        self._tmpl_editor.refresh_list()
+        self.root.title(f'File Dictionary — {os.path.basename(directory)}')
+        self._status.config(text=f'Loaded {len(self.index.files)} files from {directory}')
 
     def _refresh(self):
         if self.index.directory:
@@ -907,13 +1158,88 @@ class FileDictionaryApp:
         self.root.mainloop()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ENTRY POINT
-# ─────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# COMMAND-LINE INTERFACE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def parse_arguments() -> argparse.Namespace:
+    """
+    Parse command-line arguments.
+
+    Returns:
+        Namespace containing the parsed arguments
+    """
+    parser = argparse.ArgumentParser(
+        description='File Dictionary - Browse, search, and manage text files',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    %(prog)s                          # Open with directory picker
+    %(prog)s /path/to/files           # Open specific directory
+    %(prog)s -d /path/to/files        # Same, using flag
+    %(prog)s --show-sample-config     # Print sample config file
+
+Configuration:
+    Create ~/.file_dictionary_config.json to set defaults.
+    Run with --show-sample-config to see the format.
+        """
+    )
+
+    parser.add_argument(
+        'directory',
+        nargs='?',
+        default=None,
+        help='Directory to open (overrides config file setting)'
+    )
+
+    parser.add_argument(
+        '-d', '--directory',
+        dest='directory_flag',
+        metavar='PATH',
+        help='Directory to open (alternative to positional argument)'
+    )
+
+    parser.add_argument(
+        '--show-sample-config',
+        action='store_true',
+        help='Print a sample configuration file and exit'
+    )
+
+    return parser.parse_args()
+
 
 def main():
+    """
+    Application entry point.
+
+    Handles configuration loading and command-line argument parsing,
+    then launches the GUI application.
+    """
+    args = parse_arguments()
+
+    # Handle --show-sample-config
+    if args.show_sample_config:
+        print("Sample configuration file (~/.file_dictionary_config.json):")
+        print("-" * 60)
+        print(Config.create_sample_config_file())
+        print("-" * 60)
+        print(f"\nSave this to: {Config.CONFIG_FILE_PATH}")
+        sys.exit(0)
+
+    # Load configuration from file (if exists)
+    Config.load_from_file()
+
+    # Command-line directory overrides config file
+    directory = args.directory_flag or args.directory or Config.DEFAULT_DIRECTORY
+
+    # Validate directory if provided
+    if directory and not os.path.isdir(directory):
+        print(f"Error: Directory not found: {directory}", file=sys.stderr)
+        sys.exit(1)
+
+    # Launch the application
     root = tk.Tk()
-    app  = FileDictionaryApp(root)
+    app = FileDictionaryApp(root, initial_directory=directory)
     app.run()
 
 
