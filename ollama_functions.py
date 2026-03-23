@@ -5,7 +5,7 @@ ollama_functions.py
 Standalone functions for talking to a local Ollama model.
 Copy this file into your project and import the functions you need.
 USAGE IN YOUR MAIN FILE:
-    from ollama_functions import generate, chat, similarity, embed, search
+    from ollama_functions import generate, chat, similarity, embed, search, get_title, set_title
     # Single prompt
     response = generate("write a CUDA kernel")
     print(response)
@@ -40,6 +40,7 @@ SYSTEM_PROMPT = (
 _conversation_history = [
     {"role": "system", "content": SYSTEM_PROMPT}
 ]
+_conversation_title = None
 _embedding_cache = {}
 # ─────────────────────────────────────────────────────────────────────────────
 # FUNCTION 1 — generate()
@@ -117,9 +118,10 @@ def chat(message, stream=False, temperature=0.7, max_tokens=2048):
         reply = chat("show me a code example")   # model remembers previous message
         reply = chat("now optimize that code")   # model remembers both previous messages
     """
-    global _conversation_history
+    global _conversation_history, _conversation_title
     if not message or not message.strip():
         raise ValueError("message cannot be empty")
+    is_first_message = len(_conversation_history) == 1  # only system prompt so far
     # Add user message to history
     _conversation_history.append({
         "role": "user",
@@ -155,20 +157,66 @@ def chat(message, stream=False, temperature=0.7, max_tokens=2048):
         "role": "assistant",
         "content": full_reply
     })
+    # Auto-generate a title from the first message
+    if is_first_message and _conversation_title is None:
+        _conversation_title = _generate_title(message)
     return full_reply
 def clear_history():
     """
-    Wipe the conversation history and start fresh.
+    Wipe the conversation history and title, and start fresh.
     Keeps the system prompt but removes all messages.
     Example:
         chat("what is CUDA?")
         clear_history()
         chat("what did I just ask?")   # model has no memory of it
     """
-    global _conversation_history
+    global _conversation_history, _conversation_title
     _conversation_history = [
         {"role": "system", "content": SYSTEM_PROMPT}
     ]
+    _conversation_title = None
+def _generate_title(first_message):
+    """
+    Ask the model for a short title based on the first user message.
+    Returns a plain string, no quotes or punctuation.
+    """
+    prompt = (
+        f'Give a short title (4-6 words) for a conversation that starts with:\n'
+        f'"{first_message}"\n'
+        f'Reply with the title only — no quotes, no punctuation at the end.'
+    )
+    try:
+        title = generate(prompt, temperature=0.3, max_tokens=20)
+        return title.strip().strip('"').strip("'")
+    except Exception:
+        # Fall back to a truncated version of the first message
+        return first_message[:60].strip()
+def get_title():
+    """
+    Return the current conversation title.
+    Auto-generated from the first chat() message, or set manually with set_title().
+    Returns:
+        str or None — title string, or None if no conversation has started yet
+    Example:
+        chat("explain warp divergence")
+        print(get_title())   # "Warp Divergence in CUDA"
+    """
+    return _conversation_title
+def set_title(title):
+    """
+    Set or overwrite the conversation title manually.
+    Args:
+        title (str) — new title
+    Raises:
+        ValueError — if title is empty or whitespace
+    Example:
+        set_title("CUDA Shared Memory Session")
+        print(get_title())   # "CUDA Shared Memory Session"
+    """
+    global _conversation_title
+    if not title or not title.strip():
+        raise ValueError("title cannot be empty")
+    _conversation_title = title.strip()
 def save_history(filepath=None):
     """
     Save the current conversation history to a JSON file on disk.
@@ -188,8 +236,12 @@ def save_history(filepath=None):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filepath = f"{save_dir}/session_{timestamp}.json"
     filepath = os.path.expanduser(filepath)
+    payload = {
+        "title": _conversation_title,
+        "messages": _conversation_history,
+    }
     with open(filepath, "w") as f:
-        json.dump(_conversation_history, f, indent=2)
+        json.dump(payload, f, indent=2)
     return filepath
 def load_history(filepath):
     """
@@ -201,12 +253,19 @@ def load_history(filepath):
         load_history("~/conversations/session_20260320.json")
         chat("continue where we left off")
     """
-    global _conversation_history
+    global _conversation_history, _conversation_title
     filepath = os.path.expanduser(filepath)
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"History file not found: {filepath}")
     with open(filepath) as f:
-        _conversation_history = json.load(f)
+        data = json.load(f)
+    # Support both new format {"title":..., "messages":[...]} and old list format
+    if isinstance(data, list):
+        _conversation_history = data
+        _conversation_title = None
+    else:
+        _conversation_history = data["messages"]
+        _conversation_title = data.get("title")
 def get_history():
     """
     Return the current conversation history as a list of message dicts.

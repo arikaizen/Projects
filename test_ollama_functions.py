@@ -22,8 +22,13 @@ import ollama_functions as of
 def _reset_module_state():
     """Reset all mutable module-level state between tests."""
     of._conversation_history = [{"role": "system", "content": of.SYSTEM_PROMPT}]
+    of._conversation_title = None
     of._embedding_cache = {}
     ollama_mock.reset_mock()
+    # reset_mock() does NOT clear side_effect by default — do it explicitly
+    ollama_mock.generate.side_effect = None
+    ollama_mock.chat.side_effect = None
+    ollama_mock.embeddings.side_effect = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -165,12 +170,21 @@ class TestClearHistory(unittest.TestCase):
 
     def test_clears_messages_but_keeps_system_prompt(self):
         ollama_mock.chat.return_value = {"message": {"content": "r"}}
+        ollama_mock.generate.return_value = {"response": "Some Title"}
         of.chat("something")
         of.clear_history()
         history = of.get_history()
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0]["role"], "system")
         self.assertEqual(history[0]["content"], of.SYSTEM_PROMPT)
+
+    def test_clear_resets_title(self):
+        ollama_mock.chat.return_value = {"message": {"content": "r"}}
+        ollama_mock.generate.return_value = {"response": "Some Title"}
+        of.chat("something")
+        self.assertIsNotNone(of.get_title())
+        of.clear_history()
+        self.assertIsNone(of.get_title())
 
     def test_clear_on_fresh_history_is_idempotent(self):
         of.clear_history()
@@ -202,19 +216,48 @@ class TestSaveLoadHistory(unittest.TestCase):
 
     def test_save_then_load_roundtrip(self):
         ollama_mock.chat.return_value = {"message": {"content": "hi"}}
+        ollama_mock.generate.return_value = {"response": "My Title"}
         of.chat("hello")
-        with tempfile.NamedTemporaryFile(
-            suffix=".json", delete=False
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
             path = tmp.name
         try:
-            saved_path = of.save_history(path)
-            self.assertEqual(saved_path, path)
+            of.save_history(path)
             of.clear_history()
-            self.assertEqual(len(of.get_history()), 1)
+            self.assertIsNone(of.get_title())
             of.load_history(path)
-            history = of.get_history()
-            self.assertGreater(len(history), 1)
+            self.assertGreater(len(of.get_history()), 1)
+            self.assertEqual(of.get_title(), "My Title")
+        finally:
+            os.unlink(path)
+
+    def test_load_old_format_list(self):
+        """Files saved before titles were added (plain list) load without error."""
+        old_data = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "hi"},
+        ]
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as tmp:
+            json.dump(old_data, tmp)
+            path = tmp.name
+        try:
+            of.load_history(path)
+            self.assertEqual(len(of.get_history()), 2)
+            self.assertIsNone(of.get_title())
+        finally:
+            os.unlink(path)
+
+    def test_save_persists_title(self):
+        of.set_title("My CUDA Session")
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+            path = tmp.name
+        try:
+            of.save_history(path)
+            with open(path) as f:
+                data = json.load(f)
+            self.assertEqual(data["title"], "My CUDA Session")
+            self.assertIn("messages", data)
         finally:
             os.unlink(path)
 
@@ -255,6 +298,71 @@ class TestSaveLoadHistory(unittest.TestCase):
             self.assertEqual(returned, path)
         finally:
             os.unlink(path)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# get_title() / set_title() / auto-title
+# ─────────────────────────────────────────────────────────────────────────────
+class TestTitle(unittest.TestCase):
+
+    def setUp(self):
+        _reset_module_state()
+
+    def test_title_none_before_any_chat(self):
+        self.assertIsNone(of.get_title())
+
+    def test_title_auto_generated_after_first_chat(self):
+        ollama_mock.chat.return_value = {"message": {"content": "reply"}}
+        ollama_mock.generate.return_value = {"response": "Auto Title"}
+        of.chat("first message")
+        self.assertEqual(of.get_title(), "Auto Title")
+
+    def test_title_not_regenerated_on_second_message(self):
+        ollama_mock.chat.return_value = {"message": {"content": "reply"}}
+        ollama_mock.generate.return_value = {"response": "First Title"}
+        of.chat("first message")
+        ollama_mock.generate.return_value = {"response": "Second Title"}
+        of.chat("second message")
+        # generate() called once for title only
+        self.assertEqual(ollama_mock.generate.call_count, 1)
+        self.assertEqual(of.get_title(), "First Title")
+
+    def test_set_title_overwrites(self):
+        ollama_mock.chat.return_value = {"message": {"content": "reply"}}
+        ollama_mock.generate.return_value = {"response": "Auto Title"}
+        of.chat("first message")
+        of.set_title("My Custom Title")
+        self.assertEqual(of.get_title(), "My Custom Title")
+
+    def test_set_title_strips_whitespace(self):
+        of.set_title("  padded  ")
+        self.assertEqual(of.get_title(), "padded")
+
+    def test_set_title_before_any_chat(self):
+        of.set_title("Pre-set Title")
+        self.assertEqual(of.get_title(), "Pre-set Title")
+
+    def test_set_title_empty_raises(self):
+        with self.assertRaises(ValueError):
+            of.set_title("")
+
+    def test_set_title_whitespace_raises(self):
+        with self.assertRaises(ValueError):
+            of.set_title("   ")
+
+    def test_auto_title_strips_quotes(self):
+        ollama_mock.chat.return_value = {"message": {"content": "reply"}}
+        ollama_mock.generate.return_value = {"response": '"Quoted Title"'}
+        of.chat("first message")
+        self.assertEqual(of.get_title(), "Quoted Title")
+
+    def test_auto_title_falls_back_on_generate_error(self):
+        ollama_mock.chat.return_value = {"message": {"content": "reply"}}
+        ollama_mock.generate.side_effect = Exception("Ollama down")
+        of.chat("explain warp divergence in CUDA kernels")
+        # Falls back to truncated first message
+        self.assertIsNotNone(of.get_title())
+        self.assertIn("warp divergence", of.get_title())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
