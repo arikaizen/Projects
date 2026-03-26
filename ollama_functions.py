@@ -36,6 +36,18 @@ INSTALL DEPENDENCIES:
 import json
 import os
 from datetime import datetime
+from typing import Any, Literal, TypedDict
+
+# The three roles that can appear in a conversation history message.
+# "system" sets the model's behaviour, "user" is your input,
+# "assistant" is the model's reply.
+Role = Literal["system", "user", "assistant"]
+
+# A single message in the conversation history.
+# Every message has exactly these two fields — no more, no less.
+class Message(TypedDict):
+    role: Role
+    content: str
 
 import numpy as np
 import ollama
@@ -43,22 +55,27 @@ import ollama
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION — change these to match your setup
 # ─────────────────────────────────────────────────────────────────────────────
-MODEL = "qwen2.5-coder:14b"
-SYSTEM_PROMPT = (
+MODEL: str = "qwen2.5-coder:14b"
+SYSTEM_PROMPT: str = (
     "You are an expert C, C++, Python and CUDA programmer. "
     "Be concise and precise. When writing code always include comments."
 )
 
 # Shared embedding cache across all OllamaChat instances and embed() calls.
 # Maps text → numpy vector so the same text is never embedded twice.
-_embedding_cache: dict = {}
+_embedding_cache: dict[str, np.ndarray] = {}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STANDALONE FUNCTION 1 — generate()
 # Single prompt → single response. Completely stateless, no conversation.
 # ─────────────────────────────────────────────────────────────────────────────
-def generate(prompt, stream=False, temperature=0.7, max_tokens=2048):
+def generate(
+    prompt: str,
+    stream: bool = False,
+    temperature: float = 0.7,
+    max_tokens: int = 2048,
+) -> str:
     """
     Send a single prompt and get one response back.
     Each call is completely independent — no memory of previous calls.
@@ -99,16 +116,19 @@ def generate(prompt, stream=False, temperature=0.7, max_tokens=2048):
     if max_tokens < 1:
         raise ValueError(f"max_tokens must be at least 1, got {max_tokens}")
 
-    options = {"temperature": temperature, "num_predict": max_tokens}
+    options: dict[str, float | int] = {
+        "temperature": temperature,
+        "num_predict": max_tokens,
+    }
 
     try:
         if stream:
-            full_response = ""
+            full_response: str = ""
             chunks = ollama.generate(
                 model=MODEL, prompt=prompt, stream=True, options=options
             )
             for chunk in chunks:
-                token = chunk["response"]
+                token: str = chunk["response"]
                 print(token, end="", flush=True)
                 full_response += token
             print()
@@ -117,7 +137,7 @@ def generate(prompt, stream=False, temperature=0.7, max_tokens=2048):
             response = ollama.generate(
                 model=MODEL, prompt=prompt, stream=False, options=options
             )
-            text = response["response"]
+            text: str = response["response"]
             if text is None:
                 raise RuntimeError("Ollama returned a response with no text content")
             return text
@@ -139,7 +159,7 @@ def generate(prompt, stream=False, temperature=0.7, max_tokens=2048):
 # STANDALONE FUNCTION 2 — embed()
 # Convert text to a vector of numbers representing its meaning.
 # ─────────────────────────────────────────────────────────────────────────────
-def embed(text, use_cache=True):
+def embed(text: str, use_cache: bool = True) -> np.ndarray:
     """
     Convert text to a numeric vector that represents its meaning.
 
@@ -186,14 +206,14 @@ def embed(text, use_cache=True):
             f"Ollama API error in embed() using model '{MODEL}': {e}"
         )
 
-    embedding = response.get("embedding")
+    embedding: list[float] | None = response.get("embedding")
     if not embedding:
         raise RuntimeError(
             f"Ollama returned an empty embedding for model '{MODEL}'. "
             "Make sure the model supports embeddings."
         )
 
-    vector = np.array(embedding)
+    vector: np.ndarray = np.array(embedding)
 
     if use_cache:
         _embedding_cache[text] = vector
@@ -205,7 +225,7 @@ def embed(text, use_cache=True):
 # STANDALONE FUNCTION 3 — similarity()
 # Compare two texts by meaning. Returns a score from -1.0 to 1.0.
 # ─────────────────────────────────────────────────────────────────────────────
-def similarity(text_a, text_b):
+def similarity(text_a: str, text_b: str) -> float:
     """
     Compare two pieces of text and return how similar their meaning is.
 
@@ -239,11 +259,11 @@ def similarity(text_a, text_b):
         score = similarity("CUDA kernel", "baking a cake")
         print(score)   # e.g. 0.12 — unrelated
     """
-    vector_a = embed(text_a)
-    vector_b = embed(text_b)
+    vector_a: np.ndarray = embed(text_a)
+    vector_b: np.ndarray = embed(text_b)
 
-    norm_a = np.linalg.norm(vector_a)
-    norm_b = np.linalg.norm(vector_b)
+    norm_a: float = float(np.linalg.norm(vector_a))
+    norm_b: float = float(np.linalg.norm(vector_b))
 
     # Guard against division by zero — a zero vector has no direction so
     # cosine similarity is undefined
@@ -260,17 +280,22 @@ def similarity(text_a, text_b):
 
     # Cosine similarity: dot product / (magnitude_a × magnitude_b)
     # Result is between -1.0 (opposite) and 1.0 (identical direction)
-    dot   = np.dot(vector_a, vector_b)
-    score = dot / (norm_a * norm_b)
+    dot: float = float(np.dot(vector_a, vector_b))
+    score: float = dot / (norm_a * norm_b)
 
-    return round(float(score), 4)
+    return round(score, 4)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STANDALONE FUNCTION 4 — search()
 # Find the most semantically relevant items from a list.
 # ─────────────────────────────────────────────────────────────────────────────
-def search(query, labels, texts, top_n=3):
+def search(
+    query: str,
+    labels: list[str],
+    texts: list[str],
+    top_n: int = 3,
+) -> list[tuple[float, str]]:
     """
     Find the most semantically similar items to a query from a list.
 
@@ -283,7 +308,7 @@ def search(query, labels, texts, top_n=3):
         top_n  (int)       — how many top results to return, must be >= 1 (default 3)
 
     Returns:
-        list of (score: float, label: str) tuples, sorted best-first
+        list[tuple[float, str]] — (score, label) pairs sorted best-first
 
     Raises:
         ValueError        — query is empty or whitespace only
@@ -314,16 +339,16 @@ def search(query, labels, texts, top_n=3):
     if top_n < 1:
         raise ValueError(f"top_n must be at least 1, got {top_n}")
 
-    query_vec = embed(query)
+    query_vec: np.ndarray = embed(query)
 
-    results = []
+    results: list[tuple[float, str]] = []
     for label, text in zip(labels, texts):
-        item_vec = embed(text)
-        norm_q = np.linalg.norm(query_vec)
-        norm_i = np.linalg.norm(item_vec)
+        item_vec: np.ndarray = embed(text)
+        norm_q: float = float(np.linalg.norm(query_vec))
+        norm_i: float = float(np.linalg.norm(item_vec))
         # Skip items whose vector has zero magnitude — cosine similarity undefined
         if norm_q == 0 or norm_i == 0:
-            score = 0.0
+            score: float = 0.0
         else:
             score = float(np.dot(query_vec, item_vec) / (norm_q * norm_i))
         results.append((round(score, 4), label))
@@ -360,7 +385,7 @@ class OllamaChat:
         conv = OllamaChat(model="llama3:8b", system_prompt="You are a helpful assistant.")
     """
 
-    def __init__(self, model=MODEL, system_prompt=SYSTEM_PROMPT):
+    def __init__(self, model: str = MODEL, system_prompt: str = SYSTEM_PROMPT) -> None:
         """
         Create a new, empty conversation.
 
@@ -383,13 +408,21 @@ class OllamaChat:
         if not system_prompt or not str(system_prompt).strip():
             raise ValueError("system_prompt cannot be empty")
 
-        self.model = model
-        self._history = [{"role": "system", "content": system_prompt}]
-        self._title = None
+        self.model: str = model
+        self._history: list[Message] = [
+            {"role": "system", "content": system_prompt}
+        ]
+        self._title: str | None = None
 
     # ── Conversation ──────────────────────────────────────────────────────────
 
-    def chat(self, message, stream=False, temperature=0.7, max_tokens=2048):
+    def chat(
+        self,
+        message: str,
+        stream: bool = False,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+    ) -> str:
         """
         Send a message and get a reply. The model remembers all previous messages.
 
@@ -434,16 +467,19 @@ class OllamaChat:
             raise ValueError(f"max_tokens must be at least 1, got {max_tokens}")
 
         # Track whether this is the first real message (used for auto-title below)
-        is_first_message = len(self._history) == 1
+        is_first_message: bool = len(self._history) == 1
 
         # Append user turn before calling the API so the full context is sent
         self._history.append({"role": "user", "content": message})
 
-        options = {"temperature": temperature, "num_predict": max_tokens}
+        options: dict[str, float | int] = {
+            "temperature": temperature,
+            "num_predict": max_tokens,
+        }
 
         try:
             if stream:
-                full_reply = ""
+                full_reply: str = ""
                 chunks = ollama.chat(
                     model=self.model,
                     messages=self._history,
@@ -451,7 +487,7 @@ class OllamaChat:
                     options=options,
                 )
                 for chunk in chunks:
-                    token = chunk["message"]["content"]
+                    token: str = chunk["message"]["content"]
                     print(token, end="", flush=True)
                     full_reply += token
                 print()
@@ -495,7 +531,7 @@ class OllamaChat:
 
         return full_reply
 
-    def clear_history(self):
+    def clear_history(self) -> None:
         """
         Reset the conversation — wipe all messages and the title.
 
@@ -508,13 +544,13 @@ class OllamaChat:
             conv.chat("what did I just ask?")   # model has no memory of it
         """
         # Preserve the original system prompt when resetting
-        system_prompt = self._history[0]["content"]
+        system_prompt: str = self._history[0]["content"]
         self._history = [{"role": "system", "content": system_prompt}]
         self._title = None
 
     # ── History persistence ───────────────────────────────────────────────────
 
-    def get_history(self):
+    def get_history(self) -> list[Message]:
         """
         Return a copy of the current conversation history.
 
@@ -522,7 +558,7 @@ class OllamaChat:
         not affect the internal state of this conversation.
 
         Returns:
-            list[dict] — list of {"role": ..., "content": ...} message dicts
+            list[Message] — list of {"role": ..., "content": ...} message dicts
 
         Example:
             for msg in conv.get_history():
@@ -530,7 +566,7 @@ class OllamaChat:
         """
         return self._history.copy()
 
-    def save_history(self, filepath=None):
+    def save_history(self, filepath: str | None = None) -> str:
         """
         Save the current conversation history to a JSON file on disk.
 
@@ -538,8 +574,8 @@ class OllamaChat:
         conversation from where it left off.
 
         Args:
-            filepath (str) — where to save
-                             default: ~/conversations/session_TIMESTAMP.json
+            filepath (str | None) — where to save
+                                    default: ~/conversations/session_TIMESTAMP.json
 
         Returns:
             str — the path where the file was saved
@@ -555,18 +591,21 @@ class OllamaChat:
             conv.save_history("~/my_session.json")
         """
         if filepath is None:
-            save_dir = os.path.expanduser("~/conversations")
+            save_dir: str = os.path.expanduser("~/conversations")
             try:
                 os.makedirs(save_dir, exist_ok=True)
             except OSError as e:
                 raise OSError(
                     f"Could not create conversations directory '{save_dir}': {e}"
                 )
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp: str = datetime.now().strftime("%Y%m%d_%H%M%S")
             filepath = f"{save_dir}/session_{timestamp}.json"
 
         filepath = os.path.expanduser(filepath)
-        payload = {"title": self._title, "messages": self._history}
+        payload: dict[str, Any] = {
+            "title": self._title,
+            "messages": self._history,
+        }
 
         try:
             with open(filepath, "w") as f:
@@ -578,7 +617,7 @@ class OllamaChat:
 
         return filepath
 
-    def load_history(self, filepath):
+    def load_history(self, filepath: str) -> None:
         """
         Load a previously saved conversation from disk.
 
@@ -606,7 +645,10 @@ class OllamaChat:
             raise FileNotFoundError(f"History file not found: {filepath}")
 
         with open(filepath) as f:
-            data = json.load(f)
+            data: Any = json.load(f)
+
+        messages: list[Message]
+        title: str | None
 
         # Support both {"title":..., "messages":[...]} and the old plain list format
         if isinstance(data, list):
@@ -634,6 +676,8 @@ class OllamaChat:
             )
 
         # Validate each message has the required role and content fields
+        i: int
+        msg: Any
         for i, msg in enumerate(messages):
             if not isinstance(msg, dict):
                 raise ValueError(
@@ -651,7 +695,7 @@ class OllamaChat:
 
     # ── Title ─────────────────────────────────────────────────────────────────
 
-    def get_title(self):
+    def get_title(self) -> str | None:
         """
         Return the current conversation title.
 
@@ -659,7 +703,7 @@ class OllamaChat:
         set manually with set_title().
 
         Returns:
-            str or None — the title, or None if no conversation has started yet
+            str | None — the title, or None if no conversation has started yet
 
         Example:
             conv.chat("explain warp divergence")
@@ -667,7 +711,7 @@ class OllamaChat:
         """
         return self._title
 
-    def set_title(self, title):
+    def set_title(self, title: str) -> None:
         """
         Set or overwrite the conversation title manually.
 
@@ -687,7 +731,7 @@ class OllamaChat:
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
-    def _generate_title(self, first_message):
+    def _generate_title(self, first_message: str) -> str:
         """
         Ask the model for a short title based on the first user message.
         Falls back to a truncated version of the message if the API fails
@@ -699,13 +743,13 @@ class OllamaChat:
         Returns:
             str — a short title (4-6 words), no surrounding quotes or punctuation
         """
-        prompt = (
+        prompt: str = (
             f'Give a short title (4-6 words) for a conversation that starts with:\n'
             f'"{first_message}"\n'
             f'Reply with the title only — no quotes, no punctuation at the end.'
         )
         try:
-            title = generate(prompt, temperature=0.3, max_tokens=20)
+            title: str = generate(prompt, temperature=0.3, max_tokens=20)
             return title.strip().strip('"').strip("'")
         except Exception:
             # Fall back to a truncated version of the first message so the
