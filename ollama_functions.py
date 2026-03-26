@@ -69,14 +69,19 @@ def generate(prompt, stream=False, temperature=0.7, max_tokens=2048):
                               False: return full response as a string (default)
         temperature (float) — 0.0 = deterministic
                               0.7 = balanced (default)
-                              1.5 = creative
-        max_tokens  (int)   — maximum length of the response (default 2048)
+                              2.0 = very creative (max)
+        max_tokens  (int)   — maximum length of the response, must be >= 1
 
     Returns:
         str — the model's full response
 
     Raises:
-        ValueError — if prompt is empty or whitespace only
+        ValueError        — prompt is empty or whitespace only
+        ValueError        — temperature is outside 0.0–2.0
+        ValueError        — max_tokens is less than 1
+        ConnectionError   — Ollama server is not running
+        ollama.ResponseError — model not found or API returned an error
+        RuntimeError      — API returned a response with no text content
 
     Example:
         response = generate("write a CUDA kernel for vector addition")
@@ -88,24 +93,46 @@ def generate(prompt, stream=False, temperature=0.7, max_tokens=2048):
     if not prompt or not prompt.strip():
         raise ValueError("prompt cannot be empty")
 
+    if not (0.0 <= temperature <= 2.0):
+        raise ValueError(f"temperature must be between 0.0 and 2.0, got {temperature}")
+
+    if max_tokens < 1:
+        raise ValueError(f"max_tokens must be at least 1, got {max_tokens}")
+
     options = {"temperature": temperature, "num_predict": max_tokens}
 
-    if stream:
-        full_response = ""
-        chunks = ollama.generate(
-            model=MODEL, prompt=prompt, stream=True, options=options
+    try:
+        if stream:
+            full_response = ""
+            chunks = ollama.generate(
+                model=MODEL, prompt=prompt, stream=True, options=options
+            )
+            for chunk in chunks:
+                token = chunk["response"]
+                print(token, end="", flush=True)
+                full_response += token
+            print()
+            return full_response
+        else:
+            response = ollama.generate(
+                model=MODEL, prompt=prompt, stream=False, options=options
+            )
+            text = response["response"]
+            if text is None:
+                raise RuntimeError("Ollama returned a response with no text content")
+            return text
+
+    except ConnectionError:
+        # Re-raise with a clear message so the caller knows to start Ollama
+        raise ConnectionError(
+            "Could not reach the Ollama server. "
+            "Make sure Ollama is running: https://ollama.com/download"
         )
-        for chunk in chunks:
-            token = chunk["response"]
-            print(token, end="", flush=True)
-            full_response += token
-        print()
-        return full_response
-    else:
-        response = ollama.generate(
-            model=MODEL, prompt=prompt, stream=False, options=options
+    except ollama.ResponseError as e:
+        # Re-raise with context so the caller knows which model failed
+        raise ollama.ResponseError(
+            f"Ollama API error in generate() using model '{MODEL}': {e}"
         )
-        return response["response"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -130,7 +157,10 @@ def embed(text, use_cache=True):
         numpy.ndarray — 1-D array of floats
 
     Raises:
-        ValueError — if text is empty or whitespace only
+        ValueError        — text is empty or whitespace only
+        ConnectionError   — Ollama server is not running
+        ollama.ResponseError — model not found or API returned an error
+        RuntimeError      — API returned an empty embedding vector
 
     Example:
         vector = embed("CUDA kernel for matrix multiply")
@@ -144,8 +174,26 @@ def embed(text, use_cache=True):
     if use_cache and text in _embedding_cache:
         return _embedding_cache[text]
 
-    response = ollama.embeddings(model=MODEL, prompt=text)
-    vector = np.array(response["embedding"])
+    try:
+        response = ollama.embeddings(model=MODEL, prompt=text)
+    except ConnectionError:
+        raise ConnectionError(
+            "Could not reach the Ollama server. "
+            "Make sure Ollama is running: https://ollama.com/download"
+        )
+    except ollama.ResponseError as e:
+        raise ollama.ResponseError(
+            f"Ollama API error in embed() using model '{MODEL}': {e}"
+        )
+
+    embedding = response.get("embedding")
+    if not embedding:
+        raise RuntimeError(
+            f"Ollama returned an empty embedding for model '{MODEL}'. "
+            "Make sure the model supports embeddings."
+        )
+
+    vector = np.array(embedding)
 
     if use_cache:
         _embedding_cache[text] = vector
@@ -178,6 +226,12 @@ def similarity(text_a, text_b):
     Returns:
         float — similarity score, rounded to 4 decimal places
 
+    Raises:
+        ValueError        — either text is empty or whitespace only
+        RuntimeError      — a vector has zero magnitude (cannot compute cosine similarity)
+        ConnectionError   — Ollama server is not running
+        ollama.ResponseError — model not found or API returned an error
+
     Example:
         score = similarity("CUDA kernel", "GPU function")
         print(score)   # e.g. 0.91 — very similar
@@ -188,12 +242,26 @@ def similarity(text_a, text_b):
     vector_a = embed(text_a)
     vector_b = embed(text_b)
 
-    # Cosine similarity: dot product / (magnitude_a × magnitude_b)
-    # Result is between -1.0 (opposite) and 1.0 (identical direction)
-    dot    = np.dot(vector_a, vector_b)
     norm_a = np.linalg.norm(vector_a)
     norm_b = np.linalg.norm(vector_b)
-    score  = dot / (norm_a * norm_b)
+
+    # Guard against division by zero — a zero vector has no direction so
+    # cosine similarity is undefined
+    if norm_a == 0:
+        raise RuntimeError(
+            f"The embedding for text_a has zero magnitude — "
+            f"cosine similarity is undefined. Text: '{text_a[:60]}'"
+        )
+    if norm_b == 0:
+        raise RuntimeError(
+            f"The embedding for text_b has zero magnitude — "
+            f"cosine similarity is undefined. Text: '{text_b[:60]}'"
+        )
+
+    # Cosine similarity: dot product / (magnitude_a × magnitude_b)
+    # Result is between -1.0 (opposite) and 1.0 (identical direction)
+    dot   = np.dot(vector_a, vector_b)
+    score = dot / (norm_a * norm_b)
 
     return round(float(score), 4)
 
@@ -209,16 +277,21 @@ def search(query, labels, texts, top_n=3):
     Does NOT search for exact words — finds the closest meaning using embeddings.
 
     Args:
-        query  (str)       — what you are looking for
+        query  (str)       — what you are looking for (must not be empty)
         labels (list[str]) — display names for each item, e.g. ["file1.cu", "file2.cu"]
         texts  (list[str]) — content of each item,       e.g. [code1, code2]
-        top_n  (int)       — how many top results to return (default 3)
+        top_n  (int)       — how many top results to return, must be >= 1 (default 3)
 
     Returns:
         list of (score: float, label: str) tuples, sorted best-first
 
     Raises:
-        ValueError — if labels and texts have different lengths, or are empty
+        ValueError        — query is empty or whitespace only
+        ValueError        — labels and texts have different lengths
+        ValueError        — labels and texts are empty
+        ValueError        — top_n is less than 1
+        ConnectionError   — Ollama server is not running
+        ollama.ResponseError — model not found or API returned an error
 
     Example:
         labels  = ["kernel.cu",    "utils.h",         "main.cpp"]
@@ -228,6 +301,9 @@ def search(query, labels, texts, top_n=3):
         for score, label in results:
             print(f"{score:.3f} — {label}")
     """
+    if not query or not query.strip():
+        raise ValueError("query cannot be empty")
+
     if len(labels) != len(texts):
         raise ValueError(
             f"labels ({len(labels)}) and texts ({len(texts)}) must be the same length"
@@ -235,15 +311,21 @@ def search(query, labels, texts, top_n=3):
     if not labels:
         raise ValueError("labels and texts cannot be empty")
 
+    if top_n < 1:
+        raise ValueError(f"top_n must be at least 1, got {top_n}")
+
     query_vec = embed(query)
 
     results = []
     for label, text in zip(labels, texts):
         item_vec = embed(text)
-        score = float(
-            np.dot(query_vec, item_vec)
-            / (np.linalg.norm(query_vec) * np.linalg.norm(item_vec))
-        )
+        norm_q = np.linalg.norm(query_vec)
+        norm_i = np.linalg.norm(item_vec)
+        # Skip items whose vector has zero magnitude — cosine similarity undefined
+        if norm_q == 0 or norm_i == 0:
+            score = 0.0
+        else:
+            score = float(np.dot(query_vec, item_vec) / (norm_q * norm_i))
         results.append((round(score, 4), label))
 
     # Sort highest score first, then return the requested number of results
@@ -283,14 +365,24 @@ class OllamaChat:
         Create a new, empty conversation.
 
         Args:
-            model         (str) — Ollama model name (default: module-level MODEL)
+            model         (str) — Ollama model name, must not be empty
             system_prompt (str) — instructions given to the model at the start
-                                  of every conversation (default: module-level SYSTEM_PROMPT)
+                                  of every conversation, must not be empty
+
+        Raises:
+            ValueError — model is empty or whitespace only
+            ValueError — system_prompt is empty or whitespace only
 
         Example:
             conv = OllamaChat()
             conv = OllamaChat(model="llama3:8b", system_prompt="You are a pirate.")
         """
+        if not model or not str(model).strip():
+            raise ValueError("model name cannot be empty")
+
+        if not system_prompt or not str(system_prompt).strip():
+            raise ValueError("system_prompt cannot be empty")
+
         self.model = model
         self._history = [{"role": "system", "content": system_prompt}]
         self._title = None
@@ -303,19 +395,26 @@ class OllamaChat:
 
         Each call appends both the user message and the assistant reply to the
         internal history, so follow-up questions have full context.
+        If the API call fails, the user message is rolled back from the history
+        so the conversation stays in a consistent state.
 
         Args:
-            message     (str)   — your message
+            message     (str)   — your message, must not be empty
             stream      (bool)  — True: print tokens as they arrive
                                   False: return full reply as string (default)
-            temperature (float) — 0.0 = deterministic / 0.7 = balanced / 1.5 = creative
-            max_tokens  (int)   — maximum response length (default 2048)
+            temperature (float) — 0.0 = deterministic / 0.7 = balanced / 2.0 = max
+            max_tokens  (int)   — maximum response length, must be >= 1
 
         Returns:
             str — the model's full reply
 
         Raises:
-            ValueError — if message is empty or whitespace only
+            ValueError        — message is empty or whitespace only
+            ValueError        — temperature is outside 0.0–2.0
+            ValueError        — max_tokens is less than 1
+            ConnectionError   — Ollama server is not running
+            ollama.ResponseError — model not found or API returned an error
+            RuntimeError      — API returned a reply with no text content
 
         Example:
             conv = OllamaChat()
@@ -326,6 +425,14 @@ class OllamaChat:
         if not message or not message.strip():
             raise ValueError("message cannot be empty")
 
+        if not (0.0 <= temperature <= 2.0):
+            raise ValueError(
+                f"temperature must be between 0.0 and 2.0, got {temperature}"
+            )
+
+        if max_tokens < 1:
+            raise ValueError(f"max_tokens must be at least 1, got {max_tokens}")
+
         # Track whether this is the first real message (used for auto-title below)
         is_first_message = len(self._history) == 1
 
@@ -334,27 +441,50 @@ class OllamaChat:
 
         options = {"temperature": temperature, "num_predict": max_tokens}
 
-        if stream:
-            full_reply = ""
-            chunks = ollama.chat(
-                model=self.model,
-                messages=self._history,
-                stream=True,
-                options=options,
+        try:
+            if stream:
+                full_reply = ""
+                chunks = ollama.chat(
+                    model=self.model,
+                    messages=self._history,
+                    stream=True,
+                    options=options,
+                )
+                for chunk in chunks:
+                    token = chunk["message"]["content"]
+                    print(token, end="", flush=True)
+                    full_reply += token
+                print()
+            else:
+                response = ollama.chat(
+                    model=self.model,
+                    messages=self._history,
+                    stream=False,
+                    options=options,
+                )
+                full_reply = response["message"]["content"]
+                if full_reply is None:
+                    raise RuntimeError(
+                        "Ollama returned a reply with no text content"
+                    )
+
+        except ConnectionError:
+            # Roll back the user message so history stays consistent
+            self._history.pop()
+            raise ConnectionError(
+                "Could not reach the Ollama server. "
+                "Make sure Ollama is running: https://ollama.com/download"
             )
-            for chunk in chunks:
-                token = chunk["message"]["content"]
-                print(token, end="", flush=True)
-                full_reply += token
-            print()
-        else:
-            response = ollama.chat(
-                model=self.model,
-                messages=self._history,
-                stream=False,
-                options=options,
+        except ollama.ResponseError as e:
+            # Roll back the user message so history stays consistent
+            self._history.pop()
+            raise ollama.ResponseError(
+                f"Ollama API error in chat() using model '{self.model}': {e}"
             )
-            full_reply = response["message"]["content"]
+        except RuntimeError:
+            # Roll back the user message so history stays consistent
+            self._history.pop()
+            raise
 
         # Append assistant turn so the next call has full context
         self._history.append({"role": "assistant", "content": full_reply})
@@ -414,6 +544,9 @@ class OllamaChat:
         Returns:
             str — the path where the file was saved
 
+        Raises:
+            OSError — filepath is not writable or the directory cannot be created
+
         Example:
             path = conv.save_history()
             print(f"Saved to {path}")
@@ -423,14 +556,25 @@ class OllamaChat:
         """
         if filepath is None:
             save_dir = os.path.expanduser("~/conversations")
-            os.makedirs(save_dir, exist_ok=True)
+            try:
+                os.makedirs(save_dir, exist_ok=True)
+            except OSError as e:
+                raise OSError(
+                    f"Could not create conversations directory '{save_dir}': {e}"
+                )
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filepath = f"{save_dir}/session_{timestamp}.json"
 
         filepath = os.path.expanduser(filepath)
         payload = {"title": self._title, "messages": self._history}
-        with open(filepath, "w") as f:
-            json.dump(payload, f, indent=2)
+
+        try:
+            with open(filepath, "w") as f:
+                json.dump(payload, f, indent=2)
+        except OSError as e:
+            raise OSError(
+                f"Could not write history to '{filepath}': {e}"
+            )
 
         return filepath
 
@@ -448,14 +592,16 @@ class OllamaChat:
             filepath (str) — path to the saved JSON file
 
         Raises:
-            FileNotFoundError  — if the file does not exist
-            json.JSONDecodeError — if the file is not valid JSON
+            FileNotFoundError    — file does not exist
+            json.JSONDecodeError — file is not valid JSON
+            ValueError           — file structure is not a valid history format
 
         Example:
             conv.load_history("~/conversations/session_20260320.json")
             conv.chat("continue where we left off")
         """
         filepath = os.path.expanduser(filepath)
+
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"History file not found: {filepath}")
 
@@ -464,11 +610,44 @@ class OllamaChat:
 
         # Support both {"title":..., "messages":[...]} and the old plain list format
         if isinstance(data, list):
-            self._history = data
-            self._title = None
+            messages = data
+            title = None
+        elif isinstance(data, dict):
+            if "messages" not in data:
+                raise ValueError(
+                    f"Invalid history file '{filepath}': "
+                    "missing required 'messages' key"
+                )
+            messages = data["messages"]
+            title = data.get("title")
         else:
-            self._history = data["messages"]
-            self._title = data.get("title")
+            raise ValueError(
+                f"Invalid history file '{filepath}': "
+                "expected a JSON object or list, got "
+                f"{type(data).__name__}"
+            )
+
+        if not isinstance(messages, list):
+            raise ValueError(
+                f"Invalid history file '{filepath}': "
+                "'messages' must be a list"
+            )
+
+        # Validate each message has the required role and content fields
+        for i, msg in enumerate(messages):
+            if not isinstance(msg, dict):
+                raise ValueError(
+                    f"Invalid history file '{filepath}': "
+                    f"message at index {i} is not a dict"
+                )
+            if "role" not in msg or "content" not in msg:
+                raise ValueError(
+                    f"Invalid history file '{filepath}': "
+                    f"message at index {i} is missing 'role' or 'content'"
+                )
+
+        self._history = messages
+        self._title = title
 
     # ── Title ─────────────────────────────────────────────────────────────────
 
@@ -496,7 +675,7 @@ class OllamaChat:
             title (str) — new title; leading/trailing whitespace is stripped
 
         Raises:
-            ValueError — if title is empty or whitespace only
+            ValueError — title is empty or whitespace only
 
         Example:
             conv.set_title("CUDA Shared Memory Session")
@@ -511,7 +690,8 @@ class OllamaChat:
     def _generate_title(self, first_message):
         """
         Ask the model for a short title based on the first user message.
-        Falls back to a truncated version of the message if the API fails.
+        Falls back to a truncated version of the message if the API fails
+        for any reason — title generation must never crash a conversation.
 
         Args:
             first_message (str) — the first user message in the conversation
@@ -528,5 +708,6 @@ class OllamaChat:
             title = generate(prompt, temperature=0.3, max_tokens=20)
             return title.strip().strip('"').strip("'")
         except Exception:
-            # Fall back to a truncated version of the first message
+            # Fall back to a truncated version of the first message so the
+            # conversation always gets some kind of title
             return first_message[:60].strip()
