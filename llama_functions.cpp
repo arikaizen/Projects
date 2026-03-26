@@ -114,7 +114,7 @@ Role role_from_string(const std::string& s) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 LlamaModel::LlamaModel(const std::string& model_path, int ctx_size, int n_threads)
-    : _model(nullptr), _ctx(nullptr), _n_threads(n_threads)
+    : _model(nullptr), _ctx(nullptr), _n_threads(n_threads), _ctx_size(ctx_size)
 {
     // Initialise the llama backend (safe to call multiple times — llama.cpp
     // uses an internal reference count)
@@ -482,12 +482,25 @@ LlamaModel::search(const std::string&              query,
 // ─────────────────────────────────────────────────────────────────────────────
 
 LlamaChat::LlamaChat(LlamaModel& model, const std::string& system_prompt)
-    : _model(model), _system_prompt(system_prompt)
+    : _model(model), _system_prompt(system_prompt), _chat_ctx(nullptr), _n_past(0)
 {
     // ── Validate the system prompt ────────────────────────────────────────────
 
     if (is_blank(system_prompt)) {
         throw std::invalid_argument("system_prompt must not be blank");
+    }
+
+    // ── Create a dedicated inference context for this conversation ────────────
+    // Each LlamaChat gets its own llama_context so its KV cache is completely
+    // independent from other chats and from LlamaModel::generate().
+    llama_context_params ctx_params = llama_context_default_params();
+    ctx_params.n_ctx         = model._ctx_size;   // Match model's configured window size
+    ctx_params.n_threads     = model._n_threads;
+    ctx_params.n_threads_batch = model._n_threads;
+
+    _chat_ctx = llama_new_context_with_model(model.raw_model(), ctx_params);
+    if (!_chat_ctx) {
+        throw std::runtime_error("Failed to create dedicated chat context");
     }
 
     // ── Seed the history with the system message ──────────────────────────────
@@ -496,9 +509,121 @@ LlamaChat::LlamaChat(LlamaModel& model, const std::string& system_prompt)
     _history.push_back({Role::System, system_prompt});
 }
 
+LlamaChat::~LlamaChat() noexcept {
+    // Free our dedicated KV-cache context (model weights are NOT owned here)
+    if (_chat_ctx) {
+        llama_free(_chat_ctx);
+        _chat_ctx = nullptr;
+    }
+}
+
+LlamaChat::LlamaChat(LlamaChat&& other) noexcept
+    : _model(other._model)
+    , _system_prompt(std::move(other._system_prompt))
+    , _history(std::move(other._history))
+    , _title(std::move(other._title))
+    , _chat_ctx(other._chat_ctx)
+    , _n_past(other._n_past)
+{
+    // Null out the source so its destructor doesn't free the context we just took
+    other._chat_ctx = nullptr;
+    other._n_past   = 0;
+}
+
+LlamaChat& LlamaChat::operator=(LlamaChat&& other) noexcept {
+    if (this != &other) {
+        // Free our current context before stealing the other's
+        if (_chat_ctx) llama_free(_chat_ctx);
+
+        // _model is a reference — cannot be rebound, so move-assign only works
+        // when both sides reference the same model (enforced by design)
+        _system_prompt = std::move(other._system_prompt);
+        _history       = std::move(other._history);
+        _title         = std::move(other._title);
+        _chat_ctx      = other._chat_ctx;
+        _n_past        = other._n_past;
+
+        other._chat_ctx = nullptr;
+        other._n_past   = 0;
+    }
+    return *this;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LlamaChat — private helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+void LlamaChat::_reset_kv_cache() noexcept {
+    // Wipe every KV vector stored in this conversation's context
+    llama_kv_cache_clear(_chat_ctx);
+    // Reset the cursor — next chat() will re-process from token 0
+    _n_past = 0;
+}
+
+std::string LlamaChat::_run_incremental_inference(
+    const std::vector<llama_token>& all_tokens,
+    float temperature, int max_tokens)
+{
+    // ── Compute how many new tokens the model hasn't seen yet ─────────────────
+    int32_t n_new = static_cast<int32_t>(all_tokens.size()) - _n_past;
+
+    // Safety: if _n_past somehow got ahead (e.g. after a partial failure),
+    // fall back to a full reprocess rather than feeding garbage offsets
+    if (n_new <= 0) {
+        _reset_kv_cache();
+        n_new = static_cast<int32_t>(all_tokens.size());
+    }
+
+    // ── Feed only the new suffix tokens into the KV cache ────────────────────
+    // all_tokens[0.._n_past) are already cached — skip them entirely
+    llama_batch prompt_batch = llama_batch_get_one(
+        const_cast<llama_token*>(all_tokens.data()) + _n_past,
+        n_new
+    );
+    if (llama_decode(_chat_ctx, prompt_batch) != 0) {
+        throw std::runtime_error("llama_decode failed during prompt evaluation");
+    }
+    // Advance the cursor past the new prompt tokens we just processed
+    _n_past += n_new;
+
+    // ── Build a sampler chain ─────────────────────────────────────────────────
+    llama_sampler_chain_params sp = llama_sampler_chain_default_params();
+    llama_sampler* sampler = llama_sampler_chain_init(sp);
+    llama_sampler_chain_add(sampler, llama_sampler_init_temp(temperature));
+    llama_sampler_chain_add(sampler, llama_sampler_init_top_p(0.9f, 1));
+    llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+
+    // ── Auto-regressive decoding loop ─────────────────────────────────────────
+    std::string result;
+    result.reserve(max_tokens * 4);
+
+    for (int i = 0; i < max_tokens; ++i) {
+        // Sample one token from the current logits
+        llama_token new_token = llama_sampler_sample(sampler, _chat_ctx, -1);
+
+        // End-of-generation token means the model is done
+        if (llama_token_is_eog(_model.raw_model(), new_token)) break;
+
+        // Convert the token ID to its UTF-8 string piece
+        char piece[32];
+        int piece_len = llama_token_to_piece(
+            _model.raw_model(), new_token, piece, sizeof(piece), 0, false);
+        if (piece_len > 0) result.append(piece, piece_len);
+
+        // Feed the generated token back so it becomes part of the KV cache
+        // for the next iteration — this is what makes generation auto-regressive
+        llama_batch next_batch = llama_batch_get_one(&new_token, 1);
+        if (llama_decode(_chat_ctx, next_batch) != 0) {
+            llama_sampler_free(sampler);
+            throw std::runtime_error("llama_decode failed during token generation");
+        }
+        // Each generated token extends the cached sequence by one position
+        ++_n_past;
+    }
+
+    llama_sampler_free(sampler);
+    return result;
+}
 
 std::string LlamaChat::_build_prompt() const {
     // ── Convert our Message vector to the llama_chat_message C struct array ───
@@ -616,10 +741,14 @@ std::string LlamaChat::chat(const std::string& message,
 
         std::string prompt = _build_prompt();
 
-        // ── Tokenise and run inference ────────────────────────────────────────
+        // ── Tokenise the full prompt ──────────────────────────────────────────
 
         std::vector<llama_token> tokens = _model._tokenize(prompt, /*add_bos=*/true);
-        std::string reply = _model._run_inference(tokens, temperature, max_tokens);
+
+        // ── Run incremental inference (reuses cached KV vectors) ──────────────
+        // Only tokens beyond _n_past are fed to llama_decode — the rest are
+        // already in the KV cache from previous turns.
+        std::string reply = _run_incremental_inference(tokens, temperature, max_tokens);
 
         if (is_blank(reply)) {
             throw std::runtime_error("Model returned an empty response");
@@ -643,10 +772,13 @@ std::string LlamaChat::chat(const std::string& message,
         return reply;
 
     } catch (...) {
-        // ── History rollback on failure ───────────────────────────────────────
-        // Remove the user message we optimistically appended so the history
-        // remains in a consistent state, mirroring Python's rollback logic.
+        // ── Rollback on failure ───────────────────────────────────────────────
+        // Remove the user message we optimistically appended so history stays
+        // consistent, mirroring Python's rollback logic.
         _history.pop_back();
+        // Also wipe the KV cache — it may be partially updated and out of sync
+        // with the history we just rolled back.  Next call reprocesses cleanly.
+        _reset_kv_cache();
         throw;  // Re-raise the original exception unchanged
     }
 }
@@ -654,6 +786,9 @@ std::string LlamaChat::chat(const std::string& message,
 void LlamaChat::clear_history() noexcept {
     // Remove all messages except the initial system prompt (always index 0)
     _history.erase(_history.begin() + 1, _history.end());
+    // Wipe the KV cache — the cached vectors represent the old turns which are
+    // now gone.  Next chat() will rebuild from just the system prompt.
+    _reset_kv_cache();
     // Note: title is intentionally kept — clearing history doesn't rename the chat
 }
 
@@ -765,6 +900,9 @@ void LlamaChat::load_history(const std::string& filepath) {
 
     _history = std::move(new_history);
     _title   = std::move(new_title);
+    // Wipe the KV cache — the loaded history has never been through llama_decode,
+    // so there are no cached vectors for it.  Next chat() reprocesses from scratch.
+    _reset_kv_cache();
 }
 
 std::optional<std::string> LlamaChat::get_title() const noexcept {

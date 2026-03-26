@@ -276,9 +276,13 @@ private:
     llama_model*   _model;            // Owned pointer — freed in destructor
     llama_context* _ctx;              // Owned pointer — freed in destructor
     int            _n_threads;        // Thread count stored for context params
+    int            _ctx_size;         // Context window size (shared with LlamaChat)
 
     // Cache: text → embedding vector (shared across all callers of this model)
     std::unordered_map<std::string, std::vector<float>> _embedding_cache;
+
+    // LlamaChat needs access to _tokenize, _n_threads, and _ctx_size
+    friend class LlamaChat;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -315,16 +319,16 @@ public:
     explicit LlamaChat(LlamaModel&        model,
                        const std::string& system_prompt = "You are a helpful assistant.");
 
-    // Default destructor — no owned pointers; model is held by reference
-    ~LlamaChat() = default;
+    // Destructor — frees the dedicated chat inference context
+    ~LlamaChat() noexcept;
 
     // Non-copyable — copying a live conversation is almost never correct
     LlamaChat(const LlamaChat&)            = delete;
     LlamaChat& operator=(const LlamaChat&) = delete;
 
-    // Movable
-    LlamaChat(LlamaChat&&) noexcept            = default;
-    LlamaChat& operator=(LlamaChat&&) noexcept = default;
+    // Movable — transfers ownership of _chat_ctx and nulls out the source
+    LlamaChat(LlamaChat&&) noexcept;
+    LlamaChat& operator=(LlamaChat&&) noexcept;
 
     // ── Conversation ─────────────────────────────────────────────────────────
 
@@ -462,10 +466,39 @@ private:
      */
     std::string _build_prompt() const;
 
+    /**
+     * Process only the new tokens (beyond _n_past) into the KV cache and
+     * auto-regressively sample the reply.
+     *
+     * Reuses all previously cached KV vectors — only the suffix not yet seen
+     * is fed to llama_decode.  Updates _n_past to include both the new prompt
+     * tokens and the generated reply tokens.
+     *
+     * @param all_tokens  Full tokenised prompt (history + new turn).
+     * @param temperature Sampling temperature.
+     * @param max_tokens  Maximum tokens to generate.
+     *
+     * @returns The generated reply string.
+     *
+     * @throws std::runtime_error if llama_decode fails at any point.
+     */
+    std::string _run_incremental_inference(const std::vector<llama_token>& all_tokens,
+                                           float                           temperature,
+                                           int                             max_tokens);
+
+    /**
+     * Clear the KV cache of _chat_ctx and reset _n_past to zero.
+     * Must be called whenever history is mutated in a way that invalidates
+     * previously cached vectors (clear_history, load_history).
+     */
+    void _reset_kv_cache() noexcept;
+
     // ── Member data ───────────────────────────────────────────────────────────
 
     LlamaModel&                  _model;         // Non-owning reference to shared model
     std::string                  _system_prompt; // System instruction (constant after init)
     std::vector<Message>         _history;       // Full conversation: system + user/assistant turns
     std::optional<std::string>   _title;         // Conversation title (set after first message)
+    llama_context*               _chat_ctx;      // Dedicated context — owns the KV cache for this conversation
+    int32_t                      _n_past;         // Number of tokens already processed into the KV cache
 };
