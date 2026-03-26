@@ -27,6 +27,11 @@ from test_ollama_functions import (
     TestEmbed,
     TestSimilarity,
     TestSearch,
+    TestGenerateErrors,
+    TestChatErrors,
+    TestOllamaChatInitErrors,
+    TestLoadHistoryErrors,
+    TestSaveHistoryErrors,
 )
 
 # ── Assemble the suite ────────────────────────────────────────────────────────
@@ -64,6 +69,23 @@ suite.addTests(loader.loadTestsFromTestCase(TestSimilarity))
 
 # search() — finding the most relevant item from a list
 suite.addTests(loader.loadTestsFromTestCase(TestSearch))
+
+# ── Error handling — invalid parameters, bad files, corrupt data ──────────────
+
+# generate() — invalid temperature and max_tokens values
+suite.addTests(loader.loadTestsFromTestCase(TestGenerateErrors))
+
+# OllamaChat.chat() — invalid parameters and history rollback on failure
+suite.addTests(loader.loadTestsFromTestCase(TestChatErrors))
+
+# OllamaChat.__init__() — invalid model name and system prompt
+suite.addTests(loader.loadTestsFromTestCase(TestOllamaChatInitErrors))
+
+# OllamaChat.load_history() — corrupt, malformed, and wrong-type JSON files
+suite.addTests(loader.loadTestsFromTestCase(TestLoadHistoryErrors))
+
+# OllamaChat.save_history() — unwritable paths
+suite.addTests(loader.loadTestsFromTestCase(TestSaveHistoryErrors))
 
 # ── Parse CLI flags ───────────────────────────────────────────────────────────
 

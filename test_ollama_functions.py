@@ -705,6 +705,212 @@ class TestSearch(unittest.TestCase):
         with self.assertRaises(ValueError):
             of.search("q", [], [])
 
+    def test_empty_query_raises(self):
+        # An empty query has no meaning to search for — reject before embedding
+        with self.assertRaises(ValueError):
+            of.search("", ["a"], ["some text"])
+
+    def test_whitespace_query_raises(self):
+        # Whitespace-only strips to nothing — treat as empty and reject
+        with self.assertRaises(ValueError):
+            of.search("   ", ["a"], ["some text"])
+
+    def test_top_n_zero_raises(self):
+        # Asking for zero results makes no sense — reject it
+        with self.assertRaises(ValueError):
+            of.search("query", ["a"], ["text"], top_n=0)
+
+    def test_top_n_negative_raises(self):
+        # A negative top_n is nonsensical — reject it
+        with self.assertRaises(ValueError):
+            of.search("query", ["a"], ["text"], top_n=-1)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Error handling — invalid parameters caught before any API call
+# These tests never touch the network so they pass whether Ollama is up or not
+# ─────────────────────────────────────────────────────────────────────────────
+class TestGenerateErrors(unittest.TestCase):
+
+    def setUp(self):
+        # Clear cache for consistency even though generate() doesn't use it
+        _reset()
+
+    def test_temperature_below_zero_raises(self):
+        # Temperature below 0.0 is outside the valid range — reject early
+        with self.assertRaises(ValueError):
+            of.generate("hello", temperature=-0.1)
+
+    def test_temperature_above_two_raises(self):
+        # Temperature above 2.0 is outside the valid range — reject early
+        with self.assertRaises(ValueError):
+            of.generate("hello", temperature=2.1)
+
+    def test_max_tokens_zero_raises(self):
+        # Zero tokens means no output — there is nothing useful to return
+        with self.assertRaises(ValueError):
+            of.generate("hello", max_tokens=0)
+
+    def test_max_tokens_negative_raises(self):
+        # A negative token limit is nonsensical — reject it
+        with self.assertRaises(ValueError):
+            of.generate("hello", max_tokens=-1)
+
+
+class TestChatErrors(unittest.TestCase):
+
+    def setUp(self):
+        # Clear cache and create a fresh conversation for every test
+        _reset()
+        self.conv = of.OllamaChat()
+
+    def test_temperature_below_zero_raises(self):
+        # Temperature below 0.0 is invalid — reject before touching history
+        with self.assertRaises(ValueError):
+            self.conv.chat("hello", temperature=-0.1)
+
+    def test_temperature_above_two_raises(self):
+        # Temperature above 2.0 is invalid — reject before touching history
+        with self.assertRaises(ValueError):
+            self.conv.chat("hello", temperature=2.1)
+
+    def test_max_tokens_zero_raises(self):
+        # Zero max_tokens means no output — reject before touching history
+        with self.assertRaises(ValueError):
+            self.conv.chat("hello", max_tokens=0)
+
+    def test_max_tokens_negative_raises(self):
+        # A negative token limit is nonsensical — reject before touching history
+        with self.assertRaises(ValueError):
+            self.conv.chat("hello", max_tokens=-1)
+
+    def test_history_not_modified_on_invalid_temperature(self):
+        # When validation fails, the user message must NOT be appended to history.
+        # If it were, the next successful chat() would send a dangling user message
+        # with no corresponding assistant reply, corrupting the conversation.
+        history_before = len(self.conv.get_history())
+
+        # Attempt a chat with an invalid temperature — must raise before modifying history
+        with self.assertRaises(ValueError):
+            self.conv.chat("hello", temperature=99.0)
+
+        # History length must be identical to what it was before the failed call
+        self.assertEqual(len(self.conv.get_history()), history_before)
+
+
+class TestOllamaChatInitErrors(unittest.TestCase):
+
+    def test_empty_model_raises(self):
+        # An empty model name cannot be sent to Ollama — reject at construction time
+        with self.assertRaises(ValueError):
+            of.OllamaChat(model="")
+
+    def test_whitespace_model_raises(self):
+        # A whitespace-only model name is the same as empty — reject it
+        with self.assertRaises(ValueError):
+            of.OllamaChat(model="   ")
+
+    def test_empty_system_prompt_raises(self):
+        # An empty system prompt gives the model no instructions — reject it
+        with self.assertRaises(ValueError):
+            of.OllamaChat(system_prompt="")
+
+    def test_whitespace_system_prompt_raises(self):
+        # A whitespace-only system prompt strips to nothing — reject it
+        with self.assertRaises(ValueError):
+            of.OllamaChat(system_prompt="   ")
+
+
+class TestLoadHistoryErrors(unittest.TestCase):
+
+    def setUp(self):
+        # Clear cache and create a fresh conversation for every test
+        _reset()
+        self.conv = of.OllamaChat()
+
+    def test_load_missing_messages_key_raises(self):
+        # A JSON object without a "messages" key is not a valid history file
+        bad_data = {"title": "something", "wrong_key": []}
+
+        # Write the bad data to a temp file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+            json.dump(bad_data, tmp)
+            path = tmp.name
+        try:
+            # Must raise ValueError — not KeyError or AttributeError
+            with self.assertRaises(ValueError):
+                self.conv.load_history(path)
+        finally:
+            os.unlink(path)
+
+    def test_load_wrong_root_type_raises(self):
+        # A JSON file whose root is a number is not a valid history format
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+            json.dump(42, tmp)
+            path = tmp.name
+        try:
+            # Must raise ValueError with a clear message about the type
+            with self.assertRaises(ValueError):
+                self.conv.load_history(path)
+        finally:
+            os.unlink(path)
+
+    def test_load_message_missing_role_raises(self):
+        # A message without a "role" field is not a valid history entry
+        bad_data = {"messages": [{"content": "hello"}]}
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+            json.dump(bad_data, tmp)
+            path = tmp.name
+        try:
+            # Must raise ValueError — not KeyError
+            with self.assertRaises(ValueError):
+                self.conv.load_history(path)
+        finally:
+            os.unlink(path)
+
+    def test_load_message_missing_content_raises(self):
+        # A message without a "content" field is not a valid history entry
+        bad_data = {"messages": [{"role": "user"}]}
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+            json.dump(bad_data, tmp)
+            path = tmp.name
+        try:
+            # Must raise ValueError — not KeyError
+            with self.assertRaises(ValueError):
+                self.conv.load_history(path)
+        finally:
+            os.unlink(path)
+
+    def test_load_messages_not_a_list_raises(self):
+        # "messages" must be a list — a dict or string is not valid
+        bad_data = {"messages": "not a list"}
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+            json.dump(bad_data, tmp)
+            path = tmp.name
+        try:
+            # Must raise ValueError
+            with self.assertRaises(ValueError):
+                self.conv.load_history(path)
+        finally:
+            os.unlink(path)
+
+
+class TestSaveHistoryErrors(unittest.TestCase):
+
+    def setUp(self):
+        # Clear cache and create a fresh conversation for every test
+        _reset()
+        self.conv = of.OllamaChat()
+
+    def test_save_to_unwritable_path_raises(self):
+        # A path inside a directory that doesn't exist and can't be created
+        # should raise OSError — not silently fail or create garbage files
+        with self.assertRaises(OSError):
+            self.conv.save_history("/root/nonexistent_dir/session.json")
+
 
 if __name__ == "__main__":
     unittest.main()
