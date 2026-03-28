@@ -219,7 +219,7 @@ std::string LlamaModel::_run_inference(const std::vector<llama_token>& tokens,
     // ── Reset KV-cache state so each generate() is independent ───────────────
     // This means we do not reuse the KV cache across calls, but it keeps the
     // API simple and stateless (mirrors Python ollama.generate behaviour)
-    llama_kv_cache_clear(_ctx);
+    llama_memory_clear(llama_get_memory(_ctx), /*data=*/true);
 
     // ── Evaluate the prompt tokens ────────────────────────────────────────────
 
@@ -555,7 +555,7 @@ LlamaChat& LlamaChat::operator=(LlamaChat&& other) noexcept {
 
 void LlamaChat::_reset_kv_cache() noexcept {
     // Wipe every KV vector stored in this conversation's context
-    llama_kv_cache_clear(_chat_ctx);
+    llama_memory_clear(llama_get_memory(_chat_ctx), /*data=*/true);
     // Reset the cursor — next chat() will re-process from token 0
     _n_past = 0;
 }
