@@ -1,176 +1,139 @@
 # ==============================================================================
-# Makefile — llama_demo & llama_functions
+# Makefile — llama_demo
+# Compiles llama.cpp source files directly with g++. No cmake, no llama Makefile.
 # ==============================================================================
 #
 # Usage:
-#   make                        # build llama_demo (default)
-#   make run MODEL=path/to.gguf # build + run with a model
-#   make clean                  # remove build artefacts
-#   make help                   # show this help
+#   make LLAMA_DIR=/path/to/llama.cpp
+#   make run  LLAMA_DIR=/path/to/llama.cpp  MODEL=/path/to/model.gguf
+#   make clean
 #
-# Required variables (set on the command line or export them):
-#   LLAMA_DIR   — root of your llama.cpp clone/install
-#                 e.g. make LLAMA_DIR=~/llama.cpp
-#
-# Optional variables:
-#   NLOHMANN_DIR — directory that contains the nlohmann/ subfolder
-#                  (defaults to $(LLAMA_DIR)/examples  then /usr/include)
-#   MODEL        — .gguf model path used by 'make run'
-#                  (default: model.gguf in the current directory)
-#   CXX          — C++ compiler  (default: g++)
-#   CXXSTD       — C++ standard  (default: c++17)
-#   OPT          — optimisation flag (default: -O2)
-#   JOBS         — parallel jobs for sub-makes (default: nproc)
 # ==============================================================================
 
-# ── Compiler & flags ──────────────────────────────────────────────────────────
-CXX      ?= g++
-CXXSTD   ?= c++17
-OPT      ?= -O2
-JOBS     ?= $(shell nproc 2>/dev/null || echo 4)
+CXX  ?= g++
+CC   ?= gcc
+JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
-# ── Paths ────────────────────────────────────────────────────────────────────
-# LLAMA_DIR must be provided by the user
-LLAMA_DIR ?=
+# Path to your llama.cpp clone
+LLAMA_DIR ?= ./llama.cpp
 
-# Probe common locations for nlohmann/json.hpp
-ifneq ($(LLAMA_DIR),)
-    NLOHMANN_PROBE := $(LLAMA_DIR)/examples $(LLAMA_DIR)/include $(LLAMA_DIR)
-else
-    NLOHMANN_PROBE :=
-endif
-NLOMANN_PROBE += /usr/include /usr/local/include
+# Build output directory
+BUILD_DIR ?= build
 
-# Use NLOHMANN_DIR if explicitly set; otherwise auto-detect
-ifndef NLOHMANN_DIR
-    NLOHMANN_DIR := $(firstword $(foreach d,$(NLOHMANN_PROBE),$(if $(wildcard $(d)/nlohmann/json.hpp),$(d),)))
-endif
+# Model path for 'make run'
+MODEL ?= model.gguf
 
-# ── Derived include / library paths ──────────────────────────────────────────
-INCLUDES  := -I.
-ifneq ($(LLAMA_DIR),)
-    INCLUDES += -I$(LLAMA_DIR)/include -I$(LLAMA_DIR)
-endif
+# ── nlohmann/json (auto-detect) ────────────────────────────────────────────────────
+NLOHMANN_PROBE := $(LLAMA_DIR)/examples $(LLAMA_DIR) /usr/include /usr/local/include
+NLOHMANN_DIR   ?= $(firstword $(foreach d,$(NLOHMANN_PROBE),\
+                    $(if $(wildcard $(d)/nlohmann/json.hpp),$(d),)))
+
+# ── Include paths ─────────────────────────────────────────────────────────────────
+INCLUDES := \
+    -I. \
+    -I$(LLAMA_DIR)/include \
+    -I$(LLAMA_DIR)/ggml/include \
+    -I$(LLAMA_DIR)/src \
+    -I$(LLAMA_DIR)/ggml/src \
+    -I$(LLAMA_DIR)/ggml/src/ggml-cpu
+
 ifneq ($(NLOHMANN_DIR),)
     INCLUDES += -I$(NLOHMANN_DIR)
 endif
 
-# Library search paths — check both build/src and build (CMake layouts differ)
-LIB_DIRS  :=
-ifneq ($(LLAMA_DIR),)
-    LIB_DIRS += -L$(LLAMA_DIR)/build/src
-    LIB_DIRS += -L$(LLAMA_DIR)/build
-    LIB_DIRS += -L$(LLAMA_DIR)/build/bin
-endif
+# ── Compiler flags ────────────────────────────────────────────────────────────────
+CFLAGS   := -O2 -std=c11   $(INCLUDES)
+CXXFLAGS := -O2 -std=c++17 $(INCLUDES)
 
-LDFLAGS   := $(LIB_DIRS) -lllama -lpthread
+# ── Discover llama.cpp source files (CPU only, skip all GPU backends) ─────────────
+EXCLUDE := cuda|metal|vulkan|opencl|sycl|hip|cann|rpc|kompute
 
-# Runtime library path so the binary finds libllama.so without LD_LIBRARY_PATH
-ifneq ($(LLAMA_DIR),)
-    LDFLAGS += -Wl,-rpath,$(LLAMA_DIR)/build/src
-    LDFLAGS += -Wl,-rpath,$(LLAMA_DIR)/build
-endif
+# All .c files under ggml/src/ (CPU tensor library)
+LLAMA_C_SRCS := $(shell find $(LLAMA_DIR)/ggml/src -name "*.c" \
+                  | grep -v -E "$(EXCLUDE)")
 
-# ── Sources & targets ────────────────────────────────────────────────────────
-SRCS    := llama_functions.cpp llama_demo.cpp
-OBJS    := $(SRCS:.cpp=.o)
-TARGET  := llama_demo
+# All .cpp files under ggml/src/ and src/ (llama model + ggml backends)
+LLAMA_CPP_SRCS := $(shell find $(LLAMA_DIR)/ggml/src $(LLAMA_DIR)/src \
+                    -name "*.cpp" \
+                    | grep -v -E "$(EXCLUDE)")
 
-CXXFLAGS := -std=$(CXXSTD) $(OPT) -Wall -Wextra $(INCLUDES)
+# ── Object file paths ─────────────────────────────────────────────────────────────────
+# My files   → build/my/
+# llama files → build/lib/  (preserving sub-path to avoid name collisions)
+MY_BUILD  := $(BUILD_DIR)/my
+LIB_BUILD := $(BUILD_DIR)/lib
 
-# ── Default model path for 'make run' ────────────────────────────────────────
-MODEL   ?= model.gguf
+MY_SRCS  := llama_functions.cpp llama_demo.cpp
+MY_OBJS  := $(MY_SRCS:%.cpp=$(MY_BUILD)/%.o)
+
+LLAMA_C_OBJS   := $(patsubst $(LLAMA_DIR)/%.c,   $(LIB_BUILD)/%.o, $(LLAMA_C_SRCS))
+LLAMA_CPP_OBJS := $(patsubst $(LLAMA_DIR)/%.cpp, $(LIB_BUILD)/%.o, $(LLAMA_CPP_SRCS))
+LLAMA_OBJS     := $(LLAMA_C_OBJS) $(LLAMA_CPP_OBJS)
+
+TARGET := $(BUILD_DIR)/llama_demo
 
 # ==============================================================================
 # Targets
 # ==============================================================================
 
-.PHONY: all build run clean help check-deps
+.PHONY: all build run clean help
 
-## all: build the demo binary (default target)
-all: check-deps build
+all: build
 
-## build: compile and link llama_demo
+## build: compile everything
 build: $(TARGET)
-
-$(TARGET): $(OBJS)
-	@echo "[LD]  $@"
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo ""
-	@echo "Build successful:  ./$(TARGET)"
-	@echo "Run with:          make run MODEL=/path/to/model.gguf"
+	@echo "============================"
+	@echo " Built:  $(TARGET)"
+	@echo " Run:    make run MODEL=/path/to/model.gguf"
+	@echo "============================"
 
-%.o: %.cpp llama_functions.h
+# Link
+$(TARGET): $(MY_OBJS) $(LLAMA_OBJS)
+	@mkdir -p $(dir $@)
+	@echo "[LD]  $(notdir $@)"
+	$(CXX) -o $@ $^ -lpthread -ldl
+
+# Compile my .cpp files
+$(MY_BUILD)/%.o: %.cpp llama_functions.h
+	@mkdir -p $(dir $@)
 	@echo "[CXX] $<"
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-## run: build then run the demo with MODEL=<path>
+# Compile llama.cpp .c files
+$(LIB_BUILD)/%.o: $(LLAMA_DIR)/%.c
+	@mkdir -p $(dir $@)
+	@echo "[CC]  $<"
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Compile llama.cpp .cpp files
+$(LIB_BUILD)/%.o: $(LLAMA_DIR)/%.cpp
+	@mkdir -p $(dir $@)
+	@echo "[CXX] $<"
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+## run: build and run with a model
 run: build
 	@if [ ! -f "$(MODEL)" ]; then \
-	    echo "ERROR: model file not found: $(MODEL)"; \
+	    echo "ERROR: model not found: $(MODEL)"; \
 	    echo "Usage: make run MODEL=/path/to/model.gguf"; \
 	    exit 1; \
 	fi
-	./$(TARGET) $(MODEL)
+	$(TARGET) $(MODEL)
 
-## clean: remove compiled objects and the binary
+## clean: remove the build/ directory
 clean:
-	@echo "Cleaning..."
-	@rm -f $(OBJS) $(TARGET)
+	@echo "Removing $(BUILD_DIR)/"
+	@rm -rf $(BUILD_DIR)
 	@echo "Done."
 
-## check-deps: verify LLAMA_DIR and required headers/libs are present
-check-deps:
-	@# ── Check LLAMA_DIR ────────────────────────────────────────────────────
-	@if [ -z "$(LLAMA_DIR)" ]; then \
-	    echo "ERROR: LLAMA_DIR is not set."; \
-	    echo "       Set it to your llama.cpp directory:"; \
-	    echo "       make LLAMA_DIR=~/llama.cpp"; \
-	    exit 1; \
-	fi
-	@# ── Check llama.h ──────────────────────────────────────────────────────
-	@if [ ! -f "$(LLAMA_DIR)/include/llama.h" ] && [ ! -f "$(LLAMA_DIR)/llama.h" ]; then \
-	    echo "ERROR: llama.h not found under $(LLAMA_DIR)/include/ or $(LLAMA_DIR)/"; \
-	    echo "       Make sure LLAMA_DIR points to your llama.cpp root."; \
-	    exit 1; \
-	fi
-	@# ── Check libllama ─────────────────────────────────────────────────────
-	@if ! ls $(LLAMA_DIR)/build/src/libllama* $(LLAMA_DIR)/build/libllama* 2>/dev/null | grep -q .; then \
-	    echo "ERROR: libllama not found. Build llama.cpp first:"; \
-	    echo "       cd $(LLAMA_DIR) && cmake -B build && cmake --build build -j$(JOBS)"; \
-	    exit 1; \
-	fi
-	@# ── Check nlohmann/json.hpp ────────────────────────────────────────────
-	@if [ -z "$(NLOHMANN_DIR)" ]; then \
-	    echo "ERROR: nlohmann/json.hpp not found."; \
-	    echo "       Install it (sudo apt install nlohmann-json3-dev) or set:"; \
-	    echo "       make NLOHMANN_DIR=/path/containing/nlohmann/"; \
-	    exit 1; \
-	fi
-	@echo "[OK]  All dependencies found."
-	@echo "      LLAMA_DIR    = $(LLAMA_DIR)"
-	@echo "      NLOHMANN_DIR = $(NLOHMANN_DIR)"
-	@echo ""
-
-## help: print available targets and variables
+## help: show usage
 help:
 	@echo ""
-	@echo "======================================"
-	@echo " llama_demo Makefile"
-	@echo "======================================"
-	@echo ""
-	@echo "Targets:"
-	@grep -E '^##' $(MAKEFILE_LIST) | sed 's/^## /  /'
-	@echo ""
-	@echo "Variables (override on the command line):"
-	@echo "  LLAMA_DIR    path to llama.cpp root           (REQUIRED)"
-	@echo "  NLOHMANN_DIR path containing nlohmann/        (auto-detected)"
-	@echo "  MODEL        .gguf model file for 'make run'  (default: model.gguf)"
-	@echo "  CXX          C++ compiler                     (default: g++)"
-	@echo "  OPT          optimisation level               (default: -O2)"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make LLAMA_DIR=~/llama.cpp"
-	@echo "  make run LLAMA_DIR=~/llama.cpp MODEL=~/models/mistral.gguf"
+	@echo "  make LLAMA_DIR=/path/to/llama.cpp"
+	@echo "  make run LLAMA_DIR=/path/to/llama.cpp MODEL=/path/to/model.gguf"
 	@echo "  make clean"
+	@echo ""
+	@echo "  Optional:"
+	@echo "  NLOHMANN_DIR=/path   if nlohmann/json is not auto-detected"
 	@echo ""
