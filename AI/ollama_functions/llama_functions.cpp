@@ -142,7 +142,7 @@ LlamaModel::LlamaModel(const std::string& model_path, int ctx_size, int n_thread
     ctx_params.n_threads_batch = n_threads;  // Threads for batch decoding
 
     // Create the context; this allocates the KV cache
-    _ctx = llama_new_context_with_model(_model, ctx_params);
+    _ctx = llama_init_from_model(_model, ctx_params);
     if (!_ctx) {
         // Free the model before throwing so we don't leak
         llama_model_free(_model);
@@ -194,7 +194,7 @@ LlamaModel& LlamaModel::operator=(LlamaModel&& other) noexcept {
 std::vector<llama_token> LlamaModel::_tokenize(const std::string& text, bool add_bos) const {
     // Ask llama.cpp how many tokens the text will produce (dry run with n=0)
     int n_tokens = llama_tokenize(
-        _model,
+        llama_model_get_vocab(_model),
         text.c_str(), static_cast<int32_t>(text.size()),
         nullptr, 0,   // output buffer = null, size = 0 → count only
         add_bos,      // prepend BOS token?
@@ -206,7 +206,7 @@ std::vector<llama_token> LlamaModel::_tokenize(const std::string& text, bool add
     // Allocate the token buffer and tokenise for real
     std::vector<llama_token> tokens(n_tokens);
     llama_tokenize(
-        _model,
+        llama_model_get_vocab(_model),
         text.c_str(), static_cast<int32_t>(text.size()),
         tokens.data(), static_cast<int32_t>(tokens.size()),
         add_bos, false
@@ -263,13 +263,13 @@ std::string LlamaModel::_run_inference(const std::vector<llama_token>& tokens,
         llama_token new_token = llama_sampler_sample(sampler, _ctx, -1);
 
         // Check for End-Of-Generation token — model has finished its response
-        if (llama_token_is_eog(_model, new_token)) break;
+        if (llama_vocab_is_eog(llama_model_get_vocab(_model), new_token)) break;
 
         // ── Convert the token ID to its UTF-8 string piece ────────────────────
 
         // Most tokens map to 1–4 bytes; 32 bytes is always enough
         char piece[32];
-        int piece_len = llama_token_to_piece(_model, new_token, piece, sizeof(piece), 0, false);
+        int piece_len = llama_token_to_piece(llama_model_get_vocab(_model), new_token, piece, sizeof(piece), 0, false);
         if (piece_len > 0) {
             result.append(piece, piece_len);
         }
@@ -300,7 +300,7 @@ std::vector<float> LlamaModel::_compute_embedding(const std::string& text) const
     embd_params.embeddings       = true;        // Enable embedding output mode
     embd_params.pooling_type     = LLAMA_POOLING_TYPE_MEAN;  // Mean-pool subword tokens
 
-    llama_context* embd_ctx = llama_new_context_with_model(_model, embd_params);
+    llama_context* embd_ctx = llama_init_from_model(_model, embd_params);
     if (!embd_ctx) {
         throw std::runtime_error("Failed to create embedding context");
     }
@@ -322,7 +322,7 @@ std::vector<float> LlamaModel::_compute_embedding(const std::string& text) const
     // ── Extract the pooled embedding vector ───────────────────────────────────
 
     // llama_get_embeddings_seq returns a pointer to the pooled embedding for sequence 0
-    int n_embd = llama_n_embd(_model);
+    int n_embd = llama_model_n_embd(_model);
     const float* embd_ptr = llama_get_embeddings_seq(embd_ctx, 0);
     if (!embd_ptr) {
         llama_free(embd_ctx);
@@ -498,7 +498,7 @@ LlamaChat::LlamaChat(LlamaModel& model, const std::string& system_prompt)
     ctx_params.n_threads     = model._n_threads;
     ctx_params.n_threads_batch = model._n_threads;
 
-    _chat_ctx = llama_new_context_with_model(model.raw_model(), ctx_params);
+    _chat_ctx = llama_init_from_model(model._model, ctx_params);
     if (!_chat_ctx) {
         throw std::runtime_error("Failed to create dedicated chat context");
     }
@@ -602,12 +602,12 @@ std::string LlamaChat::_run_incremental_inference(
         llama_token new_token = llama_sampler_sample(sampler, _chat_ctx, -1);
 
         // End-of-generation token means the model is done
-        if (llama_token_is_eog(_model.raw_model(), new_token)) break;
+        if (llama_vocab_is_eog(llama_model_get_vocab(_model._model), new_token)) break;
 
         // Convert the token ID to its UTF-8 string piece
         char piece[32];
         int piece_len = llama_token_to_piece(
-            _model.raw_model(), new_token, piece, sizeof(piece), 0, false);
+            llama_model_get_vocab(_model._model), new_token, piece, sizeof(piece), 0, false);
         if (piece_len > 0) result.append(piece, piece_len);
 
         // Feed the generated token back so it becomes part of the KV cache
@@ -646,7 +646,6 @@ std::string LlamaChat::_build_prompt() const {
 
     // Dry run: pass null buffer to get the required buffer size
     int required = llama_chat_apply_template(
-        _model.raw_model(),
         nullptr,           // use the model's built-in template
         chat_msgs.data(),
         static_cast<int>(chat_msgs.size()),
@@ -667,7 +666,6 @@ std::string LlamaChat::_build_prompt() const {
     // Allocate a buffer large enough for the formatted prompt
     std::vector<char> buf(required + 1, '\0');
     llama_chat_apply_template(
-        _model.raw_model(),
         nullptr,
         chat_msgs.data(),
         static_cast<int>(chat_msgs.size()),
