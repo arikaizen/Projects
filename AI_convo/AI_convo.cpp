@@ -430,6 +430,9 @@ AIConvo& AIConvo::operator=(AIConvo&& o) noexcept {
 // ─────────────────────────────────────────────────────────────────────────────
 
 void AIConvo::_flush_kv() noexcept {
+    // Wipe every cached key/value vector and reset the position counter.
+    // Called at the start of every _run_chat() so each turn begins with a
+    // clean slate and processes the complete conversation history.
     llama_memory_clear(llama_get_memory(_ctx), /*data=*/true);
     _n_past = 0;
 }
@@ -479,24 +482,31 @@ std::string AIConvo::_build_prompt() const {
 
 std::string AIConvo::_run_chat(const std::vector<llama_token>& all_tokens,
                                 float temp, int max_tokens) {
-    // Compute how many tokens the model has not yet seen.
-    int32_t n_new = static_cast<int32_t>(all_tokens.size()) - _n_past;
+    // ── Statefulness guarantee ────────────────────────────────────────────────
+    // all_tokens is the full formatted prompt built from _history, which always
+    // contains every system/user/assistant message in chronological order.
+    // We reprocess the entire prompt on every turn so the model is guaranteed to
+    // see the complete conversation context regardless of any prior state.
+    _flush_kv();
 
-    // Guard: if _n_past is somehow ahead of the token sequence, reset and reprocess.
-    if (n_new <= 0) {
-        _flush_kv();
-        n_new = static_cast<int32_t>(all_tokens.size());
+    // ── Context overflow check ────────────────────────────────────────────────
+    // llama_decode silently truncates or errors on overflow; give a clear message.
+    if (static_cast<int>(all_tokens.size()) >= _model.ctx_size()) {
+        throw std::runtime_error(
+            "AIConvo::_run_chat: conversation is too long for the context window ("
+            + std::to_string(all_tokens.size()) + " prompt tokens, context limit "
+            + std::to_string(_model.ctx_size()) + ")");
     }
 
-    // Feed only the new suffix into the KV cache.
+    // ── Feed the full prompt into a clean KV cache ────────────────────────────
     llama_batch prompt_batch = llama_batch_get_one(
-        const_cast<llama_token*>(all_tokens.data()) + _n_past,
-        n_new
+        const_cast<llama_token*>(all_tokens.data()),
+        static_cast<int32_t>(all_tokens.size())
     );
     if (llama_decode(_ctx, prompt_batch) != 0)
         throw std::runtime_error("AIConvo::_run_chat: llama_decode failed during prompt evaluation");
 
-    _n_past += n_new;
+    _n_past = static_cast<int32_t>(all_tokens.size());
 
     // Sampler chain: temperature → top-p → draw.
     llama_sampler_chain_params scp = llama_sampler_chain_default_params();
@@ -572,6 +582,10 @@ std::string AIConvo::chat(const std::string& message,
     _history.push_back({Role::User, message});
 
     try {
+        // _build_prompt() serialises ALL of _history (system + every user/assistant
+        // pair so far + the new user message + the assistant-turn prefix).
+        // _run_chat() always reprocesses this full prompt from scratch, so the model
+        // sees the complete conversation history on every single turn.
         std::string prompt = _build_prompt();
         auto tokens        = _model._tokenize(prompt, /*add_bos=*/true);
         std::string reply  = _run_chat(tokens, temperature, max_tokens);
