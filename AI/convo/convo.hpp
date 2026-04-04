@@ -168,7 +168,7 @@ public:
     /** Discard all cached embedding vectors (frees memory). */
     void clear_embed_cache() noexcept { _embedding_cache.clear(); }
 
-    const llama_model* model_ptr()     const noexcept { return _model; }
+    llama_model*       model_ptr()      const noexcept { return _model; }
     llama_context*     ctx_ptr()       const noexcept { return _inference_ctx; }
     int                ctx_size()      const noexcept { return _context_size; }
     int                n_threads()     const noexcept { return _thread_count; }
