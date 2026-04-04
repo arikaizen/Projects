@@ -131,7 +131,7 @@ AIModel::AIModel(const std::string& model_path, int context_size, int thread_cou
     context_params.n_threads               = static_cast<uint32_t>(thread_count);
     context_params.n_threads_batch         = static_cast<uint32_t>(thread_count);
 
-    _inference_ctx = llama_new_context_with_model(_model, context_params);
+    _inference_ctx = llama_init_from_model(_model, context_params);
     if (!_inference_ctx) {
         llama_model_free(_model);
         _model = nullptr;
@@ -180,8 +180,9 @@ AIModel& AIModel::operator=(AIModel&& other) noexcept {
 
 std::vector<llama_token> AIModel::_tokenize(const std::string& text, bool add_bos) const {
     // First call with a null buffer returns the (negative) required token count.
+    const llama_vocab* vocab = llama_model_get_vocab(_model);
     int token_count = llama_tokenize(
-        _model,
+        vocab,
         text.c_str(), static_cast<int32_t>(text.size()),
         nullptr, 0,
         add_bos,
@@ -191,7 +192,7 @@ std::vector<llama_token> AIModel::_tokenize(const std::string& text, bool add_bo
 
     std::vector<llama_token> token_list(static_cast<std::size_t>(token_count));
     llama_tokenize(
-        _model,
+        vocab,
         text.c_str(), static_cast<int32_t>(text.size()),
         token_list.data(), static_cast<int32_t>(token_list.size()),
         add_bos,
@@ -228,12 +229,13 @@ std::string AIModel::_decode(const std::vector<llama_token>& tokens,
     for (int i = 0; i < max_tokens; ++i) {
         llama_token current_token = llama_sampler_sample(sampler, _inference_ctx, -1);
 
-        if (llama_token_is_eog(_model, current_token)) break;
+        const llama_vocab* vocab = llama_model_get_vocab(_model);
+        if (llama_vocab_is_eog(vocab, current_token)) break;
 
         // Decode the token id to its UTF-8 string piece (up to 32 bytes).
         char piece[32];
         int  piece_length = llama_token_to_piece(
-            _model, current_token, piece, sizeof piece, 0, false);
+            vocab, current_token, piece, sizeof piece, 0, false);
         if (piece_length > 0)
             generated_text.append(piece, static_cast<std::size_t>(piece_length));
 
@@ -258,7 +260,7 @@ std::vector<float> AIModel::_raw_embed(const std::string& text) const {
     embedding_params.embeddings            = true;
     embedding_params.pooling_type          = LLAMA_POOLING_TYPE_MEAN;
 
-    llama_context* embedding_ctx = llama_new_context_with_model(_model, embedding_params);
+    llama_context* embedding_ctx = llama_init_from_model(_model, embedding_params);
     if (!embedding_ctx)
         throw std::runtime_error("AIModel::_raw_embed: failed to create embedding context");
 
@@ -272,7 +274,7 @@ std::vector<float> AIModel::_raw_embed(const std::string& text) const {
         throw std::runtime_error("AIModel::_raw_embed: llama_decode failed");
     }
 
-    int          embedding_dimension  = llama_n_embd(_model);
+    int          embedding_dimension  = llama_model_n_embd(_model);
     const float* embedding_data_ptr   = llama_get_embeddings_seq(embedding_ctx, 0);
     if (!embedding_data_ptr) {
         llama_free(embedding_ctx);
@@ -391,7 +393,7 @@ AIConvo::AIConvo(AIModel& model, const std::string& system_prompt)
     context_params.n_threads             = static_cast<uint32_t>(model._thread_count);
     context_params.n_threads_batch       = static_cast<uint32_t>(model._thread_count);
 
-    _conversation_ctx = llama_new_context_with_model(model.model_ptr(), context_params);
+    _conversation_ctx = llama_init_from_model(model.model_ptr(), context_params);
     if (!_conversation_ctx)
         throw std::runtime_error("AIConvo: failed to create dedicated chat context");
 
@@ -459,10 +461,12 @@ std::string AIConvo::_build_prompt() const {
             {role_strings.back().c_str(), message.content.c_str()});
     }
 
+    // Get the model's built-in chat template string (nullptr = use model default).
+    const char* chat_template = llama_model_chat_template(_model.model_ptr(), nullptr);
+
     // Dry-run: pass null buffer to get the required byte count.
     int required_buffer_size = llama_chat_apply_template(
-        _model.model_ptr(),
-        nullptr,         // use the model's built-in template
+        chat_template,
         chat_message_array.data(), static_cast<int>(chat_message_array.size()),
         /*add_ass=*/true,
         nullptr, 0
@@ -480,8 +484,7 @@ std::string AIConvo::_build_prompt() const {
     std::vector<char> formatted_prompt_buffer(
         static_cast<std::size_t>(required_buffer_size) + 1, '\0');
     llama_chat_apply_template(
-        _model.model_ptr(),
-        nullptr,
+        chat_template,
         chat_message_array.data(), static_cast<int>(chat_message_array.size()),
         /*add_ass=*/true,
         formatted_prompt_buffer.data(), static_cast<int>(formatted_prompt_buffer.size())
@@ -531,11 +534,12 @@ std::string AIConvo::_run_chat(const std::vector<llama_token>& all_tokens,
     for (int i = 0; i < max_tokens; ++i) {
         llama_token current_token = llama_sampler_sample(sampler, _conversation_ctx, -1);
 
-        if (llama_token_is_eog(_model.model_ptr(), current_token)) break;
+        const llama_vocab* vocab = llama_model_get_vocab(_model.model_ptr());
+        if (llama_vocab_is_eog(vocab, current_token)) break;
 
         char piece[32];
         int  piece_length = llama_token_to_piece(
-            _model.model_ptr(), current_token, piece, sizeof piece, 0, false);
+            vocab, current_token, piece, sizeof piece, 0, false);
         if (piece_length > 0)
             reply.append(piece, static_cast<std::size_t>(piece_length));
 
