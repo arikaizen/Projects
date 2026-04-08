@@ -4,8 +4,8 @@
  * Lightweight C++17 library for local AI inference built on llama.cpp.
  *
  * Two main classes:
- *   AIModel  — loads a GGUF model; exposes stateless generate / embed /
- *              similarity / search helpers.
+ *   AIModel  — loads a GGUF model; exposes stateless Generate / Embed /
+ *              Similarity / Search helpers.
  *   AIConvo  — wraps AIModel with a persistent message history for multi-turn
  *              conversation; includes JSON save/load and auto-title generation.
  *
@@ -16,26 +16,26 @@
  *
  * Quick start:
  *   AIModel model("my_model.gguf");
- *   std::string answer = model.generate("What is 42?");
+ *   std::string answer = model.Generate("What is 42?");
  *
  *   AIConvo convo(model);
- *   std::string r1 = convo.chat("Hi, who are you?");
- *   std::string r2 = convo.chat("What did I just ask you?");  // remembers context
+ *   std::string r1 = convo.Chat("Hi, who are you?");
+ *   std::string r2 = convo.Chat("What did I just ask you?");  // remembers context
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 #pragma once
 
-#include <cstdint>
-#include <optional>
-#include <stdexcept>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+#include <cstdint>        // uint8_t, int32_t
+#include <optional>       // std::optional, std::nullopt
+#include <stdexcept>      // std::invalid_argument, std::runtime_error
+#include <string>         // std::string
+#include <unordered_map>  // std::unordered_map
+#include <utility>        // std::pair
+#include <vector>         // std::vector
 
-#include <llama.h>
-#include <nlohmann/json.hpp>
+#include <llama.h>           // llama_model, llama_context, llama_token, llama_* API
+#include <nlohmann/json.hpp> // nlohmann::json
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Role — who authored a message
@@ -55,11 +55,11 @@ enum class Role : uint8_t {
 };
 
 /** Serialize a Role to its lowercase string name. */
-std::string role_to_str(Role r);
+std::string RoleToStr(Role r);
 
 /** Parse a lowercase string back to a Role.
  *  @throws std::invalid_argument on unknown input. */
-Role role_from_str(const std::string& s);
+Role RoleFromStr(const std::string& s);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Message — one turn in a conversation
@@ -119,7 +119,7 @@ public:
      * @throws std::invalid_argument on invalid inputs.
      * @throws std::runtime_error    if the model returns nothing.
      */
-    std::string generate(const std::string& prompt,
+    std::string Generate(const std::string& prompt,
                          float temperature = 0.7f,
                          int   max_tokens  = 2048) const;
 
@@ -135,14 +135,14 @@ public:
      * @throws std::invalid_argument if text is blank.
      * @throws std::runtime_error    if the resulting vector has zero magnitude.
      */
-    std::vector<float> embed(const std::string& text, bool use_cache = true);
+    std::vector<float> Embed(const std::string& text, bool use_cache = true);
 
     /**
      * Cosine similarity between two pieces of text in [-1.0, 1.0].
      *
      * @throws std::invalid_argument if either text is blank.
      */
-    float similarity(const std::string& a, const std::string& b);
+    float Similarity(const std::string& a, const std::string& b);
 
     /**
      * Semantic search: rank candidates by similarity to query.
@@ -158,34 +158,34 @@ public:
      *                               size, or top_n < 1.
      */
     std::vector<std::pair<float, std::string>>
-    search(const std::string&              query,
-           const std::vector<std::string>& labels,
-           const std::vector<std::string>& texts,
-           int top_n = 3);
+    Search(const std::string&               query,
+           const std::vector<std::string>&  labels,
+           const std::vector<std::string>&  texts,
+           int                              top_n = 3);
 
     // ── Misc ──────────────────────────────────────────────────────────────────
 
     /** Discard all cached embedding vectors (frees memory). */
-    void clear_embed_cache() noexcept { _embedding_cache.clear(); }
+    void ClearEmbedCache() noexcept { _embedding_cache.clear(); }
 
-    llama_model*       model_ptr()      const noexcept { return _model; }
-    llama_context*     ctx_ptr()       const noexcept { return _inference_ctx; }
-    int                ctx_size()      const noexcept { return _context_size; }
-    int                n_threads()     const noexcept { return _thread_count; }
+    llama_model*   ModelPtr()    const noexcept { return _model; }
+    llama_context* CtxPtr()      const noexcept { return _inference_ctx; }
+    int            CtxSize()     const noexcept { return _context_size; }
+    int            ThreadCount() const noexcept { return _thread_count; }
 
 private:
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     /** Tokenize text into a vector of token ids. */
-    std::vector<llama_token> _tokenize(const std::string& text,
-                                       bool add_bos = true) const;
+    std::vector<llama_token> Tokenize(const std::string& text, bool add_bos = true) const;
 
     /** Feed tokens into the inference context and sample a reply string. */
-    std::string _decode(const std::vector<llama_token>& tokens,
-                        float temperature, int max_tokens) const;
+    std::string Decode(const std::vector<llama_token>& tokens,
+                       float temperature,
+                       int   max_tokens) const;
 
     /** Compute a raw (uncached) embedding for text using a temporary context. */
-    std::vector<float> _raw_embed(const std::string& text) const;
+    std::vector<float> RawEmbed(const std::string& text) const;
 
     // ── Member data ───────────────────────────────────────────────────────────
 
@@ -205,12 +205,12 @@ private:
 
 /**
  * Maintains a conversation history and reprocesses the full history on every
- * chat() turn so the model always has complete context.
+ * Chat() turn so the model always has complete context.
  *
  * History includes the initial system prompt plus all user/assistant pairs.
  *
  * Failure safety:
- *   If chat() throws after the user message was appended, the message is
+ *   If Chat() throws after the user message was appended, the message is
  *   rolled back and the KV cache is cleared so the next call starts clean.
  *
  * Not copyable (owns a llama_context). Movable.
@@ -251,17 +251,17 @@ public:
      * @throws std::invalid_argument on invalid inputs.
      * @throws std::runtime_error    on inference failure (history is rolled back).
      */
-    std::string chat(const std::string& message,
+    std::string Chat(const std::string& message,
                      float temperature = 0.7f,
                      int   max_tokens  = 2048);
 
     // ── History ───────────────────────────────────────────────────────────────
 
     /** Clear all user/assistant turns; keep the system prompt. */
-    void clear_history() noexcept;
+    void ClearHistory() noexcept;
 
     /** Return a copy of the full message history. */
-    std::vector<Message> get_history() const;
+    std::vector<Message> GetHistory() const;
 
     // ── Persistence ───────────────────────────────────────────────────────────
 
@@ -272,7 +272,7 @@ public:
      * @returns The path that was actually written.
      * @throws std::runtime_error if the file cannot be opened or written.
      */
-    std::string save_history(const std::string& path = "");
+    std::string SaveHistory(const std::string& path = "");
 
     /**
      * Replace the current history with contents loaded from a JSON file.
@@ -280,37 +280,38 @@ public:
      * @throws std::runtime_error    if the file cannot be opened.
      * @throws std::invalid_argument if the JSON is malformed or has unknown roles.
      */
-    void load_history(const std::string& path);
+    void LoadHistory(const std::string& path);
 
     // ── Title ─────────────────────────────────────────────────────────────────
 
     /** Return the conversation title, or std::nullopt if not yet set. */
-    std::optional<std::string> get_title() const noexcept;
+    std::optional<std::string> GetTitle() const noexcept;
 
     /**
      * Override the conversation title manually.
      * @throws std::invalid_argument if title is blank.
      */
-    void set_title(const std::string& title);
+    void SetTitle(const std::string& title);
 
 private:
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     /** Format _history into a single prompt string. */
-    std::string _build_prompt() const;
+    std::string BuildPrompt() const;
 
     /**
      * Clear the KV cache and decode the full prompt, then sample the reply.
      * Guarantees the model sees the complete conversation history every turn.
      */
-    std::string _run_chat(const std::vector<llama_token>& all_tokens,
-                          float temperature, int max_tokens);
+    std::string RunChat(const std::vector<llama_token>& all_tokens,
+                        float temperature,
+                        int   max_tokens);
 
     /** Wipe the KV cache of _conversation_ctx and reset _tokens_processed to 0. */
-    void _clear_kv_cache() noexcept;
+    void ClearKvCache() noexcept;
 
     /** Generate a short title from the first user message (best-effort). */
-    std::string _make_title(const std::string& first_msg);
+    std::string MakeTitle(const std::string& first_msg);
 
     // ── Member data ───────────────────────────────────────────────────────────
 

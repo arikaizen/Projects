@@ -25,13 +25,13 @@
 
 #include "convo.hpp"
 
-#include <cstdio>
-#include <cstdlib>
-#include <fstream>
-#include <iostream>
-#include <sstream>
-#include <stdexcept>
-#include <string>
+#include <cstdio>     // std::remove
+#include <cstdlib>    // (C stdlib helpers)
+#include <fstream>    // std::ifstream, std::ofstream
+#include <iostream>   // std::cout, std::cerr
+#include <sstream>    // std::ostringstream
+#include <stdexcept>  // std::invalid_argument, std::runtime_error
+#include <string>     // std::string
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lightweight test framework
@@ -119,19 +119,19 @@ static void test_role_helpers() {
     test::section("Role helpers");
 
     // role_to_str
-    CHECK_EQ(role_to_str(Role::System),    std::string("system"));
-    CHECK_EQ(role_to_str(Role::User),      std::string("user"));
-    CHECK_EQ(role_to_str(Role::Assistant), std::string("assistant"));
+    CHECK_EQ(RoleToStr(Role::System),    std::string("system"));
+    CHECK_EQ(RoleToStr(Role::User),      std::string("user"));
+    CHECK_EQ(RoleToStr(Role::Assistant), std::string("assistant"));
 
     // role_from_str round-trips
-    CHECK_EQ(role_from_str("system"),    Role::System);
-    CHECK_EQ(role_from_str("user"),      Role::User);
-    CHECK_EQ(role_from_str("assistant"), Role::Assistant);
+    CHECK_EQ(RoleFromStr("system"),    Role::System);
+    CHECK_EQ(RoleFromStr("user"),      Role::User);
+    CHECK_EQ(RoleFromStr("assistant"), Role::Assistant);
 
     // Unknown string throws
-    CHECK_THROWS(std::invalid_argument, role_from_str("robot"));
-    CHECK_THROWS(std::invalid_argument, role_from_str(""));
-    CHECK_THROWS(std::invalid_argument, role_from_str("System"));  // case sensitive
+    CHECK_THROWS(std::invalid_argument, RoleFromStr("robot"));
+    CHECK_THROWS(std::invalid_argument, RoleFromStr(""));
+    CHECK_THROWS(std::invalid_argument, RoleFromStr("System"));  // case sensitive
 }
 
 static void test_message_struct() {
@@ -157,66 +157,66 @@ static void test_message_struct() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 static void test_generate(AIModel& model) {
-    test::section("AIModel::generate");
+    test::section("AIModel::Generate");
 
     std::string reply;
-    CHECK_NOTHROW(reply = model.generate("What is the capital of France?"));
+    CHECK_NOTHROW(reply = model.Generate("What is the capital of France?"));
     CHECK(!reply.empty());
 
     // Blank prompt → invalid_argument
-    CHECK_THROWS(std::invalid_argument, model.generate(""));
-    CHECK_THROWS(std::invalid_argument, model.generate("   "));
+    CHECK_THROWS(std::invalid_argument, model.Generate(""));
+    CHECK_THROWS(std::invalid_argument, model.Generate("   "));
 
     // Temperature out of range → invalid_argument
-    CHECK_THROWS(std::invalid_argument, model.generate("hi", -0.1f));
-    CHECK_THROWS(std::invalid_argument, model.generate("hi",  2.1f));
+    CHECK_THROWS(std::invalid_argument, model.Generate("hi", -0.1f));
+    CHECK_THROWS(std::invalid_argument, model.Generate("hi",  2.1f));
 
     // max_tokens < 1 → invalid_argument
-    CHECK_THROWS(std::invalid_argument, model.generate("hi", 0.7f, 0));
+    CHECK_THROWS(std::invalid_argument, model.Generate("hi", 0.7f, 0));
 }
 
 static void test_embed(AIModel& model) {
-    test::section("AIModel::embed");
+    test::section("AIModel::Embed");
 
-    auto first_embedding = model.embed("hello world");
+    auto first_embedding = model.Embed("hello world");
     CHECK(!first_embedding.empty());
 
     // Same text twice → identical vector (served from cache).
-    auto cached_embedding = model.embed("hello world");
+    auto cached_embedding = model.Embed("hello world");
     CHECK_EQ(first_embedding, cached_embedding);
 
     // use_cache=false still returns a valid vector.
-    auto uncached_embedding = model.embed("hello world", /*use_cache=*/false);
+    auto uncached_embedding = model.Embed("hello world", /*use_cache=*/false);
     CHECK(!uncached_embedding.empty());
 
     // Blank text → invalid_argument
-    CHECK_THROWS(std::invalid_argument, model.embed(""));
-    CHECK_THROWS(std::invalid_argument, model.embed("  "));
+    CHECK_THROWS(std::invalid_argument, model.Embed(""));
+    CHECK_THROWS(std::invalid_argument, model.Embed("  "));
 }
 
 static void test_similarity(AIModel& model) {
-    test::section("AIModel::similarity");
+    test::section("AIModel::Similarity");
 
-    float similarity_score = model.similarity("cat", "kitten");
+    float similarity_score = model.Similarity("cat", "kitten");
     CHECK_GE(similarity_score, -1.0f);
     CHECK_GE(1.0f, similarity_score);
 
     // Self-similarity ≈ 1.0
-    float self_similarity_score = model.similarity("dog", "dog");
+    float self_similarity_score = model.Similarity("dog", "dog");
     CHECK_GE(self_similarity_score, 0.99f);
 
     // Semantically related pair should score higher than unrelated pair.
-    float related_similarity_score   = model.similarity("car", "automobile");
-    float unrelated_similarity_score = model.similarity("car", "ocean");
+    float related_similarity_score   = model.Similarity("car", "automobile");
+    float unrelated_similarity_score = model.Similarity("car", "ocean");
     CHECK_GT(related_similarity_score, unrelated_similarity_score);
 
     // Blank inputs → invalid_argument
-    CHECK_THROWS(std::invalid_argument, model.similarity("", "word"));
-    CHECK_THROWS(std::invalid_argument, model.similarity("word", ""));
+    CHECK_THROWS(std::invalid_argument, model.Similarity("", "word"));
+    CHECK_THROWS(std::invalid_argument, model.Similarity("word", ""));
 }
 
 static void test_search(AIModel& model) {
-    test::section("AIModel::search");
+    test::section("AIModel::Search");
 
     std::vector<std::string> candidate_labels = {"sports car", "bicycle", "cargo ship"};
     std::vector<std::string> candidate_texts  = {
@@ -225,7 +225,7 @@ static void test_search(AIModel& model) {
         "a large vessel that transports goods across oceans"
     };
 
-    auto top_two_results = model.search("fast racing car", candidate_labels, candidate_texts, 2);
+    auto top_two_results = model.Search("fast racing car", candidate_labels, candidate_texts, 2);
     CHECK_EQ(static_cast<int>(top_two_results.size()), 2);
     // Best match should be "sports car".
     CHECK_EQ(top_two_results[0].second, std::string("sports car"));
@@ -233,85 +233,85 @@ static void test_search(AIModel& model) {
     CHECK_GE(top_two_results[0].first, top_two_results[1].first);
 
     // top_n larger than list → returns all.
-    auto all_results = model.search("vehicle", candidate_labels, candidate_texts, 10);
+    auto all_results = model.Search("vehicle", candidate_labels, candidate_texts, 10);
     CHECK_EQ(static_cast<int>(all_results.size()), 3);
 
     // Validation errors
-    CHECK_THROWS(std::invalid_argument, model.search("", candidate_labels, candidate_texts));
+    CHECK_THROWS(std::invalid_argument, model.Search("", candidate_labels, candidate_texts));
     CHECK_THROWS(std::invalid_argument,
-                 model.search("q", {"a"}, {"x", "y"}));       // size mismatch
+                 model.Search("q", {"a"}, {"x", "y"}));       // size mismatch
     CHECK_THROWS(std::invalid_argument,
-                 model.search("q", candidate_labels, candidate_texts, 0));  // top_n < 1
+                 model.Search("q", candidate_labels, candidate_texts, 0));  // top_n < 1
 }
 
 static void test_convo_basic(AIModel& model) {
-    test::section("AIConvo::chat — basic");
+    test::section("AIConvo::Chat — basic");
 
     AIConvo conversation(model, "You are a concise assistant.");
 
-    std::string first_reply = conversation.chat("What is 2 + 2?");
+    std::string first_reply = conversation.Chat("What is 2 + 2?");
     CHECK(!first_reply.empty());
 
     // History grows: system + (user + assistant) × 1
-    CHECK_EQ(static_cast<int>(conversation.get_history().size()), 3);
+    CHECK_EQ(static_cast<int>(conversation.GetHistory().size()), 3);
 
-    std::string second_reply = conversation.chat("Double that answer.");
+    std::string second_reply = conversation.Chat("Double that answer.");
     CHECK(!second_reply.empty());
 
     // History: system + 2 × (user + assistant)
-    CHECK_EQ(static_cast<int>(conversation.get_history().size()), 5);
+    CHECK_EQ(static_cast<int>(conversation.GetHistory().size()), 5);
 }
 
 static void test_convo_validation(AIModel& model) {
-    test::section("AIConvo::chat — input validation");
+    test::section("AIConvo::Chat — input validation");
 
     AIConvo conversation(model);
 
     // Blank message → invalid_argument; history must NOT grow.
-    std::size_t history_size_before = conversation.get_history().size();
-    CHECK_THROWS(std::invalid_argument, conversation.chat(""));
-    CHECK_THROWS(std::invalid_argument, conversation.chat("   "));
-    CHECK_EQ(conversation.get_history().size(), history_size_before);
+    std::size_t history_size_before = conversation.GetHistory().size();
+    CHECK_THROWS(std::invalid_argument, conversation.Chat(""));
+    CHECK_THROWS(std::invalid_argument, conversation.Chat("   "));
+    CHECK_EQ(conversation.GetHistory().size(), history_size_before);
 
     // Temperature out of range
-    CHECK_THROWS(std::invalid_argument, conversation.chat("hi", -0.5f));
-    CHECK_THROWS(std::invalid_argument, conversation.chat("hi",  3.0f));
-    CHECK_EQ(conversation.get_history().size(), history_size_before);
+    CHECK_THROWS(std::invalid_argument, conversation.Chat("hi", -0.5f));
+    CHECK_THROWS(std::invalid_argument, conversation.Chat("hi",  3.0f));
+    CHECK_EQ(conversation.GetHistory().size(), history_size_before);
 
     // max_tokens < 1
-    CHECK_THROWS(std::invalid_argument, conversation.chat("hi", 0.7f, 0));
-    CHECK_EQ(conversation.get_history().size(), history_size_before);
+    CHECK_THROWS(std::invalid_argument, conversation.Chat("hi", 0.7f, 0));
+    CHECK_EQ(conversation.GetHistory().size(), history_size_before);
 }
 
 static void test_convo_clear_history(AIModel& model) {
-    test::section("AIConvo::clear_history");
+    test::section("AIConvo::ClearHistory");
 
     AIConvo conversation(model, "You are a test bot.");
-    conversation.chat("Hello!");
+    conversation.Chat("Hello!");
 
     // History has system + user + assistant.
-    CHECK_GT(static_cast<int>(conversation.get_history().size()), 1);
+    CHECK_GT(static_cast<int>(conversation.GetHistory().size()), 1);
 
-    conversation.clear_history();
+    conversation.ClearHistory();
 
     // Only the system message remains.
-    auto cleared_history = conversation.get_history();
+    auto cleared_history = conversation.GetHistory();
     CHECK_EQ(static_cast<int>(cleared_history.size()), 1);
     CHECK_EQ(cleared_history[0].role, Role::System);
 
     // Conversation still works after clearing.
-    std::string reply_after_clear = conversation.chat("Are you still there?");
+    std::string reply_after_clear = conversation.Chat("Are you still there?");
     CHECK(!reply_after_clear.empty());
 }
 
 static void test_convo_get_history_is_copy(AIModel& model) {
-    test::section("AIConvo::get_history returns a copy");
+    test::section("AIConvo::GetHistory returns a copy");
 
     AIConvo conversation(model);
-    auto mutable_copy = conversation.get_history();
+    auto mutable_copy = conversation.GetHistory();
     mutable_copy.push_back({Role::User, "injected"});  // mutate the copy
 
-    auto fresh_copy = conversation.get_history();
+    auto fresh_copy = conversation.GetHistory();
     // Internal history should be unchanged (only system message).
     CHECK_EQ(static_cast<int>(fresh_copy.size()), 1);
 }
@@ -322,63 +322,63 @@ static void test_convo_title(AIModel& model) {
     AIConvo conversation(model);
 
     // No title before first chat.
-    CHECK(!conversation.get_title().has_value());
+    CHECK(!conversation.GetTitle().has_value());
 
     // Manual title before first chat.
-    conversation.set_title("My Test Chat");
-    CHECK_EQ(conversation.get_title().value(), std::string("My Test Chat"));
+    conversation.SetTitle("My Test Chat");
+    CHECK_EQ(conversation.GetTitle().value(), std::string("My Test Chat"));
 
     // Blank title → invalid_argument.
-    CHECK_THROWS(std::invalid_argument, conversation.set_title(""));
-    CHECK_THROWS(std::invalid_argument, conversation.set_title("   "));
+    CHECK_THROWS(std::invalid_argument, conversation.SetTitle(""));
+    CHECK_THROWS(std::invalid_argument, conversation.SetTitle("   "));
 
     // Auto-generated title: start a fresh conversation.
     AIConvo second_conversation(model);
-    second_conversation.chat("Tell me about the solar system.");
+    second_conversation.Chat("Tell me about the solar system.");
     // After first chat, title should be set (auto-generated).
-    CHECK(second_conversation.get_title().has_value());
-    CHECK(!second_conversation.get_title().value().empty());
+    CHECK(second_conversation.GetTitle().has_value());
+    CHECK(!second_conversation.GetTitle().value().empty());
 
     // Title is not regenerated on subsequent turns.
-    std::string original_title = second_conversation.get_title().value();
-    second_conversation.chat("What is Jupiter?");
-    CHECK_EQ(second_conversation.get_title().value(), original_title);
+    std::string original_title = second_conversation.GetTitle().value();
+    second_conversation.Chat("What is Jupiter?");
+    CHECK_EQ(second_conversation.GetTitle().value(), original_title);
 }
 
 static void test_convo_persistence(AIModel& model) {
     test::section("AIConvo save/load persistence");
 
     AIConvo source_conversation(model, "You are a test assistant.");
-    source_conversation.chat("What is the tallest mountain on Earth?");
-    source_conversation.set_title("Mountain Chat");
+    source_conversation.Chat("What is the tallest mountain on Earth?");
+    source_conversation.SetTitle("Mountain Chat");
 
     // ── Save ──────────────────────────────────────────────────────────────────
-    std::string saved_file_path = source_conversation.save_history(
+    std::string saved_file_path = source_conversation.SaveHistory(
         "/tmp/convo_test_persist.json");
     CHECK(!saved_file_path.empty());
 
     // ── Load into a fresh conversation ────────────────────────────────────────
     AIConvo destination_conversation(model);
-    CHECK_NOTHROW(destination_conversation.load_history(saved_file_path));
+    CHECK_NOTHROW(destination_conversation.LoadHistory(saved_file_path));
 
     // History and title must match the source.
-    auto source_history      = source_conversation.get_history();
-    auto destination_history = destination_conversation.get_history();
+    auto source_history      = source_conversation.GetHistory();
+    auto destination_history = destination_conversation.GetHistory();
     CHECK_EQ(source_history.size(), destination_history.size());
     for (std::size_t i = 0; i < source_history.size(); ++i) {
         CHECK_EQ(source_history[i].role,    destination_history[i].role);
         CHECK_EQ(source_history[i].content, destination_history[i].content);
     }
-    CHECK_EQ(destination_conversation.get_title().value(), std::string("Mountain Chat"));
+    CHECK_EQ(destination_conversation.GetTitle().value(), std::string("Mountain Chat"));
 
     // Loaded conversation can continue.
-    std::string continuation_reply = destination_conversation.chat("How tall is it in feet?");
+    std::string continuation_reply = destination_conversation.Chat("How tall is it in feet?");
     CHECK(!continuation_reply.empty());
 
     // ── Auto-generated filename ───────────────────────────────────────────────
     AIConvo autoname_conversation(model);
-    autoname_conversation.chat("Testing auto filename.");
-    std::string auto_generated_path = autoname_conversation.save_history();
+    autoname_conversation.Chat("Testing auto filename.");
+    std::string auto_generated_path = autoname_conversation.SaveHistory();
     CHECK(!auto_generated_path.empty());
     std::ifstream auto_file_check(auto_generated_path);
     CHECK(auto_file_check.is_open());
@@ -386,17 +386,17 @@ static void test_convo_persistence(AIModel& model) {
 
     // ── Error: file does not exist ────────────────────────────────────────────
     CHECK_THROWS(std::runtime_error,
-                 destination_conversation.load_history("/tmp/convo_nonexistent_file.json"));
+                 destination_conversation.LoadHistory("/tmp/convo_nonexistent_file.json"));
 
     // ── Error: malformed JSON ─────────────────────────────────────────────────
     std::string bad_json_path = write_temp_file("{not valid json}", "bad.json");
-    CHECK_THROWS(std::invalid_argument, destination_conversation.load_history(bad_json_path));
+    CHECK_THROWS(std::invalid_argument, destination_conversation.LoadHistory(bad_json_path));
     std::remove(bad_json_path.c_str());
 
     // ── Error: missing messages array ─────────────────────────────────────────
     std::string missing_messages_path = write_temp_file("{\"title\": null}", "no_msgs.json");
     CHECK_THROWS(std::invalid_argument,
-                 destination_conversation.load_history(missing_messages_path));
+                 destination_conversation.LoadHistory(missing_messages_path));
     std::remove(missing_messages_path.c_str());
 
     // ── Error: unknown role ───────────────────────────────────────────────────
@@ -404,7 +404,7 @@ static void test_convo_persistence(AIModel& model) {
         R"({"title":null,"messages":[{"role":"robot","content":"hi"}]})",
         "bad_role.json");
     CHECK_THROWS(std::invalid_argument,
-                 destination_conversation.load_history(unknown_role_path));
+                 destination_conversation.LoadHistory(unknown_role_path));
     std::remove(unknown_role_path.c_str());
 
     // ── Error: missing content field ──────────────────────────────────────────
@@ -412,7 +412,7 @@ static void test_convo_persistence(AIModel& model) {
         R"({"title":null,"messages":[{"role":"user"}]})",
         "no_content.json");
     CHECK_THROWS(std::invalid_argument,
-                 destination_conversation.load_history(missing_content_path));
+                 destination_conversation.LoadHistory(missing_content_path));
     std::remove(missing_content_path.c_str());
 }
 
@@ -430,15 +430,15 @@ static void test_multiple_convos_independent(AIModel& model) {
     AIConvo history_conversation(model, "You are a history expert.");
     AIConvo cooking_conversation(model, "You are a cooking expert.");
 
-    history_conversation.chat("Tell me about the Roman Empire.");
-    cooking_conversation.chat("How do I make pasta?");
+    history_conversation.Chat("Tell me about the Roman Empire.");
+    cooking_conversation.Chat("How do I make pasta?");
 
     // Each conversation has its own separate history.
-    for (const auto& history_entry : history_conversation.get_history()) {
+    for (const auto& history_entry : history_conversation.GetHistory()) {
         if (history_entry.role == Role::System)
             CHECK_EQ(history_entry.content, std::string("You are a history expert."));
     }
-    for (const auto& history_entry : cooking_conversation.get_history()) {
+    for (const auto& history_entry : cooking_conversation.GetHistory()) {
         if (history_entry.role == Role::System)
             CHECK_EQ(history_entry.content, std::string("You are a cooking expert."));
     }
@@ -447,20 +447,20 @@ static void test_multiple_convos_independent(AIModel& model) {
 static void test_embed_cache(AIModel& model) {
     test::section("Embedding cache");
 
-    model.clear_embed_cache();
+    model.ClearEmbedCache();
 
-    auto first_embedding  = model.embed("test caching");   // populates cache
-    auto second_embedding = model.embed("test caching");   // served from cache
+    auto first_embedding  = model.Embed("test caching");   // populates cache
+    auto second_embedding = model.Embed("test caching");   // served from cache
     CHECK_EQ(first_embedding, second_embedding);
 
     // use_cache=false bypasses cache but still returns a valid vector.
-    auto uncached_embedding = model.embed("test caching", /*use_cache=*/false);
+    auto uncached_embedding = model.Embed("test caching", /*use_cache=*/false);
     CHECK(!uncached_embedding.empty());
 
     // clear_embed_cache wipes the cache.
-    model.clear_embed_cache();
+    model.ClearEmbedCache();
     // Next call recomputes from scratch (should still return a valid vector).
-    auto recomputed_embedding = model.embed("test caching");
+    auto recomputed_embedding = model.Embed("test caching");
     CHECK(!recomputed_embedding.empty());
 }
 
@@ -474,12 +474,13 @@ int main(int argc, char* argv[]) {
     // ── Part 1: pure unit tests ───────────────────────────────────────────────
     test_role_helpers();
     test_message_struct();
-
+    
     // ── Part 2: integration tests (require a model path) ─────────────────────
     if (argc < 2) {
         std::cout << "\nNo model path provided — skipping integration tests.\n"
                   << "Usage: " << argv[0] << " /path/to/model.gguf\n";
-    } else {
+    } 
+    else {
         const std::string model_path = argv[1];
         std::cout << "\nLoading model: " << model_path << "\n";
 

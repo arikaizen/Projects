@@ -1,0 +1,17 @@
+{
+  "messages": [
+    {
+      "content": "You are a helpful assistant.",
+      "role": "system"
+    },
+    {
+      "content": "what is a reactor",
+      "role": "user"
+    },
+    {
+      "content": "A reactor is a device or system that produces or controls a nuclear reaction, typically for the purpose of generating heat or electricity. Reactors can be used in a variety of applications, including power generation, research, and medical treatments. There are many different types of reactors, each with its own design and operating principles, but they all rely on the same basic principle of nuclear fission, in which atoms are split apart to release energy.",
+      "role": "assistant"
+    }
+  ],
+  "title": "default"
+}
