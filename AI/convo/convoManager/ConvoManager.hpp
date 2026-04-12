@@ -1,13 +1,9 @@
 #pragma once
 
-#include "convo.hpp"
-
 #include <cstdint>      // uint32_t
-#include <map>          // std::map
 #include <memory>       // std::unique_ptr
 #include <optional>     // std::optional
 #include <string>       // std::string
-#include <string_view>  // std::string_view
 #include <vector>       // std::vector
 
 namespace convo_manager {
@@ -33,7 +29,7 @@ struct ModelInfo {
 
 class ConvoManager {
 public:
-  ConvoManager() = default;
+  ConvoManager();
   ~ConvoManager() noexcept;
 
   ConvoManager(const ConvoManager&) = delete;
@@ -71,30 +67,8 @@ public:
   void Close(ModelId model_id, ConvoId convo_id);
 
 private:
-  struct ConvoEntry {
-    ConvoId Id = 0;
-    std::unique_ptr<AIConvo> Convo;
-    std::optional<std::string> LastSavedPath;
-    bool Dirty = false;
-    bool Closed = false;
-  };
-
-  struct ModelEntry {
-    ModelId Id = 0;
-    std::string ModelPath;
-    std::unique_ptr<AIModel> Model;
-    std::map<ConvoId, ConvoEntry> Convos;
-    ConvoId NextConvoId = 1;
-    std::optional<ConvoId> Active;
-  };
-
-  ModelEntry& RequireModel(ModelId model_id);
-  const ModelEntry& RequireModel(ModelId model_id) const;
-  ConvoEntry& RequireConvo(ModelEntry& model, ConvoId convo_id);
-  const ConvoEntry& RequireConvo(const ModelEntry& model, ConvoId convo_id) const;
-
-  std::map<ModelId, ModelEntry> _models;
-  ModelId _next_model_id = 1;
+  struct Impl;
+  std::unique_ptr<Impl> _impl;
 };
 
 } // namespace convo_manager

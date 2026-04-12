@@ -1,45 +1,68 @@
-#include "convoManager/ConvoManager.hpp"
+#include "ConvoManager.hpp"
 
+#include "convo.hpp"
+
+#include <map>       // std::map
+#include <memory>    // std::make_unique
 #include <stdexcept>  // std::invalid_argument, std::runtime_error
 #include <utility>    // std::move
 
 namespace convo_manager {
-namespace {} // namespace
+namespace {
+
+struct ConvoEntry {
+  ConvoId Id = 0;
+  std::unique_ptr<AIConvo> Convo;
+  std::optional<std::string> LastSavedPath;
+  bool Dirty = false;
+  bool Closed = false;
+};
+
+struct ModelEntry {
+  ModelId Id = 0;
+  std::string ModelPath;
+  std::unique_ptr<AIModel> Model;
+  std::map<ConvoId, ConvoEntry> Convos;
+  ConvoId NextConvoId = 1;
+  std::optional<ConvoId> Active;
+};
+
+ModelEntry& RequireModel(std::map<ModelId, ModelEntry>& models, ModelId model_id) {
+  auto it = models.find(model_id);
+  if (it == models.end()) {
+    throw std::invalid_argument("ConvoManager: unknown model id");
+  }
+  return it->second;
+}
+
+ConvoEntry& RequireConvo(ModelEntry& model, ConvoId convo_id) {
+  auto it = model.Convos.find(convo_id);
+  if (it == model.Convos.end()) {
+    throw std::invalid_argument("ConvoManager: unknown conversation id");
+  }
+  return it->second;
+}
+
+const ConvoEntry& RequireConvo(const ModelEntry& model, ConvoId convo_id) {
+  auto it = model.Convos.find(convo_id);
+  if (it == model.Convos.end()) {
+    throw std::invalid_argument("ConvoManager: unknown conversation id");
+  }
+  return it->second;
+}
+
+} // namespace
+
+struct ConvoManager::Impl {
+  std::map<ModelId, ModelEntry> Models;
+  ModelId NextModelId = 1;
+};
+
+ConvoManager::ConvoManager()
+  : _impl(std::make_unique<Impl>()) {}
 
 ConvoManager::~ConvoManager() noexcept {
   SaveAllNoThrow();
-}
-
-ConvoManager::ModelEntry& ConvoManager::RequireModel(ModelId model_id) {
-  auto it = _models.find(model_id);
-  if (it == _models.end()) {
-    throw std::invalid_argument("ConvoManager: unknown model id");
-  }
-  return it->second;
-}
-
-const ConvoManager::ModelEntry& ConvoManager::RequireModel(ModelId model_id) const {
-  auto it = _models.find(model_id);
-  if (it == _models.end()) {
-    throw std::invalid_argument("ConvoManager: unknown model id");
-  }
-  return it->second;
-}
-
-ConvoManager::ConvoEntry& ConvoManager::RequireConvo(ModelEntry& model, ConvoId convo_id) {
-  auto it = model.Convos.find(convo_id);
-  if (it == model.Convos.end()) {
-    throw std::invalid_argument("ConvoManager: unknown conversation id");
-  }
-  return it->second;
-}
-
-const ConvoManager::ConvoEntry& ConvoManager::RequireConvo(const ModelEntry& model, ConvoId convo_id) const {
-  auto it = model.Convos.find(convo_id);
-  if (it == model.Convos.end()) {
-    throw std::invalid_argument("ConvoManager: unknown conversation id");
-  }
-  return it->second;
 }
 
 ModelId ConvoManager::AddModel(const std::string& model_path, int context_size, int thread_count) {
@@ -48,18 +71,18 @@ ModelId ConvoManager::AddModel(const std::string& model_path, int context_size, 
   }
 
   ModelEntry entry;
-  entry.Id = _next_model_id++;
+  entry.Id = _impl->NextModelId++;
   entry.ModelPath = model_path;
   entry.Model = std::make_unique<AIModel>(model_path, context_size, thread_count);
-  _models.emplace(entry.Id, std::move(entry));
+  _impl->Models.emplace(entry.Id, std::move(entry));
   return entry.Id;
 }
 
 std::vector<ModelInfo> ConvoManager::ListModels() const {
   std::vector<ModelInfo> out;
-  out.reserve(_models.size());
+  out.reserve(_impl->Models.size());
 
-  for (const auto& [id, model] : _models) {
+  for (const auto& [id, model] : _impl->Models) {
     ModelInfo mi;
     mi.Id = id;
     mi.ModelPath = model.ModelPath;
@@ -83,7 +106,7 @@ std::vector<ModelInfo> ConvoManager::ListModels() const {
 ConvoId ConvoManager::NewConversation(ModelId model_id,
                                       const std::string& system_prompt,
                                       std::optional<std::string> initial_title) {
-  auto& model = RequireModel(model_id);
+  auto& model = RequireModel(_impl->Models, model_id);
 
   ConvoEntry e;
   e.Id = model.NextConvoId++;
@@ -97,7 +120,7 @@ ConvoId ConvoManager::NewConversation(ModelId model_id,
 }
 
 void ConvoManager::SwitchActiveConversation(ModelId model_id, ConvoId convo_id) {
-  auto& model = RequireModel(model_id);
+  auto& model = RequireModel(_impl->Models, model_id);
   auto& convo = RequireConvo(model, convo_id);
   if (convo.Closed) {
     throw std::invalid_argument("ConvoManager::SwitchActiveConversation: conversation is closed");
@@ -106,7 +129,7 @@ void ConvoManager::SwitchActiveConversation(ModelId model_id, ConvoId convo_id) 
 }
 
 std::optional<std::pair<ModelId, ConvoId>> ConvoManager::GetActive() const {
-  for (const auto& [mid, model] : _models) {
+  for (const auto& [mid, model] : _impl->Models) {
     if (model.Active.has_value()) {
       return std::make_pair(mid, *model.Active);
     }
@@ -115,7 +138,7 @@ std::optional<std::pair<ModelId, ConvoId>> ConvoManager::GetActive() const {
 }
 
 ConversationInfo ConvoManager::GetConversationInfo(ModelId model_id, ConvoId convo_id) const {
-  const auto& model = RequireModel(model_id);
+  const auto& model = RequireModel(_impl->Models, model_id);
   const auto& convo = RequireConvo(model, convo_id);
   ConversationInfo info;
   info.Model = model_id;
@@ -128,7 +151,7 @@ ConversationInfo ConvoManager::GetConversationInfo(ModelId model_id, ConvoId con
 }
 
 std::vector<ConversationInfo> ConvoManager::ListConversations(ModelId model_id) const {
-  const auto& model = RequireModel(model_id);
+  const auto& model = RequireModel(_impl->Models, model_id);
   std::vector<ConversationInfo> out;
   out.reserve(model.Convos.size());
   for (const auto& [cid, convo] : model.Convos) {
@@ -147,7 +170,7 @@ std::vector<ConversationInfo> ConvoManager::ListConversations(ModelId model_id) 
 
 std::string ConvoManager::Chat(ModelId model_id, const std::string& user_message,
                                float temperature, int max_tokens) {
-  auto& model = RequireModel(model_id);
+  auto& model = RequireModel(_impl->Models, model_id);
   if (!model.Active.has_value()) {
     throw std::runtime_error("ConvoManager::Chat: no active conversation for this model");
   }
@@ -162,7 +185,7 @@ std::string ConvoManager::Chat(ModelId model_id, const std::string& user_message
 }
 
 std::string ConvoManager::Save(ModelId model_id, ConvoId convo_id, const std::string& path) {
-  auto& model = RequireModel(model_id);
+  auto& model = RequireModel(_impl->Models, model_id);
   auto& convo = RequireConvo(model, convo_id);
   if (!convo.Convo) {
     throw std::runtime_error("ConvoManager::Save: null conversation");
@@ -176,7 +199,7 @@ std::string ConvoManager::Save(ModelId model_id, ConvoId convo_id, const std::st
 
 void ConvoManager::SaveAllNoThrow() noexcept {
   try {
-    for (auto& [mid, model] : _models) {
+    for (auto& [mid, model] : _impl->Models) {
       for (auto& [cid, convo] : model.Convos) {
         (void)cid;
         if (!convo.Convo) continue;
@@ -199,7 +222,7 @@ void ConvoManager::SaveAllNoThrow() noexcept {
 }
 
 void ConvoManager::Close(ModelId model_id, ConvoId convo_id) {
-  auto& model = RequireModel(model_id);
+  auto& model = RequireModel(_impl->Models, model_id);
   auto& convo = RequireConvo(model, convo_id);
   if (convo.Closed) return;
 

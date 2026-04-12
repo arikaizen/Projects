@@ -19,6 +19,8 @@ BIN_DIR    := bin
 
 # ── Include paths ─────────────────────────────────────────────────────────────
 INCLUDES := -Iconvo \
+            -Iconvo/convoManager \
+            -Itools/Cmdline \
             -Iconcat \
             -I$(LLAMA_DIR)/include \
             -I$(LLAMA_DIR)/ggml/include \
@@ -41,6 +43,7 @@ CXXFLAGS := -O3 -std=c++17 $(INCLUDES) -DGGML_USE_CUDA -Wall -Wextra
 CONVO_MANAGER_TARGET := $(BIN_DIR)/convo_manager
 CONVO_MANAGER_SRCS := \
 	convo_manager_main.cpp \
+	tools/Cmdline/Cmdline.cpp \
 	convo/convo.cpp \
 	convo/convoManager/ConvoManager.cpp \
 	concat/promt_concat_api.cpp
