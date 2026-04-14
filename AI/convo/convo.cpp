@@ -729,6 +729,12 @@ void AIConvo::LoadHistory(const std::string& path) {
     ClearKvCache();  // loaded history has no cached KV vectors yet
 }
 
+std::vector<llama_token> AIConvo::GetCurrentTokens() const {
+    // BuildPrompt() is private but callable here (same class).
+    // _model.Tokenize() is private but AIConvo is a friend of AIModel.
+    return _model.Tokenize(BuildPrompt(), /*add_bos=*/true);
+}
+
 std::optional<std::string> AIConvo::GetTitle() const noexcept {
     return _title;
 }

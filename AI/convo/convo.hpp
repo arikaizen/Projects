@@ -282,6 +282,27 @@ public:
      */
     void LoadHistory(const std::string& path);
 
+    // ── Scheduler support ─────────────────────────────────────────────────────
+
+    /**
+     * Tokenise the current history into a flat token vector.
+     * Used by SaveTokensEvent to write tokens.bin.
+     * Equivalent to BuildPrompt() + Tokenize() without mutating any state.
+     */
+    std::vector<llama_token> GetCurrentTokens() const;
+
+    /**
+     * Expose the dedicated conversation context pointer.
+     * Used by SaveKvCacheEvent to call llama_state_get_data().
+     */
+    llama_context* ConversationCtxPtr() const noexcept { return _conversation_ctx; }
+
+    /**
+     * Number of tokens currently loaded into the KV cache.
+     * Used by SaveMetaEvent to record the cache depth in meta.json.
+     */
+    int32_t TokensProcessed() const noexcept { return _tokens_processed; }
+
     // ── Title ─────────────────────────────────────────────────────────────────
 
     /** Return the conversation title, or std::nullopt if not yet set. */

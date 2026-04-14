@@ -22,6 +22,8 @@ INCLUDES := -Iconvo \
             -Iconvo/convoManager \
             -Itools/Cmdline \
             -Iconcat \
+            -Ievents \
+            -Ischeduler \
             -I$(LLAMA_DIR)/include \
             -I$(LLAMA_DIR)/ggml/include \
             -I$(LLAMA_DIR)/src \
@@ -46,7 +48,12 @@ CONVO_MANAGER_SRCS := \
 	tools/Cmdline/Cmdline.cpp \
 	convo/convo.cpp \
 	convo/convoManager/ConvoManager.cpp \
-	concat/promt_concat_api.cpp
+	concat/promt_concat_api.cpp \
+	scheduler/Scheduler.cpp \
+	events/SaveHistoryEvent.cpp \
+	events/SaveTokensEvent.cpp \
+	events/SaveKvCacheEvent.cpp \
+	events/SaveMetaEvent.cpp
 CONVO_MANAGER_OBJS := $(CONVO_MANAGER_SRCS:%.cpp=$(BUILD_DIR)/%.o)
 
 # ==============================================================================
