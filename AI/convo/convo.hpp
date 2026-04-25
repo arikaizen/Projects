@@ -166,12 +166,12 @@ public:
     // ── Misc ──────────────────────────────────────────────────────────────────
 
     /** Discard all cached embedding vectors (frees memory). */
-    void ClearEmbedCache() noexcept { _embedding_cache.clear(); }
+    void ClearEmbedCache() noexcept { m_embedding_cache.clear(); }
 
-    llama_model*   ModelPtr()    const noexcept { return _model; }
-    llama_context* CtxPtr()      const noexcept { return _inference_ctx; }
-    int            CtxSize()     const noexcept { return _context_size; }
-    int            ThreadCount() const noexcept { return _thread_count; }
+    llama_model*   ModelPtr()    const noexcept { return m_model; }
+    llama_context* CtxPtr()      const noexcept { return m_inference_ctx; }
+    int            CtxSize()     const noexcept { return m_context_size; }
+    int            ThreadCount() const noexcept { return m_thread_count; }
 
 private:
     // ── Internal helpers ──────────────────────────────────────────────────────
@@ -189,12 +189,12 @@ private:
 
     // ── Member data ───────────────────────────────────────────────────────────
 
-    llama_model*   _model;
-    llama_context* _inference_ctx;
-    int            _context_size;
-    int            _thread_count;
+    llama_model*   m_model;
+    llama_context* m_inference_ctx;
+    int            m_context_size;
+    int            m_thread_count;
 
-    std::unordered_map<std::string, std::vector<float>> _embedding_cache;
+    std::unordered_map<std::string, std::vector<float>> m_embedding_cache;
 
     friend class AIConvo;
 };
@@ -263,6 +263,40 @@ public:
     /** Return a copy of the full message history. */
     std::vector<Message> GetHistory() const;
 
+    // ── Prompt assembly configuration ─────────────────────────────────────────
+
+    /** Use a system prompt loaded from a text file on every turn. */
+    void SetSystemPromptFile(const std::string& path);
+
+    /** Return the system prompt file path, if set. */
+    std::optional<std::string> GetSystemPromptFile() const noexcept;
+
+    /** Set how many recent user/assistant pairs are included in the prompt. */
+    void SetRecentTurnsWindow(int turns);
+
+    /** Return the current recent-turns window (in user/assistant pairs). */
+    int GetRecentTurnsWindow() const noexcept;
+
+    /** Return the current hidden summary (used for next turn prompt). */
+    std::string GetSummary() const;
+
+    // ── KV cache behavior ─────────────────────────────────────────────────────
+
+    /**
+     * Control whether this conversation clears its KV cache at the start of each
+     * Chat() turn.
+     *
+     * - Default: true (current behavior; always correct; slower).
+     * - If set to false: AIConvo will try to reuse the existing KV cache and
+     *   only decode new "delta" prompt tokens when the prompt is an append-only
+     *   extension. If the prompt changes in a non-append way, it will fall back
+     *   to ClearKvCache() + full prompt decode to stay correct.
+     */
+    void SetClearKvCacheEachTurn(bool clear) noexcept;
+
+    /** Return the current ClearKvCacheEachTurn flag (default true). */
+    bool GetClearKvCacheEachTurn() const noexcept;
+
     // ── Persistence ───────────────────────────────────────────────────────────
 
     /**
@@ -282,6 +316,38 @@ public:
      */
     void LoadHistory(const std::string& path);
 
+    // ── llama.cpp state (KV cache) persistence ────────────────────────────────
+
+    /**
+     * Save the underlying llama context state to a binary file.
+     *
+     * This snapshot includes the conversation context's internal "memory",
+     * which covers the attention KV cache and related runtime state needed to
+     * continue generation without re-decoding the full prompt.
+     *
+     * Typical usage:
+     * - SaveHistory(".../convo.json")
+     * - SaveState (".../convo.state.bin")
+     *
+     * @throws std::runtime_error if the file cannot be written or llama.cpp
+     *         fails to serialize state.
+     */
+    void SaveState(const std::string& path);
+
+    /**
+     * Restore the underlying llama context state from a binary file.
+     *
+     * After loading:
+     * - The KV cache inside this conversation's dedicated llama_context is
+     *   restored to the snapshot.
+     * - Callers should ensure the conversation's text history matches the state
+     *   being restored (or keep SaveHistory files as a fallback rebuild path).
+     *
+     * @throws std::runtime_error if the file cannot be read or llama.cpp fails
+     *         to restore state.
+     */
+    void LoadState(const std::string& path);
+
     // ── Title ─────────────────────────────────────────────────────────────────
 
     /** Return the conversation title, or std::nullopt if not yet set. */
@@ -299,6 +365,15 @@ private:
     /** Format _history into a single prompt string. */
     std::string BuildPrompt() const;
 
+    /** Load system prompt text either from file or stored prompt. */
+    std::string LoadSystemPromptText() const;
+
+    /** Return the recent user/assistant messages to include in the prompt. */
+    std::vector<Message> GetRecentWindowMessages() const;
+
+    /** Update _summary in the background (sync for now). */
+    void UpdateSummaryNoThrow();
+
     /**
      * Clear the KV cache and decode the full prompt, then sample the reply.
      * Guarantees the model sees the complete conversation history every turn.
@@ -315,10 +390,15 @@ private:
 
     // ── Member data ───────────────────────────────────────────────────────────
 
-    AIModel&                           _model;
-    std::string                        _system_prompt;
-    std::vector<Message>               _history;
-    std::optional<std::string>         _title;
-    llama_context*                     _conversation_ctx;
-    int32_t                            _tokens_processed;
+    AIModel&                           m_model;
+    std::string                        m_system_prompt;
+    std::vector<Message>               m_history;
+    std::optional<std::string>         m_title;
+    std::optional<std::string>         m_system_prompt_file;
+    std::string                        m_summary;
+    llama_context*                     m_conversation_ctx;
+    int                                m_recent_turns_window;
+    int32_t                            m_tokens_processed;
+    bool                               m_clear_kv_each_turn;
+    std::vector<llama_token>           m_cached_prompt_tokens;
 };

@@ -16,6 +16,7 @@ struct ConversationInfo {
   ConvoId Id = 0;
   std::optional<std::string> Title;
   std::optional<std::string> LastSavedPath;
+  std::optional<std::string> LastStatePath;
   bool Dirty = false;
   bool Closed = false;
 };
@@ -57,18 +58,24 @@ public:
 
   // ── Persistence ─────────────────────────────────────────────────────────────
   // Save one conversation. If path is empty, AIConvo chooses an auto filename.
-  // Returns the written path.
+  // Returns the written history path.
+  //
+  // Additionally writes a binary llama.cpp state snapshot (KV cache, etc.) to a
+  // sidecar file: "<history_path>.state.bin".
   std::string Save(ModelId model_id, ConvoId convo_id, const std::string& path = "");
 
-  // Save all conversations best-effort (never throws).
-  void SaveAllNoThrow() noexcept;
-
-  // Close a conversation (save best-effort, then mark Closed).
-  void Close(ModelId model_id, ConvoId convo_id);
+  // Save an entire session directory (models + conversations + llama state).
+  //
+  // This writes:
+  // - <dir>/manifest.json  (models, parameters, conversation file paths)
+  // - <dir>/convos/...     (per-conversation history JSON + state .bin)
+  //
+  // Throws on errors. For "never throws" persistence, call SaveAllNoThrow().
+  void SaveSession(const std::string& dir);
 
 private:
   struct Impl;
-  std::unique_ptr<Impl> _impl;
+  std::unique_ptr<Impl> m_impl;
 };
 
 } // namespace convo_manager

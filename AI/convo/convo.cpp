@@ -111,18 +111,18 @@ Role RoleFromStr(const std::string& s) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 AIModel::AIModel(const std::string& model_path, int context_size, int thread_count)
-    : _model(nullptr)
-    , _inference_ctx(nullptr)
-    , _context_size(context_size)
-    , _thread_count(thread_count)
+    : m_model(nullptr)
+    , m_inference_ctx(nullptr)
+    , m_context_size(context_size)
+    , m_thread_count(thread_count)
 {
     // Initialize the global llama backend (ref-counted; safe to call multiple times).
     llama_backend_init();
 
     // ── Load model weights ────────────────────────────────────────────────────
     llama_model_params model_params = llama_model_default_params();
-    _model = llama_model_load_from_file(model_path.c_str(), model_params);
-    if (!_model)
+    m_model = llama_model_load_from_file(model_path.c_str(), model_params);
+    if (!m_model)
         throw std::runtime_error("AIModel: failed to load model from \"" + model_path + "\"");
 
     // ── Create inference context ──────────────────────────────────────────────
@@ -132,45 +132,45 @@ AIModel::AIModel(const std::string& model_path, int context_size, int thread_cou
     context_params.n_threads               = static_cast<uint32_t>(thread_count);
     context_params.n_threads_batch         = static_cast<uint32_t>(thread_count);
 
-    _inference_ctx = llama_init_from_model(_model, context_params);
-    if (!_inference_ctx) {
-        llama_model_free(_model);
-        _model = nullptr;
+    m_inference_ctx = llama_init_from_model(m_model, context_params);
+    if (!m_inference_ctx) {
+        llama_model_free(m_model);
+        m_model = nullptr;
         throw std::runtime_error(
             "AIModel: failed to create inference context for \"" + model_path + "\"");
     }
 }
 
 AIModel::~AIModel() noexcept {
-    if (_inference_ctx) { llama_free(_inference_ctx); _inference_ctx = nullptr; }
-    if (_model)         { llama_model_free(_model);   _model         = nullptr; }
+    if (m_inference_ctx) { llama_free(m_inference_ctx); m_inference_ctx = nullptr; }
+    if (m_model)         { llama_model_free(m_model);   m_model         = nullptr; }
     llama_backend_free();
 }
 
 AIModel::AIModel(AIModel&& other) noexcept
-    : _model(other._model)
-    , _inference_ctx(other._inference_ctx)
-    , _context_size(other._context_size)
-    , _thread_count(other._thread_count)
-    , _embedding_cache(std::move(other._embedding_cache))
+    : m_model(other.m_model)
+    , m_inference_ctx(other.m_inference_ctx)
+    , m_context_size(other.m_context_size)
+    , m_thread_count(other.m_thread_count)
+    , m_embedding_cache(std::move(other.m_embedding_cache))
 {
-    other._model         = nullptr;
-    other._inference_ctx = nullptr;
+    other.m_model         = nullptr;
+    other.m_inference_ctx = nullptr;
 }
 
 AIModel& AIModel::operator=(AIModel&& other) noexcept {
     if (this != &other) {
-        if (_inference_ctx) llama_free(_inference_ctx);
-        if (_model)         llama_model_free(_model);
+        if (m_inference_ctx) llama_free(m_inference_ctx);
+        if (m_model)         llama_model_free(m_model);
 
-        _model           = other._model;
-        _inference_ctx   = other._inference_ctx;
-        _context_size    = other._context_size;
-        _thread_count    = other._thread_count;
-        _embedding_cache = std::move(other._embedding_cache);
+        m_model           = other.m_model;
+        m_inference_ctx   = other.m_inference_ctx;
+        m_context_size    = other.m_context_size;
+        m_thread_count    = other.m_thread_count;
+        m_embedding_cache = std::move(other.m_embedding_cache);
 
-        other._model         = nullptr;
-        other._inference_ctx = nullptr;
+        other.m_model         = nullptr;
+        other.m_inference_ctx = nullptr;
     }
     return *this;
 }
@@ -181,7 +181,7 @@ AIModel& AIModel::operator=(AIModel&& other) noexcept {
 
 std::vector<llama_token> AIModel::Tokenize(const std::string& text, bool add_bos) const {
     // First call with a null buffer returns the (negative) required token count.
-    const llama_vocab* vocab = llama_model_get_vocab(_model);
+    const llama_vocab* vocab = llama_model_get_vocab(m_model);
     int token_count = llama_tokenize(
         vocab,
         text.c_str(), static_cast<int32_t>(text.size()),
@@ -206,14 +206,14 @@ std::string AIModel::Decode(const std::vector<llama_token>& tokens,
                             float temperature,
                             int   max_tokens) const {
     // Each generate() is stateless — clear any KV vectors left by a previous call.
-    llama_memory_clear(llama_get_memory(_inference_ctx), /*data=*/true);
+    llama_memory_clear(llama_get_memory(m_inference_ctx), /*data=*/true);
 
     // Feed the full prompt into the context in one batch.
     llama_batch prompt_batch = llama_batch_get_one(
         const_cast<llama_token*>(tokens.data()),
         static_cast<int32_t>(tokens.size())
     );
-    if (llama_decode(_inference_ctx, prompt_batch) != 0)
+    if (llama_decode(m_inference_ctx, prompt_batch) != 0)
         throw std::runtime_error("AIModel::Decode: llama_decode failed during prompt evaluation");
 
     // Build a sampler chain: temperature → top-p (nucleus) → distribution draw.
@@ -229,9 +229,9 @@ std::string AIModel::Decode(const std::vector<llama_token>& tokens,
     int32_t tokens_processed_count = static_cast<int32_t>(tokens.size());
 
     for (int i = 0; i < max_tokens; ++i) {
-        llama_token current_token = llama_sampler_sample(sampler, _inference_ctx, -1);
+        llama_token current_token = llama_sampler_sample(sampler, m_inference_ctx, -1);
 
-        const llama_vocab* vocab = llama_model_get_vocab(_model);
+        const llama_vocab* vocab = llama_model_get_vocab(m_model);
         if (llama_vocab_is_eog(vocab, current_token)) break;
 
         // Decode the token id to its UTF-8 string piece (up to 32 bytes).
@@ -243,7 +243,7 @@ std::string AIModel::Decode(const std::vector<llama_token>& tokens,
 
         // Feed the newly generated token back for the next step.
         llama_batch next_batch = llama_batch_get_one(&current_token, 1);
-        if (llama_decode(_inference_ctx, next_batch) != 0) {
+        if (llama_decode(m_inference_ctx, next_batch) != 0) {
             llama_sampler_free(sampler);
             throw std::runtime_error("AIModel::Decode: llama_decode failed during generation");
         }
@@ -258,11 +258,11 @@ std::vector<float> AIModel::RawEmbed(const std::string& text) const {
     // Create a short-lived context configured for mean-pooled embeddings.
     llama_context_params embedding_params  = llama_context_default_params();
     embedding_params.n_ctx                 = 512;
-    embedding_params.n_threads             = static_cast<uint32_t>(_thread_count);
+    embedding_params.n_threads             = static_cast<uint32_t>(m_thread_count);
     embedding_params.embeddings            = true;
     embedding_params.pooling_type          = LLAMA_POOLING_TYPE_MEAN;
 
-    llama_context* embedding_ctx = llama_init_from_model(_model, embedding_params);
+    llama_context* embedding_ctx = llama_init_from_model(m_model, embedding_params);
     if (!embedding_ctx)
         throw std::runtime_error("AIModel::RawEmbed: failed to create embedding context");
 
@@ -276,7 +276,7 @@ std::vector<float> AIModel::RawEmbed(const std::string& text) const {
         throw std::runtime_error("AIModel::RawEmbed: llama_decode failed");
     }
 
-    int          embedding_dimension  = llama_model_n_embd(_model);
+    int          embedding_dimension  = llama_model_n_embd(m_model);
     const float* embedding_data_ptr   = llama_get_embeddings_seq(embedding_ctx, 0);
     if (!embedding_data_ptr) {
         llama_free(embedding_ctx);
@@ -322,19 +322,19 @@ std::vector<float> AIModel::Embed(const std::string& text, bool use_cache) {
 
     // Return cached vector when available.
     if (use_cache) {
-        auto cache_entry = _embedding_cache.find(text);
-        if (cache_entry != _embedding_cache.end()) return cache_entry->second;
+        auto cache_entry = m_embedding_cache.find(text);
+        if (cache_entry != m_embedding_cache.end()) return cache_entry->second;
     }
 
     auto result = RawEmbed(text);
 
-    if (VecNorm(result) == 0.0f)
+    if (VecNorm(result) == 0.0f){}
         throw std::runtime_error(
             "AIModel::Embed: embedding has zero magnitude "
             "(model may not support embeddings)");
 
     if (use_cache)
-        _embedding_cache[text] = result;
+        m_embedding_cache[text] = result;
 
     return result;
 }
@@ -381,58 +381,66 @@ AIModel::Search(const std::string&               query,
 // ─────────────────────────────────────────────────────────────────────────────
 
 AIConvo::AIConvo(AIModel& model, const std::string& system_prompt)
-    : _model(model)
-    , _system_prompt(system_prompt)
-    , _conversation_ctx(nullptr)
-    , _tokens_processed(0)
+    : m_model(model)
+    , m_system_prompt(system_prompt)
+    , m_conversation_ctx(nullptr)
+    , m_recent_turns_window(10)
+    , m_tokens_processed(0)
+    , m_clear_kv_each_turn(true)
 {
     if (IsBlank(system_prompt))
         throw std::invalid_argument("AIConvo: system_prompt must not be blank");
 
     // Allocate a dedicated context whose KV cache belongs to this conversation.
     llama_context_params context_params  = llama_context_default_params();
-    context_params.n_ctx                 = static_cast<uint32_t>(model._context_size);
-    context_params.n_batch               = static_cast<uint32_t>(model._context_size);
-    context_params.n_threads             = static_cast<uint32_t>(model._thread_count);
-    context_params.n_threads_batch       = static_cast<uint32_t>(model._thread_count);
+    context_params.n_ctx                 = static_cast<uint32_t>(model.m_context_size);
+    context_params.n_batch               = static_cast<uint32_t>(model.m_context_size);
+    context_params.n_threads             = static_cast<uint32_t>(model.m_thread_count);
+    context_params.n_threads_batch       = static_cast<uint32_t>(model.m_thread_count);
 
-    _conversation_ctx = llama_init_from_model(model.ModelPtr(), context_params);
-    if (!_conversation_ctx)
+    m_conversation_ctx = llama_init_from_model(model.ModelPtr(), context_params);
+    if (!m_conversation_ctx)
         throw std::runtime_error("AIConvo: failed to create dedicated chat context");
 
     // Seed the history with the system message.
-    _history.push_back({Role::System, system_prompt});
+    m_history.push_back({Role::System, system_prompt});
 }
 
 AIConvo::~AIConvo() noexcept {
-    if (_conversation_ctx) { llama_free(_conversation_ctx); _conversation_ctx = nullptr; }
+    if (m_conversation_ctx) { llama_free(m_conversation_ctx); m_conversation_ctx = nullptr; }
 }
 
 AIConvo::AIConvo(AIConvo&& other) noexcept
-    : _model(other._model)
-    , _system_prompt(std::move(other._system_prompt))
-    , _history(std::move(other._history))
-    , _title(std::move(other._title))
-    , _conversation_ctx(other._conversation_ctx)
-    , _tokens_processed(other._tokens_processed)
+    : m_model(other.m_model)
+    , m_system_prompt(std::move(other.m_system_prompt))
+    , m_history(std::move(other.m_history))
+    , m_title(std::move(other.m_title))
+    , m_conversation_ctx(other.m_conversation_ctx)
+    , m_tokens_processed(other.m_tokens_processed)
+    , m_clear_kv_each_turn(other.m_clear_kv_each_turn)
+    , m_cached_prompt_tokens(std::move(other.m_cached_prompt_tokens))
 {
-    other._conversation_ctx  = nullptr;
-    other._tokens_processed  = 0;
+    other.m_conversation_ctx  = nullptr;
+    other.m_tokens_processed  = 0;
+    other.m_cached_prompt_tokens.clear();
 }
 
 AIConvo& AIConvo::operator=(AIConvo&& other) noexcept {
     if (this != &other) {
-        if (_conversation_ctx) llama_free(_conversation_ctx);
+        if (m_conversation_ctx) llama_free(m_conversation_ctx);
 
-        // _model is a reference — both sides must already refer to the same object.
-        _system_prompt      = std::move(other._system_prompt);
-        _history            = std::move(other._history);
-        _title              = std::move(other._title);
-        _conversation_ctx   = other._conversation_ctx;
-        _tokens_processed   = other._tokens_processed;
+        // m_model is a reference — both sides must already refer to the same object.
+        m_system_prompt      = std::move(other.m_system_prompt);
+        m_history            = std::move(other.m_history);
+        m_title              = std::move(other.m_title);
+        m_conversation_ctx   = other.m_conversation_ctx;
+        m_tokens_processed   = other.m_tokens_processed;
+        m_clear_kv_each_turn = other.m_clear_kv_each_turn;
+        m_cached_prompt_tokens = std::move(other.m_cached_prompt_tokens);
 
-        other._conversation_ctx  = nullptr;
-        other._tokens_processed  = 0;
+        other.m_conversation_ctx  = nullptr;
+        other.m_tokens_processed  = 0;
+        other.m_cached_prompt_tokens.clear();
     }
     return *this;
 }
@@ -445,27 +453,110 @@ void AIConvo::ClearKvCache() noexcept {
     // Wipe every cached key/value vector and reset the position counter.
     // Called at the start of every RunChat() so each turn begins with a
     // clean slate and processes the complete conversation history.
-    llama_memory_clear(llama_get_memory(_conversation_ctx), /*data=*/true);
-    _tokens_processed = 0;
+    llama_memory_clear(llama_get_memory(m_conversation_ctx), /*data=*/true);
+    m_tokens_processed = 0;
+    m_cached_prompt_tokens.clear();
+}
+
+void AIConvo::SetClearKvCacheEachTurn(bool clear) noexcept {
+    if (m_clear_kv_each_turn == clear) return;
+    m_clear_kv_each_turn = clear;
+    // Switching modes invalidates any previously cached token prefix.
+    ClearKvCache();
+}
+
+bool AIConvo::GetClearKvCacheEachTurn() const noexcept {
+    return m_clear_kv_each_turn;
+}
+
+void AIConvo::SetSystemPromptFile(const std::string& path) {
+    if (IsBlank(path))
+        throw std::invalid_argument("AIConvo::SetSystemPromptFile: path must not be blank");
+    m_system_prompt_file = path;
+    // Keep history intact; prompt assembly will load from file on demand.
+    ClearKvCache();
+}
+
+std::optional<std::string> AIConvo::GetSystemPromptFile() const noexcept {
+    return m_system_prompt_file;
+}
+
+void AIConvo::SetRecentTurnsWindow(int turns) {
+    if (turns < 0)
+        throw std::invalid_argument("AIConvo::SetRecentTurnsWindow: turns must be >= 0");
+    m_recent_turns_window = turns;
+    ClearKvCache();
+}
+
+int AIConvo::GetRecentTurnsWindow() const noexcept {
+    return m_recent_turns_window;
+}
+
+std::string AIConvo::GetSummary() const {
+    return m_summary;
+}
+
+std::string AIConvo::LoadSystemPromptText() const {
+    if (m_system_prompt_file.has_value()) {
+        std::ifstream in(*m_system_prompt_file);
+        if (!in.is_open())
+            throw std::runtime_error("AIConvo: cannot open system prompt file \"" + *m_system_prompt_file + "\"");
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        const std::string s = ss.str();
+        if (IsBlank(s))
+            throw std::runtime_error("AIConvo: system prompt file is blank \"" + *m_system_prompt_file + "\"");
+        return s;
+    }
+    return m_system_prompt;
+}
+
+std::vector<Message> AIConvo::GetRecentWindowMessages() const {
+    // We keep full history in _history for persistence, but only include the last
+    // N user/assistant *pairs* in the prompt for context efficiency.
+    if (m_recent_turns_window <= 0) return {};
+
+    std::vector<Message> non_system;
+    non_system.reserve(m_history.size());
+    for (std::size_t i = 0; i < m_history.size(); ++i) {
+        if (m_history[i].role == Role::System) continue;
+        non_system.push_back(m_history[i]);
+    }
+
+    // Each "chat" is usually two messages (User + Assistant). We keep the tail.
+    const std::size_t max_msgs = static_cast<std::size_t>(m_recent_turns_window) * 2;
+    if (non_system.size() <= max_msgs) return non_system;
+    return {non_system.end() - static_cast<std::ptrdiff_t>(max_msgs), non_system.end()};
 }
 
 std::string AIConvo::BuildPrompt() const {
-    // Build a C array of llama_chat_message structs from our history.
+    // Build a C array of llama_chat_message structs from:
+    // - system prompt (loaded from file if configured)
+    // - hidden summary (if present)
+    // - recent conversation window (last N user/assistant pairs)
     // We keep role strings alive in a parallel vector so their c_str() pointers
     // remain valid while the chat_message_array is being used.
     std::vector<std::string>        role_strings;
     std::vector<llama_chat_message> chat_message_array;
-    role_strings.reserve(_history.size());
-    chat_message_array.reserve(_history.size());
+    std::vector<Message> prompt_messages;
+    prompt_messages.reserve(2 + m_history.size());
+    prompt_messages.push_back({Role::System, LoadSystemPromptText()});
+    if (!IsBlank(m_summary)) {
+        prompt_messages.push_back({Role::System, std::string("Conversation summary (hidden state):\n") + m_summary});
+    }
+    const auto window = GetRecentWindowMessages();
+    prompt_messages.insert(prompt_messages.end(), window.begin(), window.end());
 
-    for (const auto& message : _history) {
+    role_strings.reserve(prompt_messages.size());
+    chat_message_array.reserve(prompt_messages.size());
+
+    for (const auto& message : prompt_messages) {
         role_strings.push_back(RoleToStr(message.role));
-        chat_message_array.push_back(
-            {role_strings.back().c_str(), message.content.c_str()});
+        chat_message_array.push_back({role_strings.back().c_str(), message.content.c_str()});
     }
 
     // Get the model's built-in chat template string (nullptr = use model default).
-    const char* chat_template = llama_model_chat_template(_model.ModelPtr(), nullptr);
+    const char* chat_template = llama_model_chat_template(m_model.ModelPtr(), nullptr);
 
     // Dry-run: pass null buffer to get the required byte count.
     int required_buffer_size = llama_chat_apply_template(
@@ -478,7 +569,7 @@ std::string AIConvo::BuildPrompt() const {
     if (required_buffer_size < 0) {
         // Model has no built-in template; fall back to a plain-text format.
         std::ostringstream output_stream;
-        for (const auto& message : _history)
+        for (const auto& message : m_history)
             output_stream << RoleToStr(message.role) << ": " << message.content << "\n";
         output_stream << "assistant: ";
         return output_stream.str();
@@ -496,36 +587,124 @@ std::string AIConvo::BuildPrompt() const {
     return {formatted_prompt_buffer.data(), static_cast<std::size_t>(required_buffer_size)};
 }
 
+void AIConvo::UpdateSummaryNoThrow() {
+    // Runs a hidden, stateless update to keep _summary fresh.
+    // This uses the shared AIModel (separate from the conversation context).
+    try {
+        if (m_history.size() < 2) return;  // system only
+
+        // Use recent window to keep the summarizer bounded.
+        const auto window = GetRecentWindowMessages();
+        std::ostringstream transcript;
+        for (const auto& m : window) {
+            transcript << RoleToStr(m.role) << ": " << m.content << "\n";
+        }
+
+        const std::string prompt =
+            "You are a background process that maintains a compact summary of a conversation.\n"
+            "The user never sees your output.\n"
+            "Update the summary based on the recent transcript.\n"
+            "Rules:\n"
+            "- Keep it under 200 words.\n"
+            "- Include only stable facts, decisions, preferences, and important context.\n"
+            "- Do not include speculative content.\n\n"
+            "Previous summary:\n"
+            + (IsBlank(m_summary) ? std::string("(none)\n") : (m_summary + "\n")) +
+            "\nRecent transcript:\n" + transcript.str() +
+            "\nNew summary:";
+
+        const std::string new_summary = m_model.Generate(prompt, /*temperature=*/0.2f, /*max_tokens=*/256);
+        if (!IsBlank(new_summary)) m_summary = new_summary;
+    } catch (...) {
+        // Summary is best-effort.
+    }
+}
+
 std::string AIConvo::RunChat(const std::vector<llama_token>& all_tokens,
                              float temperature,
                              int   max_tokens) {
-    // ── Statefulness guarantee ────────────────────────────────────────────────
-    // all_tokens is the full formatted prompt built from _history, which always
-    // contains every system/user/assistant message in chronological order.
-    // We reprocess the entire prompt on every turn so the model is guaranteed to
-    // see the complete conversation context regardless of any prior state.
-    ClearKvCache();
+    // RunChat() is the "inference core" for a conversation turn.
+    //
+    // Inputs:
+    // - all_tokens: the fully formatted prompt (already tokenized) for this turn.
+    //              This is what BuildPrompt() produced (system + summary + recent window
+    //              + assistant prefix), then AIModel::Tokenize(...) converted to token ids.
+    // - temperature / max_tokens: sampling controls for the reply.
+    //
+    // Outputs / side effects:
+    // - Returns the assistant reply as UTF-8 text.
+    // - Advances the llama.cpp context state (KV cache) in m_conversation_ctx.
+    // - Updates m_tokens_processed and m_cached_prompt_tokens to describe what the KV cache
+    //   currently corresponds to (so the next turn can optionally reuse it).
+    //
+    // High-level steps:
+    //  1) Validate that the prompt fits the context window.
+    //  2) Ensure KV cache matches the prompt:
+    //     - either clear + full decode, or
+    //     - reuse KV and decode only the delta tokens if the prompt is append-only.
+    //  3) Create a sampler chain (temperature + top-p + RNG).
+    //  4) Generate up to max_tokens:
+    //     - sample next token
+    //     - append its text piece to reply
+    //     - decode it to extend KV cache for the next step
+    //  5) Free the sampler and return reply.
 
-    // ── Context overflow check ────────────────────────────────────────────────
-    if (static_cast<int>(all_tokens.size()) >= _model.CtxSize()) {
+    // ── (1) Context overflow check ────────────────────────────────────────────
+    if (static_cast<int>(all_tokens.size()) >= m_model.CtxSize()) {
         throw std::runtime_error(
             "AIConvo::RunChat: conversation is too long for the context window ("
             + std::to_string(all_tokens.size()) + " prompt tokens, context limit "
-            + std::to_string(_model.CtxSize()) + ")");
+            + std::to_string(m_model.CtxSize()) + ")");
     }
 
-    // ── Feed the full prompt into a clean KV cache ────────────────────────────
-    llama_batch prompt_batch = llama_batch_get_one(
-        const_cast<llama_token*>(all_tokens.data()),
-        static_cast<int32_t>(all_tokens.size())
-    );
-    if (llama_decode(_conversation_ctx, prompt_batch) != 0)
-        throw std::runtime_error(
-            "AIConvo::RunChat: llama_decode failed during prompt evaluation");
+    // ── (2) Prompt evaluation (full or delta) ─────────────────────────────────
+    // llama.cpp builds/updates the KV cache when you call llama_decode(ctx, batch).
+    // This is how the prompt becomes "resident" in attention memory.
+    //
+    // Correctness rule:
+    // - If the prompt changed anywhere *before the end*, reusing old KV is unsafe.
+    // - We only reuse KV when the new prompt token list has the previous prompt as
+    //   an exact prefix (append-only extension).
+    auto decode_tokens = [&](const llama_token* data, int32_t n) {
+        if (n <= 0) return;
+        llama_batch b = llama_batch_get_one(const_cast<llama_token*>(data), n);
+        if (llama_decode(m_conversation_ctx, b) != 0) {
+            throw std::runtime_error("AIConvo::RunChat: llama_decode failed during prompt evaluation");
+        }
+    };
 
-    _tokens_processed = static_cast<int32_t>(all_tokens.size());
+    if (m_clear_kv_each_turn) {
+        // Mode A (default): always rebuild KV from scratch for maximum correctness.
+        ClearKvCache();
+        decode_tokens(all_tokens.data(), static_cast<int32_t>(all_tokens.size()));
+        m_tokens_processed = static_cast<int32_t>(all_tokens.size());
+        m_cached_prompt_tokens = all_tokens;
+    } else {
+        // Mode B: try to keep KV across turns to avoid re-decoding the whole prompt.
+        const bool have_prefix =
+            !m_cached_prompt_tokens.empty() &&
+            m_tokens_processed == static_cast<int32_t>(m_cached_prompt_tokens.size()) &&
+            all_tokens.size() >= m_cached_prompt_tokens.size() &&
+            std::equal(m_cached_prompt_tokens.begin(), m_cached_prompt_tokens.end(), all_tokens.begin());
 
-    // ── Sampler chain: temperature → top-p → draw ────────────────────────────
+        if (!have_prefix) {
+            // Prompt was not append-only → clear and rebuild to stay correct.
+            ClearKvCache();
+            decode_tokens(all_tokens.data(), static_cast<int32_t>(all_tokens.size()));
+        } else {
+            // Prompt extends the previous prompt → decode only the new tail tokens.
+            const std::size_t delta = all_tokens.size() - m_cached_prompt_tokens.size();
+            if (delta > 0) {
+                decode_tokens(all_tokens.data() + m_cached_prompt_tokens.size(), static_cast<int32_t>(delta));
+            }
+        }
+
+        m_tokens_processed = static_cast<int32_t>(all_tokens.size());
+        m_cached_prompt_tokens = all_tokens;
+    }
+
+    // ── (3) Sampler chain: temperature → top-p → draw ─────────────────────────
+    // This chain transforms the model's next-token logits into a single sampled token.
     llama_sampler_chain_params sampler_chain_params = llama_sampler_chain_default_params();
     llama_sampler* sampler = llama_sampler_chain_init(sampler_chain_params);
     llama_sampler_chain_add(sampler, llama_sampler_init_temp(temperature));
@@ -535,27 +714,32 @@ std::string AIConvo::RunChat(const std::vector<llama_token>& all_tokens,
     std::string reply;
     reply.reserve(static_cast<std::size_t>(max_tokens) * 4);
 
+    // ── (4) Autoregressive generation loop ────────────────────────────────────
     for (int i = 0; i < max_tokens; ++i) {
-        llama_token current_token = llama_sampler_sample(sampler, _conversation_ctx, -1);
+        // Sample 1 token from the current context state.
+        llama_token current_token = llama_sampler_sample(sampler, m_conversation_ctx, -1);
 
-        const llama_vocab* vocab = llama_model_get_vocab(_model.ModelPtr());
+        const llama_vocab* vocab = llama_model_get_vocab(m_model.ModelPtr());
         if (llama_vocab_is_eog(vocab, current_token)) break;
 
+        // Convert token id -> UTF-8 piece and append to the reply text.
         char piece[32];
         int  piece_length = llama_token_to_piece(
             vocab, current_token, piece, sizeof piece, 0, false);
         if (piece_length > 0)
             reply.append(piece, static_cast<std::size_t>(piece_length));
 
+        // Decode the token to advance the model state (this extends the KV cache).
         llama_batch next_batch = llama_batch_get_one(&current_token, 1);
-        if (llama_decode(_conversation_ctx, next_batch) != 0) {
+        if (llama_decode(m_conversation_ctx, next_batch) != 0) {
             llama_sampler_free(sampler);
             throw std::runtime_error(
                 "AIConvo::RunChat: llama_decode failed during generation");
         }
-        ++_tokens_processed;
+        ++m_tokens_processed;
     }
 
+    // ── (5) Cleanup ───────────────────────────────────────────────────────────
     llama_sampler_free(sampler);
     return reply;
 }
@@ -565,7 +749,7 @@ std::string AIConvo::MakeTitle(const std::string& first_msg) {
         "In 5 words or fewer, give a short title for this conversation.\n"
         "Message: " + first_msg + "\nTitle:";
     try {
-        std::string raw_title = _model.Generate(
+        std::string raw_title = m_model.Generate(
             title_prompt, /*temperature=*/0.3f, /*max_tokens=*/20);
         auto title_start = raw_title.find_first_not_of(" \t\n\r");
         auto title_end   = raw_title.find_last_not_of(" \t\n\r");
@@ -598,29 +782,32 @@ std::string AIConvo::Chat(const std::string& message,
 
     // Remember whether this is the very first user turn (for title generation).
     bool is_first_user_message = true;
-    for (const auto& history_entry : _history)
+    for (const auto& history_entry : m_history)
         if (history_entry.role == Role::User) { is_first_user_message = false; break; }
 
     // Append the user message optimistically — roll back if inference fails.
-    _history.push_back({Role::User, message});
+    m_history.push_back({Role::User, message});
 
     try {
-        // BuildPrompt() serialises ALL of _history (system + every user/assistant
+        // BuildPrompt() serialises ALL of m_history (system + every user/assistant
         // pair so far + the new user message + the assistant-turn prefix).
         // RunChat() always reprocesses this full prompt from scratch, so the model
         // sees the complete conversation history on every single turn.
         std::string full_prompt = BuildPrompt();
-        auto        token_list  = _model.Tokenize(full_prompt, /*add_bos=*/true);
+        auto        token_list  = m_model.Tokenize(full_prompt, /*add_bos=*/true);
         std::string reply       = RunChat(token_list, temperature, max_tokens);
 
         if (IsBlank(reply))
             throw std::runtime_error("AIConvo::Chat: model returned an empty response");
 
-        _history.push_back({Role::Assistant, reply});
+        m_history.push_back({Role::Assistant, reply});
+
+        // Hidden summary update (best-effort, not user-visible).
+        UpdateSummaryNoThrow();
 
         // Auto-generate a title from the first user message (best-effort).
-        if (is_first_user_message && !_title.has_value()) {
-            try { _title = MakeTitle(message); }
+        if (is_first_user_message && !m_title.has_value()) {
+            try { m_title = MakeTitle(message); }
             catch (...) {}  // title is optional
         }
 
@@ -628,7 +815,7 @@ std::string AIConvo::Chat(const std::string& message,
 
     } catch (...) {
         // Roll back the user message and clear the KV cache.
-        _history.pop_back();
+        m_history.pop_back();
         ClearKvCache();
         throw;
     }
@@ -636,22 +823,25 @@ std::string AIConvo::Chat(const std::string& message,
 
 void AIConvo::ClearHistory() noexcept {
     // Keep only the system message (always index 0).
-    if (_history.size() > 1)
-        _history.erase(_history.begin() + 1, _history.end());
+    if (m_history.size() > 1)
+        m_history.erase(m_history.begin() + 1, m_history.end());
     ClearKvCache();
     // Title is intentionally preserved — clearing turns does not rename the chat.
 }
 
 std::vector<Message> AIConvo::GetHistory() const {
-    return _history;  // return a copy so callers cannot mutate internal state
+    return m_history;  // return a copy so callers cannot mutate internal state
 }
 
 std::string AIConvo::SaveHistory(const std::string& path) {
     json json_document;
-    json_document["title"] = _title.has_value() ? json(*_title) : json(nullptr);
+    json_document["title"] = m_title.has_value() ? json(*m_title) : json(nullptr);
+    json_document["system_prompt_file"] = m_system_prompt_file.has_value() ? json(*m_system_prompt_file) : json(nullptr);
+    json_document["recent_turns_window"] = m_recent_turns_window;
+    json_document["summary"] = IsBlank(m_summary) ? json(nullptr) : json(m_summary);
 
     json json_messages = json::array();
-    for (const auto& history_entry : _history)
+    for (const auto& history_entry : m_history)
         json_messages.push_back({
             {"role",    RoleToStr(history_entry.role)},
             {"content", history_entry.content}
@@ -662,8 +852,8 @@ std::string AIConvo::SaveHistory(const std::string& path) {
     std::string output_file_path = path;
     if (IsBlank(output_file_path)) {
         std::string base_filename;
-        if (_title.has_value()) {
-            base_filename = *_title;
+        if (m_title.has_value()) {
+            base_filename = *m_title;
             for (char& c : base_filename)
                 if (!std::isalnum(static_cast<unsigned char>(c))) c = '_';
         } else {
@@ -683,6 +873,33 @@ std::string AIConvo::SaveHistory(const std::string& path) {
             "AIConvo::save_history: write failed for \"" + output_file_path + "\"");
 
     return output_file_path;
+}
+
+void AIConvo::SaveState(const std::string& path) {
+    if (IsBlank(path))
+        throw std::invalid_argument("AIConvo::SaveState: path must not be blank");
+    if (!m_conversation_ctx)
+        throw std::runtime_error("AIConvo::SaveState: null conversation context");
+
+    const size_t state_size = llama_state_get_size(m_conversation_ctx);
+    if (state_size == 0)
+        throw std::runtime_error("AIConvo::SaveState: llama_state_get_size returned 0");
+
+    std::vector<uint8_t> state_bytes(state_size);
+    const size_t written = llama_state_get_data(m_conversation_ctx, state_bytes.data(), state_bytes.size());
+    if (written == 0)
+        throw std::runtime_error("AIConvo::SaveState: llama_state_get_data failed");
+
+    state_bytes.resize(written);
+
+    std::ofstream out(path, std::ios::binary);
+    if (!out.is_open())
+        throw std::runtime_error("AIConvo::SaveState: cannot open \"" + path + "\" for writing");
+
+    out.write(reinterpret_cast<const char*>(state_bytes.data()),
+              static_cast<std::streamsize>(state_bytes.size()));
+    if (!out)
+        throw std::runtime_error("AIConvo::SaveState: write failed for \"" + path + "\"");
 }
 
 void AIConvo::LoadHistory(const std::string& path) {
@@ -723,18 +940,60 @@ void AIConvo::LoadHistory(const std::string& path) {
     if (json_document.contains("title") && json_document["title"].is_string())
         loaded_title = json_document["title"].get<std::string>();
 
+    std::optional<std::string> loaded_system_prompt_file;
+    if (json_document.contains("system_prompt_file") && json_document["system_prompt_file"].is_string())
+        loaded_system_prompt_file = json_document["system_prompt_file"].get<std::string>();
+
+    int loaded_recent_turns_window = m_recent_turns_window;
+    if (json_document.contains("recent_turns_window") && json_document["recent_turns_window"].is_number_integer())
+        loaded_recent_turns_window = json_document["recent_turns_window"].get<int>();
+
+    std::string loaded_summary;
+    if (json_document.contains("summary") && json_document["summary"].is_string())
+        loaded_summary = json_document["summary"].get<std::string>();
+
     // Commit only after all validation succeeds.
-    _history = std::move(loaded_history);
-    _title   = std::move(loaded_title);
+    m_history = std::move(loaded_history);
+    m_title   = std::move(loaded_title);
+    m_system_prompt_file = std::move(loaded_system_prompt_file);
+    m_recent_turns_window = loaded_recent_turns_window < 0 ? 0 : loaded_recent_turns_window;
+    m_summary = std::move(loaded_summary);
     ClearKvCache();  // loaded history has no cached KV vectors yet
 }
 
+void AIConvo::LoadState(const std::string& path) {
+    if (IsBlank(path))
+        throw std::invalid_argument("AIConvo::LoadState: path must not be blank");
+    if (!m_conversation_ctx)
+        throw std::runtime_error("AIConvo::LoadState: null conversation context");
+
+    std::ifstream in(path, std::ios::binary);
+    if (!in.is_open())
+        throw std::runtime_error("AIConvo::LoadState: cannot open \"" + path + "\" for reading");
+
+    in.seekg(0, std::ios::end);
+    const std::streamoff size = in.tellg();
+    if (size <= 0)
+        throw std::runtime_error("AIConvo::LoadState: empty state file \"" + path + "\"");
+    in.seekg(0, std::ios::beg);
+
+    std::vector<uint8_t> state_bytes(static_cast<std::size_t>(size));
+    in.read(reinterpret_cast<char*>(state_bytes.data()),
+            static_cast<std::streamsize>(state_bytes.size()));
+    if (!in)
+        throw std::runtime_error("AIConvo::LoadState: read failed for \"" + path + "\"");
+
+    const size_t restored = llama_state_set_data(m_conversation_ctx, state_bytes.data(), state_bytes.size());
+    if (restored == 0)
+        throw std::runtime_error("AIConvo::LoadState: llama_state_set_data failed for \"" + path + "\"");
+}
+
 std::optional<std::string> AIConvo::GetTitle() const noexcept {
-    return _title;
+    return m_title;
 }
 
 void AIConvo::SetTitle(const std::string& title) {
     if (IsBlank(title))
         throw std::invalid_argument("AIConvo::SetTitle: title must not be blank");
-    _title = title;
+    m_title = title;
 }
