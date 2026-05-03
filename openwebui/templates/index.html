@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenWebUI</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <!-- Syntax highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" id="hljs-theme" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
+  <!-- Markdown renderer -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" defer></script>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside id="sidebar" class="sidebar">
+
+    <div class="sidebar-header">
+      <h1>OpenWebUI</h1>
+      <button id="new-chat-btn" title="New Chat (Ctrl+Shift+N)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        New
+      </button>
+    </div>
+
+    <div class="sidebar-search">
+      <input type="search" id="search-input" placeholder="Search conversations…" autocomplete="off" />
+    </div>
+
+    <div class="conversations-list" id="conversations-list">
+      <!-- Populated by JS -->
+    </div>
+
+    <div class="sidebar-footer">
+      <button class="sidebar-footer-btn" id="settings-btn" title="Settings">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        Settings
+      </button>
+      <button class="icon-btn" id="theme-btn" title="Toggle Theme">
+        <svg id="theme-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN ===== -->
+  <main class="main">
+
+    <!-- Header -->
+    <header class="header">
+      <button id="sidebar-toggle-main" title="Toggle Sidebar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+
+      <div class="model-selector">
+        <select id="model-select">
+          <option value="">— Select a model —</option>
+        </select>
+        <span id="provider-badge" class="provider-badge hidden"></span>
+        <button class="icon-btn" id="refresh-models-btn" title="Refresh models">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="header-right">
+        <button class="icon-btn" id="system-prompt-btn" title="System Prompt">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </button>
+        <button class="icon-btn" id="delete-conv-btn" title="Delete conversation" style="color:var(--text-muted)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Messages -->
+    <div class="messages-container" id="messages-container">
+      <div class="messages-inner" id="messages-inner">
+
+        <!-- Welcome shown when no conversation is active -->
+        <div id="welcome-screen" class="welcome">
+          <div class="welcome-logo">🤖</div>
+          <h2>How can I help you today?</h2>
+          <p>Chat with local Ollama models or connect cloud providers like OpenAI and Anthropic.</p>
+          <div class="welcome-models" id="welcome-models">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Input area -->
+    <div class="input-area">
+      <div class="input-wrapper">
+        <!-- File previews -->
+        <div class="file-previews hidden" id="file-previews"></div>
+
+        <div class="input-box">
+          <button class="input-action-btn" id="attach-btn" title="Attach image">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
+          <input type="file" id="file-input" accept="image/*" class="hidden" multiple />
+
+          <textarea
+            id="message-input"
+            placeholder="Send a message… (Enter to send, Shift+Enter for newline)"
+            rows="1"
+            autocomplete="off"
+          ></textarea>
+
+          <div class="input-actions">
+            <button id="send-btn" title="Send (Enter)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+            <button id="stop-btn" class="hidden" title="Stop generation">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="4" y="4" width="16" height="16" rx="2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="input-footer">
+          <span id="model-info-label"></span>
+          <span>Shift+Enter for new line</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ===== SETTINGS MODAL ===== -->
+<div class="modal-overlay hidden" id="settings-overlay">
+  <div class="modal" role="dialog" aria-label="Settings">
+    <div class="modal-header">
+      <h2>Settings</h2>
+      <button class="modal-close" data-modal="settings-overlay">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-tabs">
+        <button class="settings-tab active" data-tab="tab-general">General</button>
+        <button class="settings-tab" data-tab="tab-providers">Providers</button>
+        <button class="settings-tab" data-tab="tab-params">Parameters</button>
+      </div>
+
+      <!-- General -->
+      <div class="settings-tab-content active" id="tab-general">
+        <div class="setting-group">
+          <label>Theme</label>
+          <select id="setting-theme">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
+        <div class="setting-group">
+          <label>Default Model</label>
+          <select id="setting-default-model">
+            <option value="">None (use last selected)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Providers -->
+      <div class="settings-tab-content" id="tab-providers">
+        <div class="setting-group">
+          <label>Ollama URL</label>
+          <input type="text" id="setting-ollama-url" placeholder="http://localhost:11434" />
+          <div class="setting-hint">URL of your local Ollama instance.</div>
+        </div>
+        <hr style="border-color:var(--border);margin:16px 0" />
+        <div class="setting-group">
+          <label>OpenAI API Key</label>
+          <input type="password" id="setting-openai-key" placeholder="sk-…" autocomplete="off" />
+        </div>
+        <div class="setting-group">
+          <label>OpenAI Base URL</label>
+          <input type="text" id="setting-openai-url" placeholder="https://api.openai.com/v1" />
+          <div class="setting-hint">Override for compatible APIs (LM Studio, Together, etc.)</div>
+        </div>
+        <hr style="border-color:var(--border);margin:16px 0" />
+        <div class="setting-group">
+          <label>Anthropic API Key</label>
+          <input type="password" id="setting-anthropic-key" placeholder="sk-ant-…" autocomplete="off" />
+        </div>
+      </div>
+
+      <!-- Parameters -->
+      <div class="settings-tab-content" id="tab-params">
+        <div class="setting-group">
+          <label>Temperature: <span id="temp-display">0.7</span></label>
+          <input type="range" id="setting-temperature" min="0" max="2" step="0.05" value="0.7" />
+          <div class="setting-hint">Higher = more creative, lower = more deterministic.</div>
+        </div>
+        <div class="setting-group">
+          <label>Top P: <span id="topp-display">0.9</span></label>
+          <input type="range" id="setting-top-p" min="0" max="1" step="0.05" value="0.9" />
+        </div>
+        <div class="setting-group">
+          <label>Max Tokens</label>
+          <input type="number" id="setting-max-tokens" value="4096" min="64" max="200000" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary modal-close" data-modal="settings-overlay">Cancel</button>
+      <button class="btn btn-primary" id="save-settings-btn">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SYSTEM PROMPT MODAL ===== -->
+<div class="modal-overlay hidden" id="system-prompt-overlay">
+  <div class="modal" role="dialog" aria-label="System Prompt">
+    <div class="modal-header">
+      <h2>System Prompt</h2>
+      <button class="modal-close" data-modal="system-prompt-overlay">✕</button>
+    </div>
+    <div class="modal-body">
+      <textarea
+        id="system-prompt-input"
+        placeholder="Enter a system prompt to guide the assistant's behavior…"
+      ></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary modal-close" data-modal="system-prompt-overlay">Cancel</button>
+      <button class="btn btn-primary" id="save-system-prompt-btn">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== RENAME MODAL ===== -->
+<div class="modal-overlay hidden" id="rename-overlay">
+  <div class="modal" role="dialog" aria-label="Rename Conversation" style="max-width:380px">
+    <div class="modal-header">
+      <h2>Rename Chat</h2>
+      <button class="modal-close" data-modal="rename-overlay">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="text" id="rename-input" class="rename-input" placeholder="Conversation title" maxlength="80" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary modal-close" data-modal="rename-overlay">Cancel</button>
+      <button class="btn btn-primary" id="rename-confirm-btn">Rename</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TOAST CONTAINER ===== -->
+<div class="toasts" id="toasts"></div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
