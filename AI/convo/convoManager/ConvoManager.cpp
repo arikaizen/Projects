@@ -4,11 +4,14 @@
 
 #include <filesystem>  // std::filesystem::path, create_directories
 #include <fstream>     // std::ifstream, std::ofstream
-#include <map>       // std::map
-#include <memory>    // std::make_unique
+#include <map>         // std::map
+#include <memory>      // std::make_unique
+#include <mutex>       // std::mutex, std::lock_guard
+#include <set>         // std::set (duplicate detection)
+#include <thread>      // std::thread
 #include <nlohmann/json.hpp>
-#include <stdexcept>  // std::invalid_argument, std::runtime_error
-#include <utility>    // std::move
+#include <stdexcept>   // std::invalid_argument, std::runtime_error
+#include <utility>     // std::move
 
 namespace convo_manager {
 namespace {
@@ -70,6 +73,7 @@ const ConvoEntry& RequireConvo(const ModelEntry& model, ConvoId convo_id) {
 struct ConvoManager::Impl {
   std::map<ModelId, ModelEntry> Models;
   ModelId NextModelId = 1;
+  std::mutex DirtyMtx;  // guards Dirty flag writes during ChatBatch
 };
 
 ConvoManager::ConvoManager()
@@ -215,6 +219,66 @@ std::string ConvoManager::Chat(ModelId model_id, ConvoId convo_id,
   const std::string reply = convo.Convo->Chat(user_message, temperature, max_tokens);
   convo.Dirty = true;
   return reply;
+}
+
+std::vector<BatchResult> ConvoManager::ChatBatch(const std::vector<BatchRequest>& requests) {
+  // Validate: no duplicate (model_id, convo_id) pairs, and all exist and are open.
+  {
+    std::set<std::pair<ModelId, ConvoId>> seen;
+    for (const auto& req : requests) {
+      const auto key = std::make_pair(req.model_id, req.convo_id);
+      if (!seen.insert(key).second)
+        throw std::invalid_argument(
+            "ConvoManager::ChatBatch: duplicate (model_id, convo_id) in batch");
+      const auto& model = RequireModel(m_impl->Models, req.model_id);
+      const auto& convo = RequireConvo(model, req.convo_id);
+      if (convo.Closed)
+        throw std::invalid_argument("ConvoManager::ChatBatch: conversation is closed");
+    }
+  }
+
+  std::vector<BatchResult> results(requests.size());
+
+  // Each convo owns its own llama_context so threads run independently on the GPU.
+  // The only shared write after inference is the Dirty flag, guarded by DirtyMtx.
+  std::vector<std::thread> threads;
+  threads.reserve(requests.size());
+
+  for (std::size_t i = 0; i < requests.size(); ++i) {
+    const BatchRequest& req = requests[i];
+    BatchResult&        res = results[i];
+    res.model_id = req.model_id;
+    res.convo_id = req.convo_id;
+
+    // Grab a raw pointer to the AIConvo — valid for the lifetime of this call
+    // because ChatBatch holds no locks and no insertions happen mid-batch.
+    auto& model = RequireModel(m_impl->Models, req.model_id);
+    auto& convo = RequireConvo(model, req.convo_id);
+    AIConvo* convo_ptr = convo.Convo.get();
+
+    threads.emplace_back([this, convo_ptr, &req, &res]() {
+      try {
+        res.reply = convo_ptr->Chat(req.message, req.temperature, req.max_tokens);
+        {
+          // Minimal critical section: mark dirty after inference completes.
+          std::lock_guard<std::mutex> lk(m_impl->DirtyMtx);
+          // Re-find and mark; map structure is unchanged during the batch.
+          auto mit = m_impl->Models.find(req.model_id);
+          if (mit != m_impl->Models.end()) {
+            auto cit = mit->second.Convos.find(req.convo_id);
+            if (cit != mit->second.Convos.end()) cit->second.Dirty = true;
+          }
+        }
+      } catch (const std::exception& e) {
+        res.error = e.what();
+      } catch (...) {
+        res.error = "unknown error";
+      }
+    });
+  }
+
+  for (auto& t : threads) t.join();
+  return results;
 }
 
 void ConvoManager::SetAgentConfig(ModelId model_id, ConvoId convo_id,

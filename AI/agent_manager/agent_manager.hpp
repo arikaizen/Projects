@@ -71,6 +71,17 @@ public:
     // auto-saves history + KV state, and returns the clean reply text.
     std::string Chat(const std::string& name, const std::string& message);
 
+    // ── Run multiple agents concurrently ──────────────────────────────────────
+    struct AgentRequest { std::string name; std::string message; };
+    struct AgentResult  {
+        std::string name;
+        std::string reply;
+        std::string error;  // non-empty if the turn failed
+    };
+    // Launches one thread per request.  Each agent name must be unique in the batch.
+    // Never throws; per-agent errors go into AgentResult::error.
+    std::vector<AgentResult> ChatBatch(const std::vector<AgentRequest>& requests);
+
     // ── Persistence ───────────────────────────────────────────────────────────
     // Save one named agent, or every agent if name is empty.
     void Save(const std::string& name = "");

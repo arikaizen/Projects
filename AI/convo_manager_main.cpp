@@ -60,6 +60,7 @@ void PrintHelp() {
         "  /agent-save [name]       save one agent or all\n"
         "  /agent-summary [name]    show running summary\n"
         "  /agent-info <name>       show agent config\n"
+        "  /agent-batch             send one message to ALL agents concurrently\n"
         "\n"
         "Model commands:\n"
         "  /models                  list loaded models\n"
@@ -280,6 +281,36 @@ int main(int argc, char** argv)
 
                 } else if (cmd == "/agent-info" && parts.size() >= 2) {
                     CmdAgentInfo(agent_mgr, parts[1]);
+
+                } else if (cmd == "/agent-batch") {
+                    // Prompt user for a single message, then fan it out to every
+                    // loaded agent concurrently and print each reply.
+                    const auto names = agent_mgr.Names();
+                    if (names.empty()) {
+                        std::cerr << "No agents loaded.\n";
+                    } else {
+                        std::cout << "Message to all agents: " << std::flush;
+                        std::string batch_msg;
+                        if (!std::getline(std::cin, batch_msg) || batch_msg.empty()) {
+                            std::cerr << "Aborted.\n";
+                        } else {
+                            std::vector<AgentManager::AgentRequest> reqs;
+                            reqs.reserve(names.size());
+                            for (const auto& n : names)
+                                reqs.push_back({n, batch_msg});
+
+                            std::cout << "Running " << names.size()
+                                      << " agent(s) concurrently...\n";
+                            const auto results = agent_mgr.ChatBatch(reqs);
+                            for (const auto& r : results) {
+                                std::cout << "\n── [" << r.name << "] ──\n";
+                                if (!r.error.empty())
+                                    std::cerr << "Error: " << r.error << "\n";
+                                else
+                                    std::cout << r.reply << "\n";
+                            }
+                        }
+                    }
 
                 } else if (cmd == "/help") {
                     PrintHelp();

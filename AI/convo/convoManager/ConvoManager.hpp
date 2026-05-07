@@ -5,6 +5,7 @@
 #include <optional>     // std::optional
 #include <string>       // std::string
 #include <vector>       // std::vector
+#include <mutex>        // std::mutex
 
 namespace convo_manager {
 
@@ -26,6 +27,21 @@ struct ModelInfo {
   std::string ModelPath;
   std::vector<ConversationInfo> Conversations;
   std::optional<ConvoId> ActiveConversation;
+};
+
+struct BatchRequest {
+  ModelId     model_id    = 0;
+  ConvoId     convo_id    = 0;
+  std::string message;
+  float       temperature = 0.7f;
+  int         max_tokens  = 2048;
+};
+
+struct BatchResult {
+  ModelId     model_id = 0;
+  ConvoId     convo_id = 0;
+  std::string reply;
+  std::string error;   // non-empty if inference failed
 };
 
 class ConvoManager {
@@ -59,6 +75,11 @@ public:
   std::string Chat(ModelId model_id, ConvoId convo_id,
                    const std::string& user_message,
                    float temperature = 0.7f, int max_tokens = 2048);
+
+  // Run multiple conversations in parallel (one thread per request).
+  // Each (model_id, convo_id) pair must be unique within the batch.
+  // Never throws; per-request errors are reported in BatchResult::error.
+  std::vector<BatchResult> ChatBatch(const std::vector<BatchRequest>& requests);
 
   // ── Per-conversation configuration ──────────────────────────────────────────
   void SetAgentConfig(ModelId model_id, ConvoId convo_id,

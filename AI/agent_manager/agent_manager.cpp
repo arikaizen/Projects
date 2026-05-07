@@ -30,9 +30,12 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace fs = std::filesystem;
 using json   = nlohmann::json;
@@ -190,6 +193,74 @@ std::string AgentManager::Chat(const std::string& name, const std::string& messa
     }
 
     return clean;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ChatBatch — run multiple agents concurrently
+// ─────────────────────────────────────────────────────────────────────────────
+
+std::vector<AgentManager::AgentResult>
+AgentManager::ChatBatch(const std::vector<AgentRequest>& requests) {
+    // Validate: names must exist and be unique within this batch.
+    {
+        std::set<std::string> seen;
+        for (const auto& req : requests) {
+            if (!seen.insert(req.name).second)
+                throw std::runtime_error(
+                    "AgentManager::ChatBatch: duplicate agent name '" + req.name + "'");
+            if (agents_.find(req.name) == agents_.end())
+                throw std::runtime_error(
+                    "AgentManager::ChatBatch: unknown agent '" + req.name + "'");
+        }
+    }
+
+    std::vector<AgentResult> results(requests.size());
+    std::mutex               save_mtx;  // serialise the per-agent file I/O after inference
+
+    std::vector<std::thread> threads;
+    threads.reserve(requests.size());
+
+    for (std::size_t i = 0; i < requests.size(); ++i) {
+        const AgentRequest& req = requests[i];
+        AgentResult&        res = results[i];
+        res.name = req.name;
+
+        Agent& agent = agents_.at(req.name);
+
+        threads.emplace_back([this, &req, &res, &agent, &save_mtx]() {
+            try {
+                // GPU inference — each agent's llama_context is independent.
+                std::string reply = mgr_.Chat(agent.model_id, agent.convo_id,
+                                              req.message,
+                                              agent.config.temperature,
+                                              agent.config.max_tokens);
+                // Strip summary tag (mutates agent state; safe: unique per thread).
+                res.reply = ExtractSummary(reply, agent);
+
+                // File I/O is serialised so concurrent saves don't interleave writes.
+                {
+                    std::lock_guard<std::mutex> lk(save_mtx);
+                    try {
+                        const std::string hist =
+                            (std::filesystem::path(agent.folder) / "history.json").string();
+                        mgr_.Save(agent.model_id, agent.convo_id, hist);
+                        WriteSummary(agent);
+                        WriteConfig(agent);
+                    } catch (const std::exception& e) {
+                        fprintf(stderr, "[agent_manager] batch auto-save failed for '%s': %s\n",
+                                req.name.c_str(), e.what());
+                    }
+                }
+            } catch (const std::exception& e) {
+                res.error = e.what();
+            } catch (...) {
+                res.error = "unknown error";
+            }
+        });
+    }
+
+    for (auto& t : threads) t.join();
+    return results;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
