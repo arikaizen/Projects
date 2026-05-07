@@ -3,11 +3,15 @@
 # ==============================================================================
 #
 # Targets:
-# - bin/convo_manager : multi-model convo manager CLI
+# - bin/convo_manager   : multi-model convo manager CLI
+# - layer_inference     : sliding-window VRAM-bounded inference engine
+#                         (delegates to layer_inference/Makefile)
 #
 # Usage:
 #   make -C AI all
 #   ./AI/bin/convo_manager model1.gguf model2.gguf
+#   make -C AI layer_inference
+#   ./AI/layer_inference/bin/layer_inference model.gguf
 #
 # ==============================================================================
 
@@ -50,9 +54,13 @@ CONVO_MANAGER_SRCS := \
 CONVO_MANAGER_OBJS := $(CONVO_MANAGER_SRCS:%.cpp=$(BUILD_DIR)/%.o)
 
 # ==============================================================================
-.PHONY: all clean help
+.PHONY: all clean help layer_inference
 
 all: $(CONVO_MANAGER_TARGET)
+
+# Delegate to the component's own Makefile, forwarding LLAMA_DIR if set.
+layer_inference:
+	$(MAKE) -C layer_inference LLAMA_DIR=$(LLAMA_DIR) CUDA_PATH=$(CUDA_PATH)
 	@echo ""
 	@echo "===================================================="
 	@echo " Built: $(CONVO_MANAGER_TARGET)"
@@ -70,13 +78,16 @@ $(BUILD_DIR)/%.o: %.cpp
 
 clean:
 	rm -rf $(BUILD_DIR)
-	@echo "Cleaned $(BUILD_DIR)."
+	$(MAKE) -C layer_inference clean 2>/dev/null || true
+	@echo "Cleaned."
 
 help:
 	@echo "Usage:"
 	@echo "  make -C AI all LLAMA_DIR=/path/to/llama.cpp"
+	@echo "  make -C AI layer_inference LLAMA_DIR=/path/to/llama.cpp"
 	@echo "  make -C AI clean"
 	@echo ""
 	@echo "Run:"
 	@echo "  ./AI/bin/convo_manager model1.gguf [model2.gguf ...]"
+	@echo "  ./AI/layer_inference/bin/layer_inference model.gguf"
 
