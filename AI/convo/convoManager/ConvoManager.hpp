@@ -51,26 +51,35 @@ public:
   ConversationInfo GetConversationInfo(ModelId model_id, ConvoId convo_id) const;
   std::vector<ConversationInfo> ListConversations(ModelId model_id) const;
 
-  // Send a chat message to the currently active conversation for the given model.
-  // Marks the conversation Dirty on success.
+  // Send a message to the active conversation for this model.
   std::string Chat(ModelId model_id, const std::string& user_message,
                    float temperature = 0.7f, int max_tokens = 2048);
 
+  // Send a message directly to a specific conversation (does not change active).
+  std::string Chat(ModelId model_id, ConvoId convo_id,
+                   const std::string& user_message,
+                   float temperature = 0.7f, int max_tokens = 2048);
+
+  // ── Per-conversation configuration ──────────────────────────────────────────
+  void SetAgentConfig(ModelId model_id, ConvoId convo_id,
+                      int recent_turns_window, bool clear_kv_each_turn);
+
   // ── Persistence ─────────────────────────────────────────────────────────────
-  // Save one conversation. If path is empty, AIConvo chooses an auto filename.
-  // Returns the written history path.
-  //
-  // Additionally writes a binary llama.cpp state snapshot (KV cache, etc.) to a
-  // sidecar file: "<history_path>.state.bin".
+  // Save one conversation. Returns the written history path.
+  // Also writes KV cache to "<path>.state.bin".
   std::string Save(ModelId model_id, ConvoId convo_id, const std::string& path = "");
 
-  // Save an entire session directory (models + conversations + llama state).
-  //
-  // This writes:
-  // - <dir>/manifest.json  (models, parameters, conversation file paths)
-  // - <dir>/convos/...     (per-conversation history JSON + state .bin)
-  //
-  // Throws on errors. For "never throws" persistence, call SaveAllNoThrow().
+  // Restore history and KV state for a specific conversation.
+  void LoadConvoHistory(ModelId model_id, ConvoId convo_id, const std::string& path);
+  void LoadConvoState  (ModelId model_id, ConvoId convo_id, const std::string& path);
+
+  // Save all dirty conversations; never throws (safe for signal handlers).
+  void SaveAllNoThrow() noexcept;
+
+  // Mark a conversation closed (saves best-effort first).
+  void Close(ModelId model_id, ConvoId convo_id);
+
+  // Save an entire session directory with manifest.json.
   void SaveSession(const std::string& dir);
 
 private:

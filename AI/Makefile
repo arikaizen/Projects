@@ -26,6 +26,7 @@ INCLUDES := -Iconvo \
             -Iconvo/convoManager \
             -Itools/Cmdline \
             -Iconcat \
+            -Iagent_manager \
             -I$(LLAMA_DIR)/include \
             -I$(LLAMA_DIR)/ggml/include \
             -I$(LLAMA_DIR)/src \
@@ -50,7 +51,8 @@ CONVO_MANAGER_SRCS := \
 	tools/Cmdline/Cmdline.cpp \
 	convo/convo.cpp \
 	convo/convoManager/ConvoManager.cpp \
-	concat/promt_concat_api.cpp
+	concat/promt_concat_api.cpp \
+	agent_manager/agent_manager.cpp
 CONVO_MANAGER_OBJS := $(CONVO_MANAGER_SRCS:%.cpp=$(BUILD_DIR)/%.o)
 
 # ==============================================================================

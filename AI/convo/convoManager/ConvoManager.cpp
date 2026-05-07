@@ -205,6 +205,80 @@ std::string ConvoManager::Chat(ModelId model_id, const std::string& user_message
 
 
 
+std::string ConvoManager::Chat(ModelId model_id, ConvoId convo_id,
+                               const std::string& user_message,
+                               float temperature, int max_tokens) {
+  auto& model = RequireModel(m_impl->Models, model_id);
+  auto& convo = RequireConvo(model, convo_id);
+  if (convo.Closed)
+    throw std::runtime_error("ConvoManager::Chat: conversation is closed");
+  const std::string reply = convo.Convo->Chat(user_message, temperature, max_tokens);
+  convo.Dirty = true;
+  return reply;
+}
+
+void ConvoManager::SetAgentConfig(ModelId model_id, ConvoId convo_id,
+                                  int recent_turns_window, bool clear_kv_each_turn) {
+  auto& model = RequireModel(m_impl->Models, model_id);
+  auto& convo = RequireConvo(model, convo_id);
+  if (!convo.Convo) return;
+  convo.Convo->SetRecentTurnsWindow(recent_turns_window);
+  convo.Convo->SetClearKvCacheEachTurn(clear_kv_each_turn);
+}
+
+void ConvoManager::LoadConvoHistory(ModelId model_id, ConvoId convo_id,
+                                    const std::string& path) {
+  auto& model = RequireModel(m_impl->Models, model_id);
+  auto& convo = RequireConvo(model, convo_id);
+  if (!convo.Convo) throw std::runtime_error("ConvoManager::LoadConvoHistory: null conversation");
+  convo.Convo->LoadHistory(path);
+  convo.LastSavedPath = path;
+}
+
+void ConvoManager::LoadConvoState(ModelId model_id, ConvoId convo_id,
+                                  const std::string& path) {
+  auto& model = RequireModel(m_impl->Models, model_id);
+  auto& convo = RequireConvo(model, convo_id);
+  if (!convo.Convo) throw std::runtime_error("ConvoManager::LoadConvoState: null conversation");
+  convo.Convo->LoadState(path);
+  convo.LastStatePath = path;
+}
+
+void ConvoManager::SaveAllNoThrow() noexcept {
+  for (auto& [mid, model] : m_impl->Models) {
+    for (auto& [cid, convo] : model.Convos) {
+      if (!convo.Dirty || convo.Closed || !convo.Convo) continue;
+      try {
+        const std::string written = convo.Convo->SaveHistory(
+            convo.LastSavedPath.value_or(""));
+        const std::string sp = SidecarStatePathForHistoryPath(written);
+        convo.Convo->SaveState(sp);
+        convo.LastSavedPath = written;
+        convo.LastStatePath = sp;
+        convo.Dirty = false;
+      } catch (...) {}
+    }
+  }
+}
+
+void ConvoManager::Close(ModelId model_id, ConvoId convo_id) {
+  auto& model = RequireModel(m_impl->Models, model_id);
+  auto& convo = RequireConvo(model, convo_id);
+  if (convo.Dirty && convo.Convo) {
+    try {
+      const std::string written = convo.Convo->SaveHistory(
+          convo.LastSavedPath.value_or(""));
+      const std::string sp = SidecarStatePathForHistoryPath(written);
+      convo.Convo->SaveState(sp);
+      convo.LastSavedPath = written;
+      convo.LastStatePath = sp;
+      convo.Dirty = false;
+    } catch (...) {}
+  }
+  convo.Closed = true;
+  if (model.Active == convo_id) model.Active = std::nullopt;
+}
+
 std::string ConvoManager::Save(ModelId model_id, ConvoId convo_id, const std::string& path) {
   auto& model = RequireModel(m_impl->Models, model_id);
   auto& convo = RequireConvo(model, convo_id);
