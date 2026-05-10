@@ -25,11 +25,25 @@ def get_db():
 def init_db():
     conn = get_db()
     c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS agents (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        model TEXT DEFAULT '',
+        system_prompt TEXT DEFAULT '',
+        commands TEXT DEFAULT '[]',
+        avatar TEXT DEFAULT '🤖',
+        color TEXT DEFAULT '#6c63ff',
+        temperature REAL DEFAULT 0.7,
+        created_at TEXT,
+        updated_at TEXT
+    )''')
     c.execute('''CREATE TABLE IF NOT EXISTS conversations (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         model TEXT,
         system_prompt TEXT DEFAULT '',
+        agent_id TEXT DEFAULT NULL,
         created_at TEXT,
         updated_at TEXT
     )''')
@@ -281,8 +295,8 @@ def create_conversation():
     cid = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
     conn.execute(
-        'INSERT INTO conversations (id, title, model, system_prompt, created_at, updated_at) VALUES (?,?,?,?,?,?)',
-        (cid, data.get('title', 'New Chat'), data.get('model', ''), data.get('system_prompt', ''), now, now),
+        'INSERT INTO conversations (id, title, model, system_prompt, agent_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?)',
+        (cid, data.get('title', 'New Chat'), data.get('model', ''), data.get('system_prompt', ''), data.get('agent_id'), now, now),
     )
     conn.commit()
     row = conn.execute('SELECT * FROM conversations WHERE id = ?', (cid,)).fetchone()
@@ -390,6 +404,106 @@ def upload_file():
 @app.route('/uploads/<filename>')
 def serve_upload(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
+
+
+# ---------- Agents ----------
+
+@app.route('/api/agents', methods=['GET'])
+def list_agents():
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM agents ORDER BY updated_at DESC').fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/api/agents', methods=['POST'])
+def create_agent():
+    data = request.json or {}
+    conn = get_db()
+    aid = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        '''INSERT INTO agents
+           (id, name, description, model, system_prompt, commands, avatar, color, temperature, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+        (aid,
+         data.get('name', 'New Agent'),
+         data.get('description', ''),
+         data.get('model', ''),
+         data.get('system_prompt', ''),
+         json.dumps(data.get('commands', [])),
+         data.get('avatar', '🤖'),
+         data.get('color', '#6c63ff'),
+         float(data.get('temperature', 0.7)),
+         now, now),
+    )
+    conn.commit()
+    row = conn.execute('SELECT * FROM agents WHERE id = ?', (aid,)).fetchone()
+    conn.close()
+    return jsonify(dict(row)), 201
+
+
+@app.route('/api/agents/<aid>', methods=['GET'])
+def get_agent(aid):
+    conn = get_db()
+    row = conn.execute('SELECT * FROM agents WHERE id = ?', (aid,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'error': 'Not found'}), 404
+    return jsonify(dict(row))
+
+
+@app.route('/api/agents/<aid>', methods=['PUT'])
+def update_agent(aid):
+    data = request.json or {}
+    conn = get_db()
+    now = datetime.utcnow().isoformat()
+    fields, values = [], []
+    for f in ('name', 'description', 'model', 'system_prompt', 'avatar', 'color', 'temperature'):
+        if f in data:
+            fields.append(f'{f} = ?')
+            values.append(data[f])
+    if 'commands' in data:
+        fields.append('commands = ?')
+        values.append(json.dumps(data['commands']))
+    fields.append('updated_at = ?')
+    values += [now, aid]
+    conn.execute(f"UPDATE agents SET {', '.join(fields)} WHERE id = ?", values)
+    conn.commit()
+    row = conn.execute('SELECT * FROM agents WHERE id = ?', (aid,)).fetchone()
+    conn.close()
+    return jsonify(dict(row))
+
+
+@app.route('/api/agents/<aid>', methods=['DELETE'])
+def delete_agent(aid):
+    conn = get_db()
+    conn.execute('DELETE FROM agents WHERE id = ?', (aid,))
+    conn.commit()
+    conn.close()
+    return '', 204
+
+
+@app.route('/api/agents/<aid>/start', methods=['POST'])
+def start_agent_chat(aid):
+    conn = get_db()
+    agent = conn.execute('SELECT * FROM agents WHERE id = ?', (aid,)).fetchone()
+    if not agent:
+        conn.close()
+        return jsonify({'error': 'Agent not found'}), 404
+    agent = dict(agent)
+    cid = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        'INSERT INTO conversations (id, title, model, system_prompt, agent_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?)',
+        (cid, f"Chat with {agent['name']}", agent['model'], agent['system_prompt'], aid, now, now),
+    )
+    conn.commit()
+    row = conn.execute('SELECT * FROM conversations WHERE id = ?', (cid,)).fetchone()
+    conn.close()
+    result = dict(row)
+    result['agent'] = agent
+    return jsonify(result), 201
 
 
 # ---------- Generate title ----------

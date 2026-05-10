@@ -5,14 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OpenWebUI</title>
   <link rel="stylesheet" href="/static/css/style.css" />
-  <!-- Syntax highlighting -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" id="hljs-theme" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
-  <!-- Markdown renderer -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js" defer></script>
 </head>
 <body>
-
 <div id="app">
 
   <!-- ===== SIDEBAR ===== -->
@@ -20,28 +17,58 @@
 
     <div class="sidebar-header">
       <h1>OpenWebUI</h1>
-      <button id="new-chat-btn" title="New Chat (Ctrl+Shift+N)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-        New
+    </div>
+
+    <!-- Tab switcher: Chats | Agents -->
+    <div class="sidebar-tabs">
+      <button class="sidebar-tab active" data-view="chats">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        Chats
+      </button>
+      <button class="sidebar-tab" data-view="agents">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          <path d="M16 3.5c1.5.5 3 2 3 4.5"/><path d="M8 3.5C6.5 4 5 5.5 5 8"/>
+        </svg>
+        Agents
       </button>
     </div>
 
-    <div class="sidebar-search">
-      <input type="search" id="search-input" placeholder="Search conversations…" autocomplete="off" />
+    <!-- ---- CHATS VIEW ---- -->
+    <div id="view-chats" class="sidebar-view">
+      <div class="sidebar-view-header">
+        <button id="new-chat-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          New Chat
+        </button>
+      </div>
+      <div class="sidebar-search">
+        <input type="search" id="search-input" placeholder="Search conversations…" autocomplete="off" />
+      </div>
+      <div class="conversations-list" id="conversations-list"></div>
     </div>
 
-    <div class="conversations-list" id="conversations-list">
-      <!-- Populated by JS -->
+    <!-- ---- AGENTS VIEW ---- -->
+    <div id="view-agents" class="sidebar-view hidden">
+      <div class="sidebar-view-header">
+        <button id="new-agent-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          New Agent
+        </button>
+      </div>
+      <div class="agents-list" id="agents-list"></div>
     </div>
 
     <div class="sidebar-footer">
-      <button class="sidebar-footer-btn" id="settings-btn" title="Settings">
+      <button class="sidebar-footer-btn" id="settings-btn">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
         Settings
       </button>
-      <button class="icon-btn" id="theme-btn" title="Toggle Theme">
+      <button class="icon-btn" id="theme-btn">
         <svg id="theme-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
         </svg>
@@ -54,13 +81,22 @@
 
     <!-- Header -->
     <header class="header">
-      <button id="sidebar-toggle-main" title="Toggle Sidebar">
+      <button id="sidebar-toggle-main">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
         </svg>
       </button>
 
-      <div class="model-selector">
+      <!-- Agent indicator (shown when chatting with an agent) -->
+      <div id="agent-indicator" class="agent-indicator hidden">
+        <div class="agent-indicator-avatar" id="agent-indicator-avatar">🤖</div>
+        <div class="agent-indicator-info">
+          <span id="agent-indicator-name"></span>
+          <span id="agent-indicator-desc"></span>
+        </div>
+      </div>
+
+      <div class="model-selector" id="model-selector-wrap">
         <select id="model-select">
           <option value="">— Select a model —</option>
         </select>
@@ -79,7 +115,7 @@
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
         </button>
-        <button class="icon-btn" id="delete-conv-btn" title="Delete conversation" style="color:var(--text-muted)">
+        <button class="icon-btn" id="delete-conv-btn" title="Delete conversation">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
             <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
@@ -91,26 +127,27 @@
     <!-- Messages -->
     <div class="messages-container" id="messages-container">
       <div class="messages-inner" id="messages-inner">
-
-        <!-- Welcome shown when no conversation is active -->
         <div id="welcome-screen" class="welcome">
           <div class="welcome-logo">🤖</div>
           <h2>How can I help you today?</h2>
           <p>Chat with local Ollama models or connect cloud providers like OpenAI and Anthropic.</p>
-          <div class="welcome-models" id="welcome-models">
-            <!-- Populated by JS -->
-          </div>
+          <div class="welcome-models" id="welcome-models"></div>
         </div>
+      </div>
+    </div>
 
+    <!-- Agent command bar (shown during agent chat) -->
+    <div class="command-bar hidden" id="command-bar">
+      <div class="command-bar-inner" id="command-bar-inner">
+        <span class="command-bar-label">Commands:</span>
+        <!-- populated by JS -->
       </div>
     </div>
 
     <!-- Input area -->
     <div class="input-area">
       <div class="input-wrapper">
-        <!-- File previews -->
         <div class="file-previews hidden" id="file-previews"></div>
-
         <div class="input-box">
           <button class="input-action-btn" id="attach-btn" title="Attach image">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -118,41 +155,32 @@
             </svg>
           </button>
           <input type="file" id="file-input" accept="image/*" class="hidden" multiple />
-
-          <textarea
-            id="message-input"
-            placeholder="Send a message… (Enter to send, Shift+Enter for newline)"
-            rows="1"
-            autocomplete="off"
-          ></textarea>
-
+          <textarea id="message-input" placeholder="Send a message…" rows="1" autocomplete="off"></textarea>
           <div class="input-actions">
             <button id="send-btn" title="Send (Enter)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
               </svg>
             </button>
-            <button id="stop-btn" class="hidden" title="Stop generation">
+            <button id="stop-btn" class="hidden" title="Stop">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="4" y="4" width="16" height="16" rx="2"/>
               </svg>
             </button>
           </div>
         </div>
-
         <div class="input-footer">
           <span id="model-info-label"></span>
           <span>Shift+Enter for new line</span>
         </div>
       </div>
     </div>
-
   </main>
 </div>
 
 <!-- ===== SETTINGS MODAL ===== -->
 <div class="modal-overlay hidden" id="settings-overlay">
-  <div class="modal" role="dialog" aria-label="Settings">
+  <div class="modal">
     <div class="modal-header">
       <h2>Settings</h2>
       <button class="modal-close" data-modal="settings-overlay">✕</button>
@@ -163,62 +191,50 @@
         <button class="settings-tab" data-tab="tab-providers">Providers</button>
         <button class="settings-tab" data-tab="tab-params">Parameters</button>
       </div>
-
-      <!-- General -->
       <div class="settings-tab-content active" id="tab-general">
         <div class="setting-group">
           <label>Theme</label>
-          <select id="setting-theme">
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-          </select>
+          <select id="setting-theme"><option value="dark">Dark</option><option value="light">Light</option></select>
         </div>
         <div class="setting-group">
           <label>Default Model</label>
-          <select id="setting-default-model">
-            <option value="">None (use last selected)</option>
-          </select>
+          <select id="setting-default-model"><option value="">None</option></select>
         </div>
       </div>
-
-      <!-- Providers -->
       <div class="settings-tab-content" id="tab-providers">
         <div class="setting-group">
           <label>Ollama URL</label>
           <input type="text" id="setting-ollama-url" placeholder="http://localhost:11434" />
           <div class="setting-hint">URL of your local Ollama instance.</div>
         </div>
-        <hr style="border-color:var(--border);margin:16px 0" />
+        <hr style="border-color:var(--border);margin:16px 0"/>
         <div class="setting-group">
           <label>OpenAI API Key</label>
-          <input type="password" id="setting-openai-key" placeholder="sk-…" autocomplete="off" />
+          <input type="password" id="setting-openai-key" placeholder="sk-…" autocomplete="off"/>
         </div>
         <div class="setting-group">
           <label>OpenAI Base URL</label>
-          <input type="text" id="setting-openai-url" placeholder="https://api.openai.com/v1" />
+          <input type="text" id="setting-openai-url" placeholder="https://api.openai.com/v1"/>
           <div class="setting-hint">Override for compatible APIs (LM Studio, Together, etc.)</div>
         </div>
-        <hr style="border-color:var(--border);margin:16px 0" />
+        <hr style="border-color:var(--border);margin:16px 0"/>
         <div class="setting-group">
           <label>Anthropic API Key</label>
-          <input type="password" id="setting-anthropic-key" placeholder="sk-ant-…" autocomplete="off" />
+          <input type="password" id="setting-anthropic-key" placeholder="sk-ant-…" autocomplete="off"/>
         </div>
       </div>
-
-      <!-- Parameters -->
       <div class="settings-tab-content" id="tab-params">
         <div class="setting-group">
           <label>Temperature: <span id="temp-display">0.7</span></label>
-          <input type="range" id="setting-temperature" min="0" max="2" step="0.05" value="0.7" />
-          <div class="setting-hint">Higher = more creative, lower = more deterministic.</div>
+          <input type="range" id="setting-temperature" min="0" max="2" step="0.05" value="0.7"/>
         </div>
         <div class="setting-group">
           <label>Top P: <span id="topp-display">0.9</span></label>
-          <input type="range" id="setting-top-p" min="0" max="1" step="0.05" value="0.9" />
+          <input type="range" id="setting-top-p" min="0" max="1" step="0.05" value="0.9"/>
         </div>
         <div class="setting-group">
           <label>Max Tokens</label>
-          <input type="number" id="setting-max-tokens" value="4096" min="64" max="200000" />
+          <input type="number" id="setting-max-tokens" value="4096" min="64" max="200000"/>
         </div>
       </div>
     </div>
@@ -231,16 +247,13 @@
 
 <!-- ===== SYSTEM PROMPT MODAL ===== -->
 <div class="modal-overlay hidden" id="system-prompt-overlay">
-  <div class="modal" role="dialog" aria-label="System Prompt">
+  <div class="modal">
     <div class="modal-header">
       <h2>System Prompt</h2>
       <button class="modal-close" data-modal="system-prompt-overlay">✕</button>
     </div>
     <div class="modal-body">
-      <textarea
-        id="system-prompt-input"
-        placeholder="Enter a system prompt to guide the assistant's behavior…"
-      ></textarea>
+      <textarea id="system-prompt-input" placeholder="Enter a system prompt…"></textarea>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary modal-close" data-modal="system-prompt-overlay">Cancel</button>
@@ -251,13 +264,13 @@
 
 <!-- ===== RENAME MODAL ===== -->
 <div class="modal-overlay hidden" id="rename-overlay">
-  <div class="modal" role="dialog" aria-label="Rename Conversation" style="max-width:380px">
+  <div class="modal" style="max-width:380px">
     <div class="modal-header">
       <h2>Rename Chat</h2>
       <button class="modal-close" data-modal="rename-overlay">✕</button>
     </div>
     <div class="modal-body">
-      <input type="text" id="rename-input" class="rename-input" placeholder="Conversation title" maxlength="80" />
+      <input type="text" id="rename-input" class="rename-input" placeholder="Conversation title" maxlength="80"/>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary modal-close" data-modal="rename-overlay">Cancel</button>
@@ -266,9 +279,107 @@
   </div>
 </div>
 
-<!-- ===== TOAST CONTAINER ===== -->
-<div class="toasts" id="toasts"></div>
+<!-- ===== AGENT BUILDER MODAL ===== -->
+<div class="modal-overlay hidden" id="agent-builder-overlay">
+  <div class="modal agent-builder-modal">
+    <div class="modal-header">
+      <h2 id="agent-builder-title">Create Agent</h2>
+      <button class="modal-close" data-modal="agent-builder-overlay">✕</button>
+    </div>
+    <div class="modal-body agent-builder-body">
 
+      <!-- Left column: identity -->
+      <div class="agent-builder-left">
+
+        <!-- Avatar + color picker -->
+        <div class="agent-avatar-picker">
+          <div class="agent-avatar-preview" id="agent-avatar-preview" style="background:#6c63ff">🤖</div>
+          <div class="agent-avatar-controls">
+            <div class="setting-group" style="margin-bottom:10px">
+              <label>Emoji Avatar</label>
+              <input type="text" id="agent-avatar-input" maxlength="4" placeholder="🤖" style="width:70px;text-align:center;font-size:20px"/>
+            </div>
+            <div class="setting-group">
+              <label>Color</label>
+              <input type="color" id="agent-color-input" value="#6c63ff" style="width:70px;height:34px;padding:2px;border-radius:6px;cursor:pointer"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <label>Name <span style="color:var(--danger)">*</span></label>
+          <input type="text" id="agent-name-input" placeholder="e.g. Code Reviewer" maxlength="50"/>
+        </div>
+
+        <div class="setting-group">
+          <label>Description</label>
+          <input type="text" id="agent-desc-input" placeholder="What does this agent do?" maxlength="120"/>
+        </div>
+
+        <div class="setting-group">
+          <label>Model</label>
+          <select id="agent-model-select">
+            <option value="">Inherit from conversation</option>
+          </select>
+        </div>
+
+        <div class="setting-group">
+          <label>Temperature: <span id="agent-temp-display">0.7</span></label>
+          <input type="range" id="agent-temperature" min="0" max="2" step="0.05" value="0.7"/>
+        </div>
+      </div>
+
+      <!-- Right column: system prompt + commands -->
+      <div class="agent-builder-right">
+
+        <div class="setting-group" style="flex:1;display:flex;flex-direction:column">
+          <label>System Prompt</label>
+          <textarea id="agent-system-prompt" placeholder="You are a helpful assistant specialized in…" style="flex:1;min-height:120px;resize:vertical"></textarea>
+        </div>
+
+        <!-- Commands section -->
+        <div class="agent-commands-section">
+          <div class="agent-commands-header">
+            <label>Commands</label>
+            <button class="btn btn-secondary" id="add-command-btn" style="padding:4px 10px;font-size:12px">
+              + Add Command
+            </button>
+          </div>
+          <div class="setting-hint" style="margin-bottom:10px">
+            Commands appear as quick-action buttons in the chat. Use <code>{input}</code> to insert the user's message.
+          </div>
+          <div id="commands-list">
+            <!-- Command items rendered here -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary modal-close" data-modal="agent-builder-overlay">Cancel</button>
+      <button class="btn btn-primary" id="save-agent-btn">Save Agent</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== COMMAND TEMPLATE (cloned by JS) ===== -->
+<template id="command-item-template">
+  <div class="command-item">
+    <div class="command-item-header">
+      <input type="text" class="cmd-name" placeholder="Command name (e.g. Summarize)" maxlength="30"/>
+      <button class="conv-action-btn danger remove-command-btn" title="Remove">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <input type="text" class="cmd-desc" placeholder="Short description" maxlength="80"/>
+    <textarea class="cmd-template" rows="2" placeholder="Prompt template — use {input} for the user's message.
+Example: Please summarize the following:\n\n{input}"></textarea>
+  </div>
+</template>
+
+<div class="toasts" id="toasts"></div>
 <script src="/static/js/app.js"></script>
 </body>
 </html>
