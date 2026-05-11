@@ -70,11 +70,15 @@ def draw_edge(ax, src_xy, dst_xy, label, style):
                 bbox=dict(facecolor="white", edgecolor="none", pad=1))
 
 
-def render_to_ax(ax, spec, selected_id=None):
+def render_to_ax(ax, spec, selected_id=None, view=None):
     canvas = spec.get("canvas", {})
     ax.clear()
-    ax.set_xlim(canvas.get("xlim", [0, 10]))
-    ax.set_ylim(canvas.get("ylim", [0, 10]))
+    if view is not None:
+        ax.set_xlim(view[0])
+        ax.set_ylim(view[1])
+    else:
+        ax.set_xlim(canvas.get("xlim", [0, 10]))
+        ax.set_ylim(canvas.get("ylim", [0, 10]))
     ax.set_aspect("equal")
     ax.axis("off")
     if "title" in spec:
@@ -143,6 +147,7 @@ class DiagramApp:
 
         self.selected_id: str | None = None
         self.drag_offset: tuple[float, float] | None = None
+        self.view: tuple[list[float], list[float]] | None = None  # zoom/pan state
 
         root.title(f"Activity Diagram Editor — {spec_path.name}")
         root.geometry("1400x900")
@@ -163,6 +168,7 @@ class DiagramApp:
         self.canvas.mpl_connect("button_press_event", self._on_press)
         self.canvas.mpl_connect("motion_notify_event", self._on_motion)
         self.canvas.mpl_connect("button_release_event", self._on_release)
+        self.canvas.mpl_connect("scroll_event", self._on_scroll)
 
         self._build_side_panel(right)
         self.redraw()
@@ -186,6 +192,14 @@ class DiagramApp:
 
     def _build_side_panel(self, parent):
         pad = {"padx": 6, "pady": 3}
+
+        ttk.Label(parent, text="View", font=("", 10, "bold")).pack(anchor="w", **pad)
+        zoom = ttk.Frame(parent); zoom.pack(fill=tk.X, **pad)
+        ttk.Button(zoom, text="Zoom in (+)",  command=lambda: self.zoom(0.8)).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+        ttk.Button(zoom, text="Zoom out (-)", command=lambda: self.zoom(1.25)).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+        ttk.Button(zoom, text="Reset view",   command=self.reset_view).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
+
+        ttk.Separator(parent).pack(fill=tk.X, pady=8)
 
         ttk.Label(parent, text="Selected node", font=("", 10, "bold")).pack(anchor="w", **pad)
 
@@ -244,7 +258,7 @@ class DiagramApp:
     # ----- redraw -----
 
     def redraw(self):
-        render_to_ax(self.ax, self.spec, selected_id=self.selected_id)
+        render_to_ax(self.ax, self.spec, selected_id=self.selected_id, view=self.view)
         self.canvas.draw_idle()
         self._refresh_edge_list()
         self._refresh_selection_panel()
@@ -307,7 +321,7 @@ class DiagramApp:
         node = self._node(self.selected_id)
         node["x"] = event.xdata + self.drag_offset[0]
         node["y"] = event.ydata + self.drag_offset[1]
-        render_to_ax(self.ax, self.spec, selected_id=self.selected_id)
+        render_to_ax(self.ax, self.spec, selected_id=self.selected_id, view=self.view)
         self.canvas.draw_idle()
         self.var_x.set(f'{node["x"]:.3f}')
         self.var_y.set(f'{node["y"]:.3f}')
@@ -395,6 +409,36 @@ class DiagramApp:
         del self.spec["edges"][idx]
         self.save()
         self.redraw()
+
+    # ----- zoom -----
+
+    def _current_view(self):
+        if self.view is not None:
+            return [list(self.view[0]), list(self.view[1])]
+        c = self.spec.get("canvas", {})
+        return [list(c.get("xlim", [0, 10])), list(c.get("ylim", [0, 10]))]
+
+    def zoom(self, factor: float, center=None):
+        xlim, ylim = self._current_view()
+        if center is None:
+            cx = (xlim[0] + xlim[1]) / 2
+            cy = (ylim[0] + ylim[1]) / 2
+        else:
+            cx, cy = center
+        new_xlim = [cx + (x - cx) * factor for x in xlim]
+        new_ylim = [cy + (y - cy) * factor for y in ylim]
+        self.view = (new_xlim, new_ylim)
+        self.redraw()
+
+    def reset_view(self):
+        self.view = None
+        self.redraw()
+
+    def _on_scroll(self, event):
+        if event.inaxes != self.ax:
+            return
+        factor = 0.8 if event.button == "up" else 1.25
+        self.zoom(factor, center=(event.xdata, event.ydata))
 
     def reload(self):
         self.spec = self._load()
