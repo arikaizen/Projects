@@ -4,10 +4,12 @@
 #
 # Targets:
 # - bin/convo_manager : multi-model convo manager CLI
+# - bin/ai_server     : REST API server + web UI backend
 #
 # Usage:
 #   make -C AI all
 #   ./AI/bin/convo_manager model1.gguf model2.gguf
+#   ./AI/bin/ai_server --port 8080 model.gguf
 #
 # ==============================================================================
 
@@ -22,6 +24,7 @@ INCLUDES := -Iconvo \
             -Iconvo/convoManager \
             -Itools/Cmdline \
             -Iconcat \
+            -Iserver \
             -I$(LLAMA_DIR)/include \
             -I$(LLAMA_DIR)/ggml/include \
             -I$(LLAMA_DIR)/src \
@@ -49,16 +52,37 @@ CONVO_MANAGER_SRCS := \
 	concat/promt_concat_api.cpp
 CONVO_MANAGER_OBJS := $(CONVO_MANAGER_SRCS:%.cpp=$(BUILD_DIR)/%.o)
 
-# ==============================================================================
-.PHONY: all clean help
+AI_SERVER_TARGET := $(BIN_DIR)/ai_server
+AI_SERVER_SRCS := \
+	server/api_server_main.cpp \
+	server/api_server.cpp \
+	convo/convo.cpp \
+	convo/convoManager/ConvoManager.cpp \
+	concat/promt_concat_api.cpp
+AI_SERVER_OBJS := $(AI_SERVER_SRCS:%.cpp=$(BUILD_DIR)/%.o)
 
-all: $(CONVO_MANAGER_TARGET)
+# ==============================================================================
+.PHONY: all server clean help
+
+all: $(CONVO_MANAGER_TARGET) $(AI_SERVER_TARGET)
 	@echo ""
 	@echo "===================================================="
 	@echo " Built: $(CONVO_MANAGER_TARGET)"
+	@echo " Built: $(AI_SERVER_TARGET)"
+	@echo "===================================================="
+
+server: $(AI_SERVER_TARGET)
+	@echo ""
+	@echo "===================================================="
+	@echo " Built: $(AI_SERVER_TARGET)"
 	@echo "===================================================="
 
 $(CONVO_MANAGER_TARGET): $(CONVO_MANAGER_OBJS)
+	@mkdir -p $(dir $@)
+	@echo "[LD]  $@"
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
+
+$(AI_SERVER_TARGET): $(AI_SERVER_OBJS)
 	@mkdir -p $(dir $@)
 	@echo "[LD]  $@"
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
@@ -74,9 +98,11 @@ clean:
 
 help:
 	@echo "Usage:"
-	@echo "  make -C AI all LLAMA_DIR=/path/to/llama.cpp"
+	@echo "  make -C AI all    LLAMA_DIR=/path/to/llama.cpp"
+	@echo "  make -C AI server LLAMA_DIR=/path/to/llama.cpp"
 	@echo "  make -C AI clean"
 	@echo ""
 	@echo "Run:"
 	@echo "  ./AI/bin/convo_manager model1.gguf [model2.gguf ...]"
+	@echo "  ./AI/bin/ai_server --port 8080 model.gguf"
 
