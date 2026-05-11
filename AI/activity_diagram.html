@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Project – Activity Diagram</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    body { background: #0d1117; color: #c9d1d9; font-family: sans-serif; padding: 2rem; }
+    h1 { color: #58a6ff; }
+    .mermaid { background: #161b22; padding: 2rem; border-radius: 8px; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>AI Project — Activity Diagram</h1>
+  <div class="mermaid">
+flowchart TD
+    Start([Start: ./convo_manager]) --> Parse[ParseCmdline argc argv]
+    Parse --> CheckModels{ModelPaths empty?}
+    CheckModels -- yes --> ErrUsage[Print usage to stderr]
+    ErrUsage --> ExitErr([Exit code 1])
+
+    CheckModels -- no --> Signals[Install SIGINT / SIGTERM handlers]
+    Signals --> LoadLoop[For each model path]
+    LoadLoop --> AddModel[manager.AddModel path ctx]
+    AddModel --> NewConvo[manager.NewConversation\nsystem_prompt default]
+    NewConvo --> Switch[SwitchActiveConversation]
+    Switch --> MoreModels{More models?}
+    MoreModels -- yes --> LoadLoop
+    MoreModels -- no --> Banner[Print loaded count + active model]
+
+    Banner --> ReadLoop{g_should_exit?}
+    ReadLoop -- true --> SaveAll[manager.SaveAllNoThrow]
+    SaveAll --> ExitOk([Exit code 0])
+
+    ReadLoop -- false --> Prompt[Print model N prompt\ngetline stdin]
+    Prompt --> EOF{EOF?}
+    EOF -- yes --> SaveAll
+    EOF -- no --> Empty{Empty line?}
+    Empty -- yes --> ReadLoop
+    Empty -- no --> IsCmd{Starts with slash?}
+
+    IsCmd -- no --> Chat[manager.Chat\nactive_model line temp 0.7 max_tokens]
+    Chat --> ChatOk{Exception?}
+    ChatOk -- no --> PrintReply[Print model reply]
+    ChatOk -- yes --> PrintErr[Print error to stderr]
+    PrintReply --> ReadLoop
+    PrintErr --> ReadLoop
+
+    IsCmd -- yes --> Split[SplitArgs line]
+    Split --> Dispatch{command?}
+
+    Dispatch -- /help --> Help[PrintHelp]
+    Dispatch -- /models --> ListM[ListModels mark active]
+    Dispatch -- /use-model --> UseM[Set active_model]
+    Dispatch -- /new --> NewC[NewConversation + SwitchActive]
+    Dispatch -- /list --> ListC[ListConversations active_model]
+    Dispatch -- /use --> UseC[SwitchActiveConversation]
+    Dispatch -- /save --> GetAct{Active matches active_model?}
+    GetAct -- no --> NoAct[Print No active convo]
+    GetAct -- yes --> SaveOne[manager.Save path]
+    Dispatch -- /close --> CloseC[manager.Close best-effort save]
+    Dispatch -- /quit --> SaveAll
+    Dispatch -- unknown --> Unknown[Print Unknown command]
+
+    Help --> ReadLoop
+    ListM --> ReadLoop
+    UseM --> ReadLoop
+    NewC --> ReadLoop
+    ListC --> ReadLoop
+    UseC --> ReadLoop
+    NoAct --> ReadLoop
+    SaveOne --> ReadLoop
+    CloseC --> ReadLoop
+    Unknown --> ReadLoop
+
+    SigInt[/SIGINT or SIGTERM/] -.-> SigH[SignalHandler:\nset g_should_exit\nSaveAllNoThrow]
+    SigH -.-> ReadLoop
+  </div>
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+  </script>
+</body>
+</html>
