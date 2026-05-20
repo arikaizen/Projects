@@ -5,14 +5,25 @@
  *
  * Design notes
  * ────────────
- * AIModel
+ * AIModelLocalLocal
  *   Owns a llama_model* and a general-purpose inference context.  All stateless
  *   calls (generate, embed, similarity, search) share this single context.
  *   _decode() clears the KV cache at the start of every call so each generate()
  *   is fully independent.  Embedding is handled by a short-lived second context
  *   configured for mean-pool embedding output.
  *
- * AIConvo
+ * AIConvo  (uses AIModelLocalLocal in three ways)
+ *   1. Chat inference: formats history into a prompt, tokenizes via
+ *      AIModelLocalLocal::Tokenize(), then runs its own llama_context (sharing the
+ *      same llama_model* pointer) through a token-by-token decode loop.
+ *      It does NOT delegate to AIModelLocalLocal::Generate() so it can own the KV
+ *      cache and stream output itself.
+ *   2. Summarisation: calls AIModelLocalLocal::Generate() (temp 0.2) once the
+ *      history is long enough to produce a hidden running summary prepended to
+ *      future prompts.
+ *   3. Auto-title: calls AIModelLocalLocal::Generate() (temp 0.3, max_tokens 20)
+ *      after the first exchange to derive a short title from the opening turn.
+ *
  *   Owns a separate conversation context whose KV cache is cleared and fully
  *   reloaded on every Chat() call.  RunChat() always reprocesses the complete
  *   history so the model sees every prior turn without exception.
@@ -107,10 +118,10 @@ Role RoleFromStr(const std::string& s) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AIModel — construction / destruction
+// AIModelLocal — construction / destruction
 // ─────────────────────────────────────────────────────────────────────────────
 
-AIModel::AIModel(const std::string& model_path, int context_size, int thread_count)
+AIModelLocal::AIModelLocal(const std::string& model_path, int context_size, int thread_count)
     : m_model(nullptr)
     , m_inference_ctx(nullptr)
     , m_context_size(context_size)
@@ -123,7 +134,7 @@ AIModel::AIModel(const std::string& model_path, int context_size, int thread_cou
     llama_model_params model_params = llama_model_default_params();
     m_model = llama_model_load_from_file(model_path.c_str(), model_params);
     if (!m_model)
-        throw std::runtime_error("AIModel: failed to load model from \"" + model_path + "\"");
+        throw std::runtime_error("AIModelLocal: failed to load model from \"" + model_path + "\"");
 
     // ── Create inference context ──────────────────────────────────────────────
     llama_context_params context_params    = llama_context_default_params();
@@ -137,17 +148,17 @@ AIModel::AIModel(const std::string& model_path, int context_size, int thread_cou
         llama_model_free(m_model);
         m_model = nullptr;
         throw std::runtime_error(
-            "AIModel: failed to create inference context for \"" + model_path + "\"");
+            "AIModelLocal: failed to create inference context for \"" + model_path + "\"");
     }
 }
 
-AIModel::~AIModel() noexcept {
+AIModelLocal::~AIModelLocal() noexcept {
     if (m_inference_ctx) { llama_free(m_inference_ctx); m_inference_ctx = nullptr; }
     if (m_model)         { llama_model_free(m_model);   m_model         = nullptr; }
     llama_backend_free();
 }
 
-AIModel::AIModel(AIModel&& other) noexcept
+AIModelLocal::AIModelLocal(AIModelLocal&& other) noexcept
     : m_model(other.m_model)
     , m_inference_ctx(other.m_inference_ctx)
     , m_context_size(other.m_context_size)
@@ -158,7 +169,7 @@ AIModel::AIModel(AIModel&& other) noexcept
     other.m_inference_ctx = nullptr;
 }
 
-AIModel& AIModel::operator=(AIModel&& other) noexcept {
+AIModelLocal& AIModelLocal::operator=(AIModelLocal&& other) noexcept {
     if (this != &other) {
         if (m_inference_ctx) llama_free(m_inference_ctx);
         if (m_model)         llama_model_free(m_model);
@@ -176,10 +187,10 @@ AIModel& AIModel::operator=(AIModel&& other) noexcept {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AIModel — private helpers
+// AIModelLocal — private helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-std::vector<llama_token> AIModel::Tokenize(const std::string& text, bool add_bos) const {
+std::vector<llama_token> AIModelLocal::Tokenize(const std::string& text, bool add_bos) const {
     // First call with a null buffer returns the (negative) required token count.
     const llama_vocab* vocab = llama_model_get_vocab(m_model);
     int token_count = llama_tokenize(
@@ -202,7 +213,7 @@ std::vector<llama_token> AIModel::Tokenize(const std::string& text, bool add_bos
     return token_list;
 }
 
-std::string AIModel::Decode(const std::vector<llama_token>& tokens,
+std::string AIModelLocal::Decode(const std::vector<llama_token>& tokens,
                             float temperature,
                             int   max_tokens) const {
     // Each generate() is stateless — clear any KV vectors left by a previous call.
@@ -214,7 +225,7 @@ std::string AIModel::Decode(const std::vector<llama_token>& tokens,
         static_cast<int32_t>(tokens.size())
     );
     if (llama_decode(m_inference_ctx, prompt_batch) != 0)
-        throw std::runtime_error("AIModel::Decode: llama_decode failed during prompt evaluation");
+        throw std::runtime_error("AIModelLocal::Decode: llama_decode failed during prompt evaluation");
 
     // Build a sampler chain: temperature → top-p (nucleus) → distribution draw.
     llama_sampler_chain_params sampler_chain_params = llama_sampler_chain_default_params();
@@ -245,7 +256,7 @@ std::string AIModel::Decode(const std::vector<llama_token>& tokens,
         llama_batch next_batch = llama_batch_get_one(&current_token, 1);
         if (llama_decode(m_inference_ctx, next_batch) != 0) {
             llama_sampler_free(sampler);
-            throw std::runtime_error("AIModel::Decode: llama_decode failed during generation");
+            throw std::runtime_error("AIModelLocal::Decode: llama_decode failed during generation");
         }
         ++tokens_processed_count;
     }
@@ -254,7 +265,7 @@ std::string AIModel::Decode(const std::vector<llama_token>& tokens,
     return generated_text;
 }
 
-std::vector<float> AIModel::RawEmbed(const std::string& text) const {
+std::vector<float> AIModelLocal::RawEmbed(const std::string& text) const {
     // Create a short-lived context configured for mean-pooled embeddings.
     llama_context_params embedding_params  = llama_context_default_params();
     embedding_params.n_ctx                 = 512;
@@ -264,7 +275,7 @@ std::vector<float> AIModel::RawEmbed(const std::string& text) const {
 
     llama_context* embedding_ctx = llama_init_from_model(m_model, embedding_params);
     if (!embedding_ctx)
-        throw std::runtime_error("AIModel::RawEmbed: failed to create embedding context");
+        throw std::runtime_error("AIModelLocal::RawEmbed: failed to create embedding context");
 
     // Embed without BOS — it disrupts mean pooling.
     std::vector<llama_token> token_list = Tokenize(text, /*add_bos=*/false);
@@ -273,14 +284,14 @@ std::vector<float> AIModel::RawEmbed(const std::string& text) const {
         token_list.data(), static_cast<int32_t>(token_list.size()));
     if (llama_decode(embedding_ctx, batch) != 0) {
         llama_free(embedding_ctx);
-        throw std::runtime_error("AIModel::RawEmbed: llama_decode failed");
+        throw std::runtime_error("AIModelLocal::RawEmbed: llama_decode failed");
     }
 
     int          embedding_dimension  = llama_model_n_embd(m_model);
     const float* embedding_data_ptr   = llama_get_embeddings_seq(embedding_ctx, 0);
     if (!embedding_data_ptr) {
         llama_free(embedding_ctx);
-        throw std::runtime_error("AIModel::RawEmbed: no embedding output "
+        throw std::runtime_error("AIModelLocal::RawEmbed: no embedding output "
                                  "(does this model support embeddings?)");
     }
 
@@ -290,35 +301,35 @@ std::vector<float> AIModel::RawEmbed(const std::string& text) const {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AIModel — public API
+// AIModelLocal — public API
 // ─────────────────────────────────────────────────────────────────────────────
 
-std::string AIModel::Generate(const std::string& prompt,
+std::string AIModelLocal::Generate(const std::string& prompt,
                               float temperature,
                               int   max_tokens) const {
     if (IsBlank(prompt))
-        throw std::invalid_argument("AIModel::Generate: prompt must not be blank");
+        throw std::invalid_argument("AIModelLocal::Generate: prompt must not be blank");
     if (temperature < 0.0f || temperature > 2.0f)
         throw std::invalid_argument(
-            "AIModel::Generate: temperature must be in [0.0, 2.0]; got "
+            "AIModelLocal::Generate: temperature must be in [0.0, 2.0]; got "
             + std::to_string(temperature));
     if (max_tokens < 1)
         throw std::invalid_argument(
-            "AIModel::Generate: max_tokens must be >= 1; got "
+            "AIModelLocal::Generate: max_tokens must be >= 1; got "
             + std::to_string(max_tokens));
 
     auto token_list     = Tokenize(prompt, /*add_bos=*/true);
     auto generated_text = Decode(token_list, temperature, max_tokens);
 
     if (IsBlank(generated_text))
-        throw std::runtime_error("AIModel::Generate: model returned an empty response");
+        throw std::runtime_error("AIModelLocal::Generate: model returned an empty response");
 
     return generated_text;
 }
 
-std::vector<float> AIModel::Embed(const std::string& text, bool use_cache) {
+std::vector<float> AIModelLocal::Embed(const std::string& text, bool use_cache) {
     if (IsBlank(text))
-        throw std::invalid_argument("AIModel::Embed: text must not be blank");
+        throw std::invalid_argument("AIModelLocal::Embed: text must not be blank");
 
     // Return cached vector when available.
     if (use_cache) {
@@ -330,7 +341,7 @@ std::vector<float> AIModel::Embed(const std::string& text, bool use_cache) {
 
     if (VecNorm(result) == 0.0f){}
         throw std::runtime_error(
-            "AIModel::Embed: embedding has zero magnitude "
+            "AIModelLocal::Embed: embedding has zero magnitude "
             "(model may not support embeddings)");
 
     if (use_cache)
@@ -339,26 +350,26 @@ std::vector<float> AIModel::Embed(const std::string& text, bool use_cache) {
     return result;
 }
 
-float AIModel::Similarity(const std::string& a, const std::string& b) {
-    if (IsBlank(a)) throw std::invalid_argument("AIModel::Similarity: first text must not be blank");
-    if (IsBlank(b)) throw std::invalid_argument("AIModel::Similarity: second text must not be blank");
+float AIModelLocal::Similarity(const std::string& a, const std::string& b) {
+    if (IsBlank(a)) throw std::invalid_argument("AIModelLocal::Similarity: first text must not be blank");
+    if (IsBlank(b)) throw std::invalid_argument("AIModelLocal::Similarity: second text must not be blank");
     return CosineSim(Embed(a), Embed(b));
 }
 
 std::vector<std::pair<float, std::string>>
-AIModel::Search(const std::string&               query,
+AIModelLocal::Search(const std::string&               query,
                 const std::vector<std::string>&  labels,
                 const std::vector<std::string>&  texts,
                 int                              top_n) {
     if (IsBlank(query))
-        throw std::invalid_argument("AIModel::Search: query must not be blank");
+        throw std::invalid_argument("AIModelLocal::Search: query must not be blank");
     if (labels.size() != texts.size())
         throw std::invalid_argument(
-            "AIModel::Search: labels and texts must have the same length; got "
+            "AIModelLocal::Search: labels and texts must have the same length; got "
             + std::to_string(labels.size()) + " vs " + std::to_string(texts.size()));
     if (top_n < 1)
         throw std::invalid_argument(
-            "AIModel::Search: top_n must be >= 1; got " + std::to_string(top_n));
+            "AIModelLocal::Search: top_n must be >= 1; got " + std::to_string(top_n));
 
     auto query_embedding = Embed(query);
 
@@ -380,7 +391,7 @@ AIModel::Search(const std::string&               query,
 // AIConvo — construction / destruction
 // ─────────────────────────────────────────────────────────────────────────────
 
-AIConvo::AIConvo(AIModel& model, const std::string& system_prompt)
+AIConvo::AIConvo(AIModelLocal& model, const std::string& system_prompt)
     : m_model(model)
     , m_system_prompt(system_prompt)
     , m_conversation_ctx(nullptr)
@@ -589,7 +600,7 @@ std::string AIConvo::BuildPrompt() const {
 
 void AIConvo::UpdateSummaryNoThrow() {
     // Runs a hidden, stateless update to keep _summary fresh.
-    // This uses the shared AIModel (separate from the conversation context).
+    // This uses the shared AIModelLocal (separate from the conversation context).
     try {
         if (m_history.size() < 2) return;  // system only
 
@@ -628,7 +639,7 @@ std::string AIConvo::RunChat(const std::vector<llama_token>& all_tokens,
     // Inputs:
     // - all_tokens: the fully formatted prompt (already tokenized) for this turn.
     //              This is what BuildPrompt() produced (system + summary + recent window
-    //              + assistant prefix), then AIModel::Tokenize(...) converted to token ids.
+    //              + assistant prefix), then AIModelLocal::Tokenize(...) converted to token ids.
     // - temperature / max_tokens: sampling controls for the reply.
     //
     // Outputs / side effects:

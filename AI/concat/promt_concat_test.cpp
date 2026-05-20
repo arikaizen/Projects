@@ -10,7 +10,7 @@
 
 static int RunInteractiveChat(const std::string& model_path,
                               const std::filesystem::path& prompt_list_path) {
-  AIModel model(model_path);
+  AIModelLocal model(model_path);
 
   const auto concat_result = prompt_concat::ConcatFromPromptList(prompt_list_path);
   for (const auto& w : concat_result.Warnings) {

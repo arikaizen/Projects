@@ -4,10 +4,27 @@
  * Lightweight C++17 library for local AI inference built on llama.cpp.
  *
  * Two main classes:
- *   AIModel  — loads a GGUF model; exposes stateless Generate / Embed /
- *              Similarity / Search helpers.
- *   AIConvo  — wraps AIModel with a persistent message history for multi-turn
- *              conversation; includes JSON save/load and auto-title generation.
+ *   AIModelLocalLocal — loads a GGUF model; exposes stateless Generate / Embed /
+ *                 Similarity / Search helpers.
+ *   AIConvo      — wraps AIModelLocalLocal with a persistent message history for
+ *                 multi-turn conversation; includes JSON save/load and
+ *                 auto-title generation.
+ *
+ * How AIConvo uses AIModelLocalLocal:
+ *   AIConvo holds a reference to an AIModelLocalLocal and calls into it for three
+ *   distinct purposes:
+ *     1. Inference (Chat):  AIConvo formats the full message history into a
+ *        single prompt string, tokenizes it via AIModelLocalLocal::Tokenize(), and
+ *        runs its own dedicated llama_context (created from the same model
+ *        pointer) through a decode loop — it does NOT call Generate() so it
+ *        can control the KV cache and streaming token-by-token output itself.
+ *     2. Summarisation:  Once the history grows long, AIConvo calls
+ *        AIModelLocalLocal::Generate() at temperature 0.2 to produce a hidden
+ *        running summary that gets prepended to future prompts, preventing
+ *        old context from being lost.
+ *     3. Auto-title:  After the first exchange AIConvo calls
+ *        AIModelLocalLocal::Generate() at temperature 0.3, max_tokens 20, to
+ *        derive a short title from the opening message.
  *
  * Dependencies:
  *   llama.cpp  (llama.h)
@@ -15,7 +32,7 @@
  *   C++17 standard library
  *
  * Quick start:
- *   AIModel model("my_model.gguf");
+ *   AIModelLocalLocal model("my_model.gguf");
  *   std::string answer = model.Generate("What is 42?");
  *
  *   AIConvo convo(model);
@@ -71,18 +88,18 @@ struct Message {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AIModel — load a GGUF model; run stateless inference and embeddings
+// AIModelLocalLocal — load a GGUF model; run stateless inference and embeddings
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Owns a llama_model and a default inference context.
  *
- * Multiple AIConvo objects can share a single AIModel because each AIConvo
+ * Multiple AIConvo objects can share a single AIModelLocal because each AIConvo
  * creates its own context with its own KV cache.
  *
  * Not copyable (owns llama pointers). Movable.
  */
-class AIModel {
+class AIModelLocal {
 public:
     // ── Construction / destruction ────────────────────────────────────────────
 
@@ -95,16 +112,16 @@ public:
      *
      * @throws std::runtime_error on load failure.
      */
-    explicit AIModel(const std::string& model_path,
+    explicit AIModelLocal(const std::string& model_path,
                      int context_size = 4096,
                      int thread_count = 4);
 
-    ~AIModel() noexcept;
+    ~AIModelLocal() noexcept;
 
-    AIModel(const AIModel&)            = delete;
-    AIModel& operator=(const AIModel&) = delete;
-    AIModel(AIModel&&) noexcept;
-    AIModel& operator=(AIModel&&) noexcept;
+    AIModelLocal(const AIModelLocal&)            = delete;
+    AIModelLocal& operator=(const AIModelLocal&) = delete;
+    AIModelLocal(AIModelLocal&&) noexcept;
+    AIModelLocal& operator=(AIModelLocal&&) noexcept;
 
     // ── Stateless inference ───────────────────────────────────────────────────
 
@@ -222,13 +239,13 @@ public:
     /**
      * Create a new conversation.
      *
-     * @param model         AIModel to use for all inference.
+     * @param model         AIModelLocal to use for all inference.
      * @param system_prompt Opening instruction for the model. Must not be blank.
      *
      * @throws std::invalid_argument if system_prompt is blank.
      * @throws std::runtime_error    if the dedicated context cannot be created.
      */
-    explicit AIConvo(AIModel&           model,
+    explicit AIConvo(AIModelLocal&           model,
                      const std::string& system_prompt = "You are a helpful assistant.");
 
     ~AIConvo() noexcept;
@@ -390,7 +407,7 @@ private:
 
     // ── Member data ───────────────────────────────────────────────────────────
 
-    AIModel&                           m_model;
+    AIModelLocal&                           m_model;
     std::string                        m_system_prompt;
     std::vector<Message>               m_history;
     std::optional<std::string>         m_title;

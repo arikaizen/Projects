@@ -156,8 +156,8 @@ static void test_message_struct() {
 // PART 2 — Integration tests (require a real model)
 // ─────────────────────────────────────────────────────────────────────────────
 
-static void test_generate(AIModel& model) {
-    test::section("AIModel::Generate");
+static void test_generate(AIModelLocal& model) {
+    test::section("AIModelLocal::Generate");
 
     std::string reply;
     CHECK_NOTHROW(reply = model.Generate("What is the capital of France?"));
@@ -175,8 +175,8 @@ static void test_generate(AIModel& model) {
     CHECK_THROWS(std::invalid_argument, model.Generate("hi", 0.7f, 0));
 }
 
-static void test_embed(AIModel& model) {
-    test::section("AIModel::Embed");
+static void test_embed(AIModelLocal& model) {
+    test::section("AIModelLocal::Embed");
 
     auto first_embedding = model.Embed("hello world");
     CHECK(!first_embedding.empty());
@@ -194,8 +194,8 @@ static void test_embed(AIModel& model) {
     CHECK_THROWS(std::invalid_argument, model.Embed("  "));
 }
 
-static void test_similarity(AIModel& model) {
-    test::section("AIModel::Similarity");
+static void test_similarity(AIModelLocal& model) {
+    test::section("AIModelLocal::Similarity");
 
     float similarity_score = model.Similarity("cat", "kitten");
     CHECK_GE(similarity_score, -1.0f);
@@ -215,8 +215,8 @@ static void test_similarity(AIModel& model) {
     CHECK_THROWS(std::invalid_argument, model.Similarity("word", ""));
 }
 
-static void test_search(AIModel& model) {
-    test::section("AIModel::Search");
+static void test_search(AIModelLocal& model) {
+    test::section("AIModelLocal::Search");
 
     std::vector<std::string> candidate_labels = {"sports car", "bicycle", "cargo ship"};
     std::vector<std::string> candidate_texts  = {
@@ -244,7 +244,7 @@ static void test_search(AIModel& model) {
                  model.Search("q", candidate_labels, candidate_texts, 0));  // top_n < 1
 }
 
-static void test_convo_basic(AIModel& model) {
+static void test_convo_basic(AIModelLocal& model) {
     test::section("AIConvo::Chat — basic");
 
     AIConvo conversation(model, "You are a concise assistant.");
@@ -262,7 +262,7 @@ static void test_convo_basic(AIModel& model) {
     CHECK_EQ(static_cast<int>(conversation.GetHistory().size()), 5);
 }
 
-static void test_convo_validation(AIModel& model) {
+static void test_convo_validation(AIModelLocal& model) {
     test::section("AIConvo::Chat — input validation");
 
     AIConvo conversation(model);
@@ -283,7 +283,7 @@ static void test_convo_validation(AIModel& model) {
     CHECK_EQ(conversation.GetHistory().size(), history_size_before);
 }
 
-static void test_convo_clear_history(AIModel& model) {
+static void test_convo_clear_history(AIModelLocal& model) {
     test::section("AIConvo::ClearHistory");
 
     AIConvo conversation(model, "You are a test bot.");
@@ -304,7 +304,7 @@ static void test_convo_clear_history(AIModel& model) {
     CHECK(!reply_after_clear.empty());
 }
 
-static void test_convo_get_history_is_copy(AIModel& model) {
+static void test_convo_get_history_is_copy(AIModelLocal& model) {
     test::section("AIConvo::GetHistory returns a copy");
 
     AIConvo conversation(model);
@@ -316,7 +316,7 @@ static void test_convo_get_history_is_copy(AIModel& model) {
     CHECK_EQ(static_cast<int>(fresh_copy.size()), 1);
 }
 
-static void test_convo_title(AIModel& model) {
+static void test_convo_title(AIModelLocal& model) {
     test::section("AIConvo::title management");
 
     AIConvo conversation(model);
@@ -345,7 +345,7 @@ static void test_convo_title(AIModel& model) {
     CHECK_EQ(second_conversation.GetTitle().value(), original_title);
 }
 
-static void test_convo_persistence(AIModel& model) {
+static void test_convo_persistence(AIModelLocal& model) {
     test::section("AIConvo save/load persistence");
 
     AIConvo source_conversation(model, "You are a test assistant.");
@@ -416,7 +416,7 @@ static void test_convo_persistence(AIModel& model) {
     std::remove(missing_content_path.c_str());
 }
 
-static void test_convo_system_prompt_validation(AIModel& model) {
+static void test_convo_system_prompt_validation(AIModelLocal& model) {
     test::section("AIConvo construction validation");
 
     // Blank system prompt → invalid_argument.
@@ -424,7 +424,7 @@ static void test_convo_system_prompt_validation(AIModel& model) {
     CHECK_THROWS(std::invalid_argument, AIConvo(model, "   "));
 }
 
-static void test_multiple_convos_independent(AIModel& model) {
+static void test_multiple_convos_independent(AIModelLocal& model) {
     test::section("Multiple AIConvo objects are independent");
 
     AIConvo history_conversation(model, "You are a history expert.");
@@ -444,7 +444,7 @@ static void test_multiple_convos_independent(AIModel& model) {
     }
 }
 
-static void test_embed_cache(AIModel& model) {
+static void test_embed_cache(AIModelLocal& model) {
     test::section("Embedding cache");
 
     model.ClearEmbedCache();
@@ -485,7 +485,7 @@ int main(int argc, char* argv[]) {
         std::cout << "\nLoading model: " << model_path << "\n";
 
         try {
-            AIModel model(model_path);
+            AIModelLocal model(model_path);
             std::cout << "Model loaded.\n";
 
             test_generate(model);

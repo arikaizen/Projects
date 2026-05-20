@@ -34,7 +34,7 @@ struct ModelEntry {
   std::string ModelPath;
   int ContextSize = 4096;
   int ThreadCount = 4;
-  std::unique_ptr<AIModel> Model;
+  std::unique_ptr<AIModelLocal> Model;
   std::map<ConvoId, ConvoEntry> Convos;
   ConvoId NextConvoId = 1;
   std::optional<ConvoId> Active;
@@ -89,7 +89,7 @@ ModelId ConvoManager::AddModel(const std::string& model_path, int context_size, 
   entry.ModelPath = model_path;
   entry.ContextSize = context_size;
   entry.ThreadCount = thread_count;
-  entry.Model = std::make_unique<AIModel>(model_path, context_size, thread_count);
+  entry.Model = std::make_unique<AIModelLocal>(model_path, context_size, thread_count);
   m_impl->Models.emplace(entry.Id, std::move(entry));
   return entry.Id;
 }

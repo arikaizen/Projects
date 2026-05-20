@@ -35,7 +35,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 
-static void test_convo_basic(AIModel& model) {
+static void test_convo_basic(AIModelLocal& model) {
     std::cout << "test convo"<<std::endl;
     int flag =1;
     std::string reply;
@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
         std::cout << "\nLoading model: " << model_path << "\n";
 
         try {
-            AIModel model(model_path);
+            AIModelLocal model(model_path);
             std::cout << "Model loaded.\n";
 
             
