@@ -1,7 +1,8 @@
 // promt_concat_test.cpp
 // Builds a system prompt from promt_list, then starts an interactive convo loop.
 
-#include "convo.hpp"
+#include "aimodel_llama.hpp"
+#include "aiconvo_llama.hpp"
 #include "promt_concat_api.hpp"
 
 #include <filesystem> // std::filesystem::path
@@ -10,7 +11,7 @@
 
 static int RunInteractiveChat(const std::string& model_path,
                               const std::filesystem::path& prompt_list_path) {
-  AIModelLocal model(model_path);
+  AIModelLlama model(model_path);
 
   const auto concat_result = prompt_concat::ConcatFromPromptList(prompt_list_path);
   for (const auto& w : concat_result.Warnings) {
@@ -20,7 +21,7 @@ static int RunInteractiveChat(const std::string& model_path,
   const std::string system_prompt =
       std::string("You are a helpful assistant.") + std::string("\n\n") + concat_result.Combined;
 
-  AIConvo conversation(model, system_prompt);
+  AIConvoLlama conversation(model, system_prompt);
 
   std::cout << "Interactive chat. Ctrl-D to exit.\n";
   std::string user_req;

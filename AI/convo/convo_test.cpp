@@ -23,7 +23,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-#include "convo.hpp"
+#include "aimodel_llama.hpp"
+#include "aiconvo_llama.hpp"
 
 #include <cstdio>     // std::remove
 #include <cstdlib>    // (C stdlib helpers)
@@ -156,8 +157,8 @@ static void test_message_struct() {
 // PART 2 — Integration tests (require a real model)
 // ─────────────────────────────────────────────────────────────────────────────
 
-static void test_generate(AIModelLocal& model) {
-    test::section("AIModelLocal::Generate");
+static void test_generate(AIModelLlama& model) {
+    test::section("AIModelLlama::Generate");
 
     std::string reply;
     CHECK_NOTHROW(reply = model.Generate("What is the capital of France?"));
@@ -175,8 +176,8 @@ static void test_generate(AIModelLocal& model) {
     CHECK_THROWS(std::invalid_argument, model.Generate("hi", 0.7f, 0));
 }
 
-static void test_embed(AIModelLocal& model) {
-    test::section("AIModelLocal::Embed");
+static void test_embed(AIModelLlama& model) {
+    test::section("AIModelLlama::Embed");
 
     auto first_embedding = model.Embed("hello world");
     CHECK(!first_embedding.empty());
@@ -194,8 +195,8 @@ static void test_embed(AIModelLocal& model) {
     CHECK_THROWS(std::invalid_argument, model.Embed("  "));
 }
 
-static void test_similarity(AIModelLocal& model) {
-    test::section("AIModelLocal::Similarity");
+static void test_similarity(AIModelLlama& model) {
+    test::section("AIModelLlama::Similarity");
 
     float similarity_score = model.Similarity("cat", "kitten");
     CHECK_GE(similarity_score, -1.0f);
@@ -215,8 +216,8 @@ static void test_similarity(AIModelLocal& model) {
     CHECK_THROWS(std::invalid_argument, model.Similarity("word", ""));
 }
 
-static void test_search(AIModelLocal& model) {
-    test::section("AIModelLocal::Search");
+static void test_search(AIModelLlama& model) {
+    test::section("AIModelLlama::Search");
 
     std::vector<std::string> candidate_labels = {"sports car", "bicycle", "cargo ship"};
     std::vector<std::string> candidate_texts  = {
@@ -244,10 +245,10 @@ static void test_search(AIModelLocal& model) {
                  model.Search("q", candidate_labels, candidate_texts, 0));  // top_n < 1
 }
 
-static void test_convo_basic(AIModelLocal& model) {
-    test::section("AIConvo::Chat — basic");
+static void test_convo_basic(AIModelLlama& model) {
+    test::section("AIConvoLlama::Chat — basic");
 
-    AIConvo conversation(model, "You are a concise assistant.");
+    AIConvoLlama conversation(model, "You are a concise assistant.");
 
     std::string first_reply = conversation.Chat("What is 2 + 2?");
     CHECK(!first_reply.empty());
@@ -262,10 +263,10 @@ static void test_convo_basic(AIModelLocal& model) {
     CHECK_EQ(static_cast<int>(conversation.GetHistory().size()), 5);
 }
 
-static void test_convo_validation(AIModelLocal& model) {
-    test::section("AIConvo::Chat — input validation");
+static void test_convo_validation(AIModelLlama& model) {
+    test::section("AIConvoLlama::Chat — input validation");
 
-    AIConvo conversation(model);
+    AIConvoLlama conversation(model);
 
     // Blank message → invalid_argument; history must NOT grow.
     std::size_t history_size_before = conversation.GetHistory().size();
@@ -283,10 +284,10 @@ static void test_convo_validation(AIModelLocal& model) {
     CHECK_EQ(conversation.GetHistory().size(), history_size_before);
 }
 
-static void test_convo_clear_history(AIModelLocal& model) {
-    test::section("AIConvo::ClearHistory");
+static void test_convo_clear_history(AIModelLlama& model) {
+    test::section("AIConvoLlama::ClearHistory");
 
-    AIConvo conversation(model, "You are a test bot.");
+    AIConvoLlama conversation(model, "You are a test bot.");
     conversation.Chat("Hello!");
 
     // History has system + user + assistant.
@@ -304,10 +305,10 @@ static void test_convo_clear_history(AIModelLocal& model) {
     CHECK(!reply_after_clear.empty());
 }
 
-static void test_convo_get_history_is_copy(AIModelLocal& model) {
-    test::section("AIConvo::GetHistory returns a copy");
+static void test_convo_get_history_is_copy(AIModelLlama& model) {
+    test::section("AIConvoLlama::GetHistory returns a copy");
 
-    AIConvo conversation(model);
+    AIConvoLlama conversation(model);
     auto mutable_copy = conversation.GetHistory();
     mutable_copy.push_back({Role::User, "injected"});  // mutate the copy
 
@@ -316,10 +317,10 @@ static void test_convo_get_history_is_copy(AIModelLocal& model) {
     CHECK_EQ(static_cast<int>(fresh_copy.size()), 1);
 }
 
-static void test_convo_title(AIModelLocal& model) {
-    test::section("AIConvo::title management");
+static void test_convo_title(AIModelLlama& model) {
+    test::section("AIConvoLlama::title management");
 
-    AIConvo conversation(model);
+    AIConvoLlama conversation(model);
 
     // No title before first chat.
     CHECK(!conversation.GetTitle().has_value());
@@ -333,7 +334,7 @@ static void test_convo_title(AIModelLocal& model) {
     CHECK_THROWS(std::invalid_argument, conversation.SetTitle("   "));
 
     // Auto-generated title: start a fresh conversation.
-    AIConvo second_conversation(model);
+    AIConvoLlama second_conversation(model);
     second_conversation.Chat("Tell me about the solar system.");
     // After first chat, title should be set (auto-generated).
     CHECK(second_conversation.GetTitle().has_value());
@@ -345,10 +346,10 @@ static void test_convo_title(AIModelLocal& model) {
     CHECK_EQ(second_conversation.GetTitle().value(), original_title);
 }
 
-static void test_convo_persistence(AIModelLocal& model) {
-    test::section("AIConvo save/load persistence");
+static void test_convo_persistence(AIModelLlama& model) {
+    test::section("AIConvoLlama save/load persistence");
 
-    AIConvo source_conversation(model, "You are a test assistant.");
+    AIConvoLlama source_conversation(model, "You are a test assistant.");
     source_conversation.Chat("What is the tallest mountain on Earth?");
     source_conversation.SetTitle("Mountain Chat");
 
@@ -358,7 +359,7 @@ static void test_convo_persistence(AIModelLocal& model) {
     CHECK(!saved_file_path.empty());
 
     // ── Load into a fresh conversation ────────────────────────────────────────
-    AIConvo destination_conversation(model);
+    AIConvoLlama destination_conversation(model);
     CHECK_NOTHROW(destination_conversation.LoadHistory(saved_file_path));
 
     // History and title must match the source.
@@ -376,7 +377,7 @@ static void test_convo_persistence(AIModelLocal& model) {
     CHECK(!continuation_reply.empty());
 
     // ── Auto-generated filename ───────────────────────────────────────────────
-    AIConvo autoname_conversation(model);
+    AIConvoLlama autoname_conversation(model);
     autoname_conversation.Chat("Testing auto filename.");
     std::string auto_generated_path = autoname_conversation.SaveHistory();
     CHECK(!auto_generated_path.empty());
@@ -416,19 +417,19 @@ static void test_convo_persistence(AIModelLocal& model) {
     std::remove(missing_content_path.c_str());
 }
 
-static void test_convo_system_prompt_validation(AIModelLocal& model) {
-    test::section("AIConvo construction validation");
+static void test_convo_system_prompt_validation(AIModelLlama& model) {
+    test::section("AIConvoLlama construction validation");
 
     // Blank system prompt → invalid_argument.
-    CHECK_THROWS(std::invalid_argument, AIConvo(model, ""));
-    CHECK_THROWS(std::invalid_argument, AIConvo(model, "   "));
+    CHECK_THROWS(std::invalid_argument, AIConvoLlama(model, ""));
+    CHECK_THROWS(std::invalid_argument, AIConvoLlama(model, "   "));
 }
 
-static void test_multiple_convos_independent(AIModelLocal& model) {
-    test::section("Multiple AIConvo objects are independent");
+static void test_multiple_convos_independent(AIModelLlama& model) {
+    test::section("Multiple AIConvoLlama objects are independent");
 
-    AIConvo history_conversation(model, "You are a history expert.");
-    AIConvo cooking_conversation(model, "You are a cooking expert.");
+    AIConvoLlama history_conversation(model, "You are a history expert.");
+    AIConvoLlama cooking_conversation(model, "You are a cooking expert.");
 
     history_conversation.Chat("Tell me about the Roman Empire.");
     cooking_conversation.Chat("How do I make pasta?");
@@ -444,7 +445,7 @@ static void test_multiple_convos_independent(AIModelLocal& model) {
     }
 }
 
-static void test_embed_cache(AIModelLocal& model) {
+static void test_embed_cache(AIModelLlama& model) {
     test::section("Embedding cache");
 
     model.ClearEmbedCache();
@@ -485,7 +486,7 @@ int main(int argc, char* argv[]) {
         std::cout << "\nLoading model: " << model_path << "\n";
 
         try {
-            AIModelLocal model(model_path);
+            AIModelLlama model(model_path);
             std::cout << "Model loaded.\n";
 
             test_generate(model);

@@ -23,7 +23,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-#include "convo.hpp"
+#include "aimodel_llama.hpp"
+#include "aiconvo_llama.hpp"
 #include "system_prompt.hpp"
 
 #include <cstdlib>   // (C stdlib helpers)
@@ -35,12 +36,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 
-static void test_convo_basic(AIModelLocal& model) {
+static void test_convo_basic(AIModelLlama& model) {
     std::cout << "test convo"<<std::endl;
     int flag =1;
     std::string reply;
     std::string user_req;
-    AIConvo conversation(model, CODER_SYSTEM_PROMPT);
+    AIConvoLlama conversation(model, CODER_SYSTEM_PROMPT);
     while(flag)
     {
       std::getline(std::cin, user_req); // Reads until you press Enter
@@ -73,7 +74,7 @@ int main(int argc, char* argv[]) {
         std::cout << "\nLoading model: " << model_path << "\n";
 
         try {
-            AIModelLocal model(model_path);
+            AIModelLlama model(model_path);
             std::cout << "Model loaded.\n";
 
             

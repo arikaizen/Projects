@@ -1,6 +1,7 @@
 #include "ConvoManager.hpp"
 
-#include "convo.hpp"
+#include "aimodel_llama.hpp"
+#include "aiconvo_llama.hpp"
 
 #include <filesystem>  // std::filesystem::path, create_directories
 #include <fstream>     // std::ifstream, std::ofstream
@@ -22,7 +23,7 @@ static std::string SidecarStatePathForHistoryPath(const std::string& history_pat
 
 struct ConvoEntry {
   ConvoId Id = 0;
-  std::unique_ptr<AIConvo> Convo;
+  std::unique_ptr<AIConvoLlama> Convo;
   std::optional<std::string> LastSavedPath;
   std::optional<std::string> LastStatePath;
   bool Dirty = false;
@@ -34,7 +35,7 @@ struct ModelEntry {
   std::string ModelPath;
   int ContextSize = 4096;
   int ThreadCount = 4;
-  std::unique_ptr<AIModelLocal> Model;
+  std::unique_ptr<AIModelLlama> Model;
   std::map<ConvoId, ConvoEntry> Convos;
   ConvoId NextConvoId = 1;
   std::optional<ConvoId> Active;
@@ -89,7 +90,7 @@ ModelId ConvoManager::AddModel(const std::string& model_path, int context_size, 
   entry.ModelPath = model_path;
   entry.ContextSize = context_size;
   entry.ThreadCount = thread_count;
-  entry.Model = std::make_unique<AIModelLocal>(model_path, context_size, thread_count);
+  entry.Model = std::make_unique<AIModelLlama>(model_path, context_size, thread_count);
   m_impl->Models.emplace(entry.Id, std::move(entry));
   return entry.Id;
 }
@@ -127,7 +128,7 @@ ConvoId ConvoManager::NewConversation(ModelId model_id,
 
   ConvoEntry e;
   e.Id = ++model.NextConvoId;
-  e.Convo = std::make_unique<AIConvo>(*model.Model, system_prompt);
+  e.Convo = std::make_unique<AIConvoLlama>(*model.Model, system_prompt);
   if (initial_title && !initial_title->empty()) {
     e.Convo->SetTitle(*initial_title);
   }

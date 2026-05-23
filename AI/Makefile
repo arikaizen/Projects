@@ -17,6 +17,9 @@ LLAMA_DIR  ?= /home/blueberry/Projects/AI/llama.cpp
 BUILD_DIR  := build
 BIN_DIR    := bin
 
+HTTPLIB_INC ?= /usr/local/include
+JSON_INC    ?= /usr/local/include
+
 # ── Include paths ─────────────────────────────────────────────────────────────
 INCLUDES := -Iconvo \
             -Iconvo/convoManager \
@@ -25,7 +28,9 @@ INCLUDES := -Iconvo \
             -I$(LLAMA_DIR)/include \
             -I$(LLAMA_DIR)/ggml/include \
             -I$(LLAMA_DIR)/src \
-            -I$(CUDA_PATH)/include
+            -I$(CUDA_PATH)/include \
+            -I$(HTTPLIB_INC) \
+            -I$(JSON_INC)
 
 # ── Libraries / rpath ─────────────────────────────────────────────────────────
 LIB_BIN_PATH := $(LLAMA_DIR)/build/bin
@@ -44,13 +49,15 @@ CONVO_MANAGER_TARGET := $(BIN_DIR)/convo_manager
 CONVO_MANAGER_SRCS := \
 	convo_manager_main.cpp \
 	tools/Cmdline/Cmdline.cpp \
-	convo/convo.cpp \
+	convo/aimodel.cpp convo/aiconvo.cpp \
+	convo/aimodel_llama.cpp convo/aiconvo_llama.cpp \
+	convo/aimodel_vllm.cpp convo/aiconvo_vllm.cpp \
 	convo/convoManager/ConvoManager.cpp \
 	concat/promt_concat_api.cpp
 CONVO_MANAGER_OBJS := $(CONVO_MANAGER_SRCS:%.cpp=$(BUILD_DIR)/%.o)
 
 # ==============================================================================
-.PHONY: all clean help
+.PHONY: all clean help print-sources
 
 all: $(CONVO_MANAGER_TARGET)
 	@echo ""
@@ -72,6 +79,9 @@ clean:
 	rm -rf $(BUILD_DIR)
 	@echo "Cleaned $(BUILD_DIR)."
 
+print-sources:
+	@echo $(CONVO_MANAGER_SRCS)
+
 help:
 	@echo "Usage:"
 	@echo "  make -C AI all LLAMA_DIR=/path/to/llama.cpp"
@@ -79,4 +89,3 @@ help:
 	@echo ""
 	@echo "Run:"
 	@echo "  ./AI/bin/convo_manager model1.gguf [model2.gguf ...]"
-
