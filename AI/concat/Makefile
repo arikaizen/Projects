@@ -4,7 +4,7 @@
 #
 # Targets:
 # - build/promt_concat_api_demo : prompt list → combined string (CLI wrapper)
-# - build/promt_concat_test     : combined prompt + AIConvo interactive chat
+# - build/promt_concat_test     : combined prompt + AIConvoLlama interactive chat
 #
 # Notes:
 # - This Makefile does NOT modify or depend on AI/convo/Makefile.
@@ -20,13 +20,18 @@ LLAMA_DIR  ?= /home/blueberry/Projects/AI/llama.cpp
 BUILD_DIR  := build
 BIN_DIR    := ../bin
 
+HTTPLIB_INC ?= /usr/local/include
+JSON_INC    ?= /usr/local/include
+
 # ── Include paths ─────────────────────────────────────────────────────────────
 INCLUDES := -I. \
             -I../convo \
             -I$(LLAMA_DIR)/include \
             -I$(LLAMA_DIR)/ggml/include \
             -I$(LLAMA_DIR)/src \
-            -I$(CUDA_PATH)/include
+            -I$(CUDA_PATH)/include \
+            -I$(HTTPLIB_INC) \
+            -I$(JSON_INC)
 
 # ── Libraries / rpath ─────────────────────────────────────────────────────────
 LIB_BIN_PATH := $(LLAMA_DIR)/build/bin
@@ -62,7 +67,11 @@ $(BIN_DIR)/promt_concat_api_demo: $(PROMT_CONCAT_API_DEMO_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 # ── promt_concat_test (links convo + prompt_concat + llama) ───────────────────
-PROMT_CONCAT_TEST_SRCS := ../convo/convo.cpp promt_concat_api.cpp promt_concat_test.cpp
+PROMT_CONCAT_TEST_SRCS := \
+	../convo/aimodel.cpp ../convo/aiconvo.cpp \
+	../convo/aimodel_llama.cpp ../convo/aiconvo_llama.cpp \
+	../convo/aimodel_vllm.cpp  ../convo/aiconvo_vllm.cpp \
+	promt_concat_api.cpp promt_concat_test.cpp
 PROMT_CONCAT_TEST_OBJS := $(PROMT_CONCAT_TEST_SRCS:%.cpp=$(BUILD_DIR)/%.o)
 
 $(BIN_DIR)/promt_concat_test: $(PROMT_CONCAT_TEST_OBJS)
@@ -98,4 +107,3 @@ help:
 	@echo "  ./AI/bin/promt_concat_api_demo [promt_list_path]"
 	@echo "  ./AI/bin/promt_concat_test /path/to/model.gguf"
 	@echo "  ./AI/bin/promt_concat_verify [promt_list_path] [base_prompt]"
-

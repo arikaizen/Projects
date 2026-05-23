@@ -7,12 +7,17 @@ CUDA_PATH  ?= /usr/local/cuda
 LLAMA_DIR  ?= /home/blueberry/Projects/AI/llama.cpp
 BUILD_DIR  := build
 
+HTTPLIB_INC ?= /usr/local/include
+JSON_INC    ?= /usr/local/include
+
 # ── Include paths ─────────────────────────────────────────────────────────────
 INCLUDES := -I. \
             -I$(LLAMA_DIR)/include \
             -I$(LLAMA_DIR)/ggml/include \
             -I$(LLAMA_DIR)/src \
-            -I$(CUDA_PATH)/include
+            -I$(CUDA_PATH)/include \
+            -I$(HTTPLIB_INC) \
+            -I$(JSON_INC)
 
 # ── Libraries (Paths matched to your 'find' results) ──────────────────────────
 # All .so files were located in llama.cpp/build/bin
@@ -32,11 +37,14 @@ LIBS := -L$(LIB_BIN_PATH) -Wl,-rpath,$(LIB_BIN_PATH) \
 CXXFLAGS := -O3 -std=c++17 $(INCLUDES) -DGGML_USE_CUDA -Wall -Wextra
 
 TARGET := $(BUILD_DIR)/convo_test
-SRCS   := convo.cpp convo_test1.cpp
+SRCS   := aimodel.cpp aiconvo.cpp \
+           aimodel_llama.cpp aiconvo_llama.cpp \
+           aimodel_vllm.cpp  aiconvo_vllm.cpp \
+           convo_test1.cpp
 OBJS   := $(SRCS:%.cpp=$(BUILD_DIR)/%.o)
 
 # ==============================================================================
-.PHONY: all clean run help
+.PHONY: all clean run help print-sources
 
 all: $(TARGET)
 	@echo ""
@@ -50,7 +58,7 @@ $(TARGET): $(OBJS)
 	@echo "[LD]  $@"
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
 
-$(BUILD_DIR)/%.o: %.cpp convo.hpp
+$(BUILD_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	@echo "[CXX] $<"
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -63,6 +71,9 @@ run: all
 clean:
 	rm -rf $(BUILD_DIR)
 	@echo "Cleaned project build."
+
+print-sources:
+	@echo $(SRCS)
 
 help:
 	@echo "Usage:"
