@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <functional>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -40,6 +41,11 @@ void AIConvoLlama::ClearKvCache() noexcept {
     llama_memory_clear(llama_get_memory(m_conversation_ctx), /*data=*/true);
     m_tokens_processed = 0;
     m_cached_prompt_tokens.clear();
+}
+
+void AIConvoLlama::ClearKvCacheIf(std::function<bool()> predicate) {
+    if (predicate && predicate())
+        ClearKvCache();
 }
 
 void AIConvoLlama::OnChatFailure() noexcept {

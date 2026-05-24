@@ -1,6 +1,7 @@
 #pragma once
 #include "aiconvo.hpp"
 #include "aimodel_llama.hpp"
+#include <functional>
 #include <llama.h>
 #include <vector>
 
@@ -15,6 +16,12 @@ public:
     void SetClearKvCacheEachTurn(bool clear) noexcept;
     bool GetClearKvCacheEachTurn() const noexcept;
 
+    /** Unconditionally wipe this conversation's KV cache. */
+    void ClearKvCache() noexcept;
+
+    /** Wipe the KV cache only if predicate() returns true. */
+    void ClearKvCacheIf(std::function<bool()> predicate);
+
 protected:
     std::string GenerateReply(const std::vector<Message>& prompt_messages,
                               float temperature, int max_tokens) override;
@@ -22,7 +29,6 @@ protected:
 
 private:
     std::string FormatPrompt(const std::vector<Message>& messages) const;
-    void        ClearKvCache() noexcept;
 
     AIModelLlama&            m_llama_model;
     llama_context*           m_conversation_ctx   = nullptr;
