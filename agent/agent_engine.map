@@ -1,0 +1,36 @@
+{
+  global:
+    am_create;
+    am_destroy;
+    am_last_error;
+    am_api_version;
+    am_spawn_agent;
+    am_destroy_agent;
+    am_list_agents;
+    am_get_status;
+    am_cancel_agent;
+    am_run_agent;
+    am_future_wait;
+    am_future_free;
+    am_pipe;
+    am_send_message;
+    am_broadcast;
+    am_drain_inbox;
+    am_blackboard_write;
+    am_blackboard_read;
+    am_blackboard_keys;
+    am_fan_out;
+    am_fan_out_free_array;
+    am_research_from_angles;
+    am_inject_work;
+    am_subscribe_events;
+    am_unsubscribe_events;
+    am_reload_prompts;
+    am_set_prompts_dir;
+    am_set_user_quota;
+    am_connect_mcp;
+    am_disconnect_mcp;
+    am_list_mcp_servers;
+  local:
+    *;
+};
