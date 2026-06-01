@@ -1,8 +1,10 @@
-# WorkItem, WorkResult & WorkFactory
+# WorkItem & WorkResult
 
-`include/agent/work_item.hpp` · `include/agent/work_factory.hpp`  
-`include/agent/stage.hpp` · `include/agent/action.hpp`  
-`src/agent/work_item.cpp` · `src/agent/work_factory.cpp`
+`include/agent/work_item.hpp` · `src/agent/work_item.cpp`
+
+> Related components have their own pages:
+> [WorkFactory](work_factory.md) · [Stage (base)](stage.md) · [Action (base)](action.md).
+> This page covers `WorkItem` and `WorkResult`; the factory/base sections below are summaries that link out.
 
 ---
 

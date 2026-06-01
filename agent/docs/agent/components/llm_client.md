@@ -1,6 +1,8 @@
-# LLMClient & MemoryBackend
+# LLMClient
 
-`include/agent/llm_client.hpp` · `include/agent/memory_backend.hpp`
+`include/agent/llm_client.hpp`
+
+> The memory interface has its own page: [MemoryBackend](memory_backend.md). This page covers `LLMClient` and `MockLLMClient`; the `MemoryBackend` section below is a summary that links out.
 
 ---
 

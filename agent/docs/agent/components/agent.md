@@ -1,7 +1,8 @@
-# Agent & AgentContext
+# Agent
 
-`include/agent/agent.hpp` · `include/agent/agent_context.hpp`  
-`src/agent/agent.cpp` · `src/agent/agent_context.cpp`
+`include/agent/agent.hpp` · `src/agent/agent.cpp`
+
+> The companion runtime-state object has its own page: [AgentContext](agent_context.md). This page covers the `Agent` loop; the section below is a summary — see [agent_context.md](agent_context.md) for the full queue/history/`$ref` reference.
 
 ---
 
