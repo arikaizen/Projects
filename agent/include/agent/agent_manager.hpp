@@ -6,6 +6,7 @@
 #include "llm_client.hpp"
 #include "memory_backend.hpp"
 #include "message_inbox.hpp"
+#include "plan_cache.hpp"
 #include "prompt_loader.hpp"
 #include "quota.hpp"
 #include "thread_pool.hpp"
@@ -40,6 +41,7 @@ class AgentManager {
 public:
     struct Config {
         std::filesystem::path prompts_dir{"./prompts"};
+        std::filesystem::path cache_dir{"./agent_cache"};
         int                   thread_pool_size{16};
         int                   max_agent_depth{3};
         std::string           default_user_id{"default"};
@@ -138,6 +140,7 @@ private:
     std::shared_ptr<Blackboard>    m_blackboard;
     std::shared_ptr<ThreadPool>    m_pool;
     std::shared_ptr<QuotaManager>  m_quota;
+    std::unique_ptr<PlanCache>     m_plan_cache;
 
     // ── Agent registry ───────────────────────────────────────────────────────
     struct AgentEntry {

@@ -63,6 +63,9 @@ UnderstandStage
 | RespondStage | `RespondStage` | `respond_stage.md` | `json_mode=true` | [respond_stage.md](respond_stage.md) |
 | InjectionStage | `InjectionStage` | `injection_stage.md` | `json_mode=true` | [injection_stage.md](injection_stage.md) |
 | TransformStage | `TransformStage` | `transform_stage.md` | `json_mode=false` | [transform_stage.md](transform_stage.md) |
+| PlanCacheCheckStage | `PlanCacheCheckStage` | `plan_cache_check_stage.md` | `json_mode=true` | [plan_cache_check_stage.md](plan_cache_check_stage.md) |
+| ReplayStage | `ReplayStage` | *(none — no LLM call)* | — | [replay_stage.md](replay_stage.md) |
+| PlanAdaptStage | `PlanAdaptStage` | `plan_adapt_stage.md` | `json_mode=true` | [plan_adapt_stage.md](plan_adapt_stage.md) |
 
 ## Common Behavior
 
@@ -98,6 +101,8 @@ Templates live in `AgentManager::Config::prompts_dir`. Missing templates throw `
 | `InjectionStage` | `{{CATALOG}}`, `{{HISTORY}}`, `{{QUEUE}}`, `{{TASK}}`, `{{PREVIOUS_RESULT}}`, `{{OUTPUT_SCHEMA}}` |
 | `TransformStage` | `{{INSTRUCTION}}`, `{{INPUT_TEXT}}` |
 | `ValidateStage` | `{{TARGET_OUTPUT}}`, `{{CRITERIA}}` (+ `{{CATALOG}}`, `{{OUTPUT_SCHEMA}}` when `corrective_injection=true`) |
+| `PlanCacheCheckStage` | `{{TASK}}`, `{{CACHED_TASK}}`, `{{CACHED_FINGERPRINT}}`, `{{OUTPUT_SCHEMA}}` |
+| `PlanAdaptStage` | `{{TASK}}`, `{{CACHED_PLAN}}`, `{{CHANGED_ASPECTS}}`, `{{CATALOG}}`, `{{OUTPUT_SCHEMA}}` |
 
 ## Related Components
 

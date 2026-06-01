@@ -128,6 +128,10 @@ WorkResult ReasonStage::execute(AgentContext& ctx) {
             return result;
         }
 
+        // Save raw plan to blackboard so ObserveStage can persist it to PlanCache on success
+        if (auto* bb = ctx.blackboard())
+            bb->write("agent:last_plan", parsed);
+
         std::cerr << "[STAGE] ReasonStage(" << id << ") pushed " << parsed.size() << " plan item(s)\n";
         result.success = true;
         result.output  = {{"plan_size", parsed.size()}, {"plan", parsed}};

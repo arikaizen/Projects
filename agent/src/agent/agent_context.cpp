@@ -24,7 +24,8 @@ AgentContext::AgentContext(
     Blackboard*                    blackboard,
     MessageInbox*                  inbox,
     EventBus*                      event_bus,
-    AgentManager*                  manager)
+    AgentManager*                  manager,
+    PlanCache*                     plan_cache)
     : m_config       (std::move(config))
     , m_llm          (std::move(llm))
     , m_factory      (std::move(factory))
@@ -34,6 +35,7 @@ AgentContext::AgentContext(
     , m_inbox        (inbox)
     , m_event_bus    (event_bus)
     , m_manager      (manager)
+    , m_plan_cache   (plan_cache)
 {}
 
 // ---------------------------------------------------------------------------

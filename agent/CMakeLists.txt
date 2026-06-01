@@ -62,6 +62,7 @@ set(AGENT_CORE_SOURCES
     src/agent/batch_executor.cpp
     src/agent/agent.cpp
     src/agent/agent_manager.cpp
+    src/agent/plan_cache.cpp
     src/agent/stages/understand_stage.cpp
     src/agent/stages/orient_stage.cpp
     src/agent/stages/locate_stage.cpp
@@ -73,6 +74,9 @@ set(AGENT_CORE_SOURCES
     src/agent/stages/injection_stage.cpp
     src/agent/stages/transform_stage.cpp
     src/agent/stages/validate_stage.cpp
+    src/agent/stages/plan_cache_check_stage.cpp
+    src/agent/stages/replay_stage.cpp
+    src/agent/stages/plan_adapt_stage.cpp
     src/agent/actions/bash_action.cpp
     src/agent/actions/read_action.cpp
     src/agent/actions/write_action.cpp

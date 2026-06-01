@@ -1,6 +1,7 @@
 // agent_manager.cpp — AgentManager implementation
 #include "agent/agent_manager.hpp"
 #include "agent/memory_backend.hpp"
+#include "agent/plan_cache.hpp"
 
 #include <chrono>
 #include <ctime>
@@ -45,6 +46,9 @@ void registerReadStage(WorkFactory&);
 void registerCodeIntelStage(WorkFactory&);
 void registerObserveStage(WorkFactory&);
 void registerRespondStage(WorkFactory&);
+void registerPlanCacheCheckStage(WorkFactory&);
+void registerReplayStage(WorkFactory&);
+void registerPlanAdaptStage(WorkFactory&);
 void registerBashAction(WorkFactory&);
 void registerReadAction(WorkFactory&);
 void registerWriteAction(WorkFactory&);
@@ -76,10 +80,12 @@ AgentManager::AgentManager(Config                         config,
     , m_pool         (std::make_shared<ThreadPool>(
                           static_cast<std::size_t>(m_config.thread_pool_size)))
     , m_quota        (std::make_shared<QuotaManager>())
+    , m_plan_cache   (std::make_unique<PlanCache>(m_config.cache_dir))
 {
     registerBuiltinItems();
     std::cerr << "[AgentManager] initialised (pool=" << m_config.thread_pool_size
-              << ", prompts=" << m_config.prompts_dir.string() << ")\n";
+              << ", prompts=" << m_config.prompts_dir.string()
+              << ", cache=" << m_config.cache_dir.string() << ")\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +133,9 @@ void AgentManager::registerBuiltinItems()
     registerRespondStage(*m_factory);     // Step 6  — Respond
     registerInjectionStage(*m_factory);
     registerTransformStage(*m_factory);
+    registerPlanCacheCheckStage(*m_factory);  // Cache — check/route on re-run
+    registerReplayStage(*m_factory);          // Cache — replay unchanged plan
+    registerPlanAdaptStage(*m_factory);       // Cache — adapt changed plan
 
     registerBashAction(*m_factory);
     registerReadAction(*m_factory);
@@ -157,7 +166,8 @@ std::unique_ptr<AgentContext> AgentManager::makeContext(const AgentEntry& entry)
         m_blackboard.get(),
         entry.inbox.get(),
         m_event_bus.get(),
-        this);
+        this,
+        m_plan_cache.get());
 }
 
 // ---------------------------------------------------------------------------
@@ -284,14 +294,25 @@ std::future<nlohmann::json> AgentManager::runAgent(const std::string& agent_id,
         // push an initial ReasonStage that renders the task prompt, calls the
         // LLM, and pushes whatever plan items the LLM returns.
         if (entry.agent->context().queueEmpty()) {
-            // Start with UnderstandStage (full 6-step loop) when available,
-            // otherwise fall back to ReasonStage for lightweight/test setups.
-            if (m_factory->isRegistered("UnderstandStage")) {
+            // If a successful plan is cached for this agent, run PlanCacheCheckStage
+            // first so it can decide between replay, adapt, or full fresh start.
+            // Tests that pre-seed the queue via injectWork bypass this path entirely.
+            const bool has_cache = m_plan_cache &&
+                                   m_plan_cache->exists(entry.config.agent_id) &&
+                                   m_factory->isRegistered("PlanCacheCheckStage");
+            if (has_cache) {
+                auto initial = m_factory->create("PlanCacheCheckStage", "init_cache_check",
+                                                 nlohmann::json{{"task", entry.config.task}});
+                entry.agent->context().push(std::move(initial),
+                                            AgentContext::Position::Back);
+            } else if (m_factory->isRegistered("UnderstandStage")) {
+                // Full 6-step loop — first run or no cache backend
                 auto initial = m_factory->create("UnderstandStage", "init_understand",
                                                  nlohmann::json{{"task", entry.config.task}});
                 entry.agent->context().push(std::move(initial),
                                             AgentContext::Position::Back);
             } else if (m_factory->isRegistered("ReasonStage")) {
+                // Lightweight / test path
                 auto initial = m_factory->create("ReasonStage", "init_reason",
                                                  nlohmann::json{{"task", entry.config.task}});
                 entry.agent->context().push(std::move(initial),

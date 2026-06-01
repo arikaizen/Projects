@@ -1,10 +1,14 @@
 #include "observe_stage.hpp"
 #include "agent/agent_context.hpp"
+#include "agent/plan_cache.hpp"
 #include "agent/work_factory.hpp"
 #include "agent/prompt_loader.hpp"
 #include "agent/event_bus.hpp"
 #include <chrono>
+#include <ctime>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 
 namespace agent {
 
@@ -88,6 +92,44 @@ WorkResult ObserveStage::execute(AgentContext& ctx) {
                   << " next_action=" << next_action << "\n";
 
         if (done || next_action == "respond") {
+            // Persist the successful plan to PlanCache for future replay/adaptation
+            if (auto* cache = ctx.planCache()) {
+                auto* bb = ctx.blackboard();
+                nlohmann::json last_plan;
+                nlohmann::json fingerprint;
+                if (bb) {
+                    if (auto v = bb->read("agent:last_plan"))    last_plan   = *v;
+                    if (auto v = bb->read("agent:understanding")) fingerprint = *v;
+                }
+                if (last_plan.is_array() && !last_plan.empty()) {
+                    // Load existing entry to increment run_count on a replay
+                    auto existing = cache->load(ctx.config().agent_id);
+                    CachedPlan cp;
+                    cp.task        = ctx.config().task;
+                    cp.fingerprint = fingerprint;
+                    cp.steps       = last_plan;
+                    cp.run_count   = existing ? existing->run_count + 1 : 0;
+                    // ISO-8601 UTC timestamp
+                    auto tp  = std::chrono::system_clock::now();
+                    std::time_t t = std::chrono::system_clock::to_time_t(tp);
+                    std::tm tm_utc{};
+#if defined(_WIN32)
+                    gmtime_s(&tm_utc, &t);
+#else
+                    gmtime_r(&t, &tm_utc);
+#endif
+                    std::ostringstream oss;
+                    oss << std::put_time(&tm_utc, "%Y-%m-%dT%H:%M:%SZ");
+                    cp.created_at = oss.str();
+                    try { cache->save(ctx.config().agent_id, cp); }
+                    catch (const std::exception& ex) {
+                        std::cerr << "[STAGE] ObserveStage: cache save failed: " << ex.what() << "\n";
+                    }
+                    std::cerr << "[STAGE] ObserveStage(" << id << ") saved plan to cache (run_count="
+                              << cp.run_count << ")\n";
+                }
+            }
+
             // Task complete — chain to RespondStage
             if (ctx.factory().isRegistered("RespondStage")) {
                 std::string respond_id = "auto_respond_" + std::to_string(ctx.iteration_count);
