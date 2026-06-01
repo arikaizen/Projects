@@ -38,6 +38,13 @@ void registerReasonStage(WorkFactory&);
 void registerInjectionStage(WorkFactory&);
 void registerTransformStage(WorkFactory&);
 void registerValidateStage(WorkFactory&);
+void registerUnderstandStage(WorkFactory&);
+void registerOrientStage(WorkFactory&);
+void registerLocateStage(WorkFactory&);
+void registerReadStage(WorkFactory&);
+void registerCodeIntelStage(WorkFactory&);
+void registerObserveStage(WorkFactory&);
+void registerRespondStage(WorkFactory&);
 void registerBashAction(WorkFactory&);
 void registerReadAction(WorkFactory&);
 void registerWriteAction(WorkFactory&);
@@ -108,10 +115,18 @@ AgentManager::~AgentManager()
 // ---------------------------------------------------------------------------
 void AgentManager::registerBuiltinItems()
 {
-    registerReasonStage(*m_factory);
+    // Core reasoning stages
+    registerUnderstandStage(*m_factory);  // Step 1  — Understand the goal
+    registerOrientStage(*m_factory);      // Step 2A — Orient
+    registerLocateStage(*m_factory);      // Step 2B — Locate
+    registerReadStage(*m_factory);        // Step 2C — Read
+    registerValidateStage(*m_factory);    // Step 2D — Verify (optional, used in plans)
+    registerCodeIntelStage(*m_factory);   // Step 2E — Code intelligence (optional)
+    registerReasonStage(*m_factory);      // Step 3  — Reason & decide
+    registerObserveStage(*m_factory);     // Step 5  — Observe
+    registerRespondStage(*m_factory);     // Step 6  — Respond
     registerInjectionStage(*m_factory);
     registerTransformStage(*m_factory);
-    registerValidateStage(*m_factory);
 
     registerBashAction(*m_factory);
     registerReadAction(*m_factory);
@@ -268,12 +283,20 @@ std::future<nlohmann::json> AgentManager::runAgent(const std::string& agent_id,
         // ReasonStage.  Otherwise, start the agent by reasoning about its task:
         // push an initial ReasonStage that renders the task prompt, calls the
         // LLM, and pushes whatever plan items the LLM returns.
-        if (entry.agent->context().queueEmpty()
-            && m_factory->isRegistered("ReasonStage")) {
-            auto initial = m_factory->create("ReasonStage", "init_reason",
-                                             nlohmann::json{{"task", entry.config.task}});
-            entry.agent->context().push(std::move(initial),
-                                        AgentContext::Position::Back);
+        if (entry.agent->context().queueEmpty()) {
+            // Start with UnderstandStage (full 6-step loop) when available,
+            // otherwise fall back to ReasonStage for lightweight/test setups.
+            if (m_factory->isRegistered("UnderstandStage")) {
+                auto initial = m_factory->create("UnderstandStage", "init_understand",
+                                                 nlohmann::json{{"task", entry.config.task}});
+                entry.agent->context().push(std::move(initial),
+                                            AgentContext::Position::Back);
+            } else if (m_factory->isRegistered("ReasonStage")) {
+                auto initial = m_factory->create("ReasonStage", "init_reason",
+                                                 nlohmann::json{{"task", entry.config.task}});
+                entry.agent->context().push(std::move(initial),
+                                            AgentContext::Position::Back);
+            }
         }
     }
 

@@ -161,6 +161,8 @@ bool ReasonStage::validateAndPushPlan(const nlohmann::json& plan,
         seen_ids.insert(r.item_id);
     }
 
+    std::vector<std::string> pushed_ids;  // collected to wire ObserveStage deps
+
     for (const auto& item_json : plan) {
         if (!item_json.is_object()) {
             error_out = "Plan items must be JSON objects";
@@ -216,12 +218,34 @@ bool ReasonStage::validateAndPushPlan(const nlohmann::json& plan,
                 bus->emit(EventBus::makeEvent("agent_final_answer",
                     {{"stage", name}, {"answer", item_json["final_answer"]}}));
             }
-            return true;
+            return true;  // final_answer path: no ObserveStage needed
         }
 
         auto work_item = ctx.factory().create(item_name, item_id, item_inputs);
         ctx.push(std::move(work_item), AgentContext::Position::Back);
+        pushed_ids.push_back(item_id);
     }
+
+    // Step 5 — Observe: push ObserveStage with $ref dependencies on every plan
+    // item so it runs only after all of them complete (BatchExecutor DAG ordering).
+    // Skipped when the plan was empty or should_stop was already set above.
+    if (!ctx.should_stop && !pushed_ids.empty() &&
+        ctx.factory().isRegistered("ObserveStage")) {
+        std::string obs_id = "observe_" + id;
+        if (!ctx.idExists(obs_id)) {
+            nlohmann::json obs_inputs;
+            nlohmann::json refs = nlohmann::json::array();
+            for (const auto& pid : pushed_ids)
+                refs.push_back("$" + pid);
+            obs_inputs["plan_results"] = refs;
+
+            auto observe = ctx.factory().create("ObserveStage", obs_id, obs_inputs);
+            ctx.push(std::move(observe), AgentContext::Position::Back);
+            std::cerr << "[STAGE] ReasonStage(" << id << ") queued ObserveStage '"
+                      << obs_id << "' with " << pushed_ids.size() << " dep(s)\n";
+        }
+    }
+
     return true;
 }
 

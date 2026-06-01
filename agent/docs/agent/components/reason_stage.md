@@ -4,9 +4,9 @@
 
 ## Overview
 
-`ReasonStage` is the primary reasoning step. It surveys the full agent state (task, history, queue, catalog of available items) and asks the LLM to produce a plan — an ordered JSON array of `WorkItem` descriptors. Each descriptor is validated and pushed onto the queue.
+`ReasonStage` is **Step 3** of the six-phase agent loop — Reason & Decide. It surveys the full agent state (task, history, queue, catalog, and any blackboard context written by the setup phases) and asks the LLM to produce a plan: an ordered JSON array of `WorkItem` descriptors. Each descriptor is validated and pushed onto the queue.
 
-`ReasonStage` is typically the first item in any agent's queue. Other stages may push additional `ReasonStage` instances when the task requires multiple reasoning rounds.
+After pushing all plan items, `ReasonStage` automatically appends an `ObserveStage` (Step 5) with `$ref` dependencies on every plan item ID. This means `BatchExecutor` runs `ObserveStage` only after all plan actions have completed.
 
 ## Factory Registration
 
@@ -23,13 +23,14 @@ kind:  Stage
 
 ## Execution
 
-1. Gathers template variables: `CATALOG` (all registered item types), `HISTORY` (last 20 results), `QUEUE` (pending items), `TASK` (agent task or `inputs["task"]`), `OUTPUT_SCHEMA` (expected plan JSON schema).
+1. Gathers template variables: `CATALOG`, `HISTORY` (last 20 results), `QUEUE`, `TASK`, `OUTPUT_SCHEMA`.
 2. Renders `reason_stage.md` via `PromptLoader`.
 3. Calls `ctx.llm().complete({system_prompt, user_msg, json_mode=true, temperature=0.3, max_tokens=4096})`.
 4. Parses the JSON response. Accepts either:
    - A JSON array of plan items (normal path).
-   - A JSON object with a `"final_answer"` key (termination path).
-5. Validates each plan item (see Validation below) and pushes them to the queue.
+   - A JSON object with a `"final_answer"` key (termination path — bypasses ObserveStage).
+5. Validates each plan item and pushes them to the queue.
+6. Pushes `ObserveStage` (id: `"observe_<this_id>"`) with `inputs["plan_results"]` containing a `$ref` array pointing to every pushed plan item.
 
 ## Plan Item Format
 
@@ -48,7 +49,7 @@ kind:  Stage
 ]
 ```
 
-The optional `"final_answer"` field on the last item signals the agent to stop after executing that item:
+The optional `"final_answer"` field on the last item signals the agent to stop after that item (no `ObserveStage` is pushed in this case):
 
 ```json
 [
@@ -57,13 +58,27 @@ The optional `"final_answer"` field on the last item signals the agent to stop a
 ]
 ```
 
+## ObserveStage Auto-Injection
+
+After a non-final plan, `validateAndPushPlan` appends:
+
+```json
+{
+  "name": "ObserveStage",
+  "id":   "observe_<reason_id>",
+  "inputs": {
+    "plan_results": ["$b1", "$r1"]
+  }
+}
+```
+
+`BatchExecutor` resolves the `$ref` strings into DAG edges, ensuring `ObserveStage` waits for `b1` and `r1` before running.
+
 ## Validation Rules
 
 1. Every `name` must be registered in `WorkFactory`.
 2. Every `id` must be unique across both history and the current plan.
 3. Every `$ref` dependency must point to an id present in history or an earlier item in the same plan.
-
-Plan validation uses the same logic as `InjectionStage`. If validation fails, the stage returns `success=false` with the validation error.
 
 ## Output
 
@@ -75,19 +90,9 @@ Plan validation uses the same logic as `InjectionStage`. If validation fails, th
 
 On termination path: `output` is `{"answer": "..."}` and `ctx.should_stop = true`.
 
-## Events Emitted
-
-| Event type | When |
-|---|---|
-| `stage_start` | Before the LLM call |
-| `stage_done` | After successful execution |
-| `stage_error` | On LLM failure or invalid plan |
-| `agent_final_answer` | When a `final_answer` is received |
-
 ## Related Components
 
-- [`Stage`](stage.md) / [`stages.md`](stages.md) — base class and overview
+- [`ObserveStage`](observe_stage.md) — auto-appended after every non-final plan (Step 5)
+- [`UnderstandStage`](understand_stage.md) / [`ReadStage`](read_stage.md) — write blackboard context consumed here
 - [`InjectionStage`](injection_stage.md) — similar plan validation logic
-- [`WorkFactory`](work_factory.md) — plan items are validated against registered types
-- [`PromptLoader`](prompt_loader.md) — renders `reason_stage.md`
-- [`LLMClient`](llm_client.md) — the LLM call
+- [`stages.md`](stages.md) — six-phase overview
