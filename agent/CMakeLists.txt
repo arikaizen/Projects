@@ -62,6 +62,13 @@ set(AGENT_CORE_SOURCES
     src/agent/batch_executor.cpp
     src/agent/agent.cpp
     src/agent/agent_manager.cpp
+    src/agent/stages/understand_stage.cpp
+    src/agent/stages/orient_stage.cpp
+    src/agent/stages/locate_stage.cpp
+    src/agent/stages/read_stage.cpp
+    src/agent/stages/code_intel_stage.cpp
+    src/agent/stages/observe_stage.cpp
+    src/agent/stages/respond_stage.cpp
     src/agent/stages/reason_stage.cpp
     src/agent/stages/injection_stage.cpp
     src/agent/stages/transform_stage.cpp
