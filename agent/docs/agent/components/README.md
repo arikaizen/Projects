@@ -30,6 +30,14 @@ Detailed documentation for every component in the agent engine.
 | [QuotaManager](quota_manager.md) | `include/agent/quota.hpp` | Per-user resource limits and RAII guards |
 | [LLMClient & MemoryBackend](llm_client.md) | `include/agent/llm_client.hpp` | Abstract LLM and memory backend interfaces |
 
+## Model Integration
+
+| Component | File | Description |
+|---|---|---|
+| [AIModel Hierarchy](ai_model.md) | `third_party/ai_model/` | Abstract model (generate + embed) with vLLM / llama.cpp backends |
+| [AIModelLLMClient](ai_model_llm_client.md) | `include/agent/ai_model_llm_client.hpp` | Adapter: `AIModel` → `LLMClient` |
+| [AIModelMemoryBackend](ai_model_memory_backend.md) | `include/agent/ai_model_memory_backend.hpp` | Adapter: `AIModel` → `MemoryBackend` |
+
 ## Public Interface
 
 | Component | File | Description |

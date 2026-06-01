@@ -188,8 +188,18 @@ auto manager = AgentManager(config, llm, std::make_shared<ChromaBackend>());
 
 ---
 
+## Real Implementations
+
+These interfaces are abstract. The engine ships a working implementation pair built on the [`AIModel`](ai_model.md) hierarchy:
+
+- [`AIModelLLMClient`](ai_model_llm_client.md) — implements `LLMClient` via `AIModel::Generate`
+- [`AIModelMemoryBackend`](ai_model_memory_backend.md) — implements `MemoryBackend` via `AIModel::Embed` / `Search`
+
+A single `AIModel` (e.g. `AIModelVLLM`, `AIModelLlama`) can back both at once. Until one is wired in, the defaults are `MockLLMClient` and `NoOpMemoryBackend`.
+
 ## Related Components
 
+- [`AIModel`](ai_model.md) — concrete model hierarchy behind the adapters
 - [`AgentContext`](agent.md) — holds `shared_ptr<LLMClient>` and `shared_ptr<MemoryBackend>`
 - [`AgentManager`](agent_manager.md) — receives both at construction; distributes to contexts
 - [`Stages`](stages.md) — call `ctx.llm().complete(...)` on every reasoning step

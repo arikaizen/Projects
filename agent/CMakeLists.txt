@@ -34,7 +34,18 @@ set(AGENT_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src/agent/stages
     ${CMAKE_CURRENT_SOURCE_DIR}/src/agent/actions
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
+
+# ── Optional LLM backends ─────────────────────────────────────────────────────
+# The AIModel hierarchy is copied under third_party/ai_model.  Its abstract base
+# (aimodel.cpp) and the engine adapters compile with no external dependencies and
+# are always built.  The concrete backends pull in heavy dependencies and are
+# therefore opt-in:
+#   -DAGENT_ENABLE_VLLM=ON   requires cpp-httplib (httplib.h) + nlohmann/json
+#   -DAGENT_ENABLE_LLAMA=ON  requires llama.cpp (llama.h) + its libraries
+option(AGENT_ENABLE_VLLM  "Build the vLLM / OpenAI-compatible AIModel backend" OFF)
+option(AGENT_ENABLE_LLAMA "Build the llama.cpp AIModel backend"                OFF)
 
 # ── agent_core static library ─────────────────────────────────────────────────
 
@@ -69,7 +80,20 @@ set(AGENT_CORE_SOURCES
     src/agent/actions/memory_actions.cpp
     src/agent/actions/messaging_actions.cpp
     src/agent/actions/blackboard_actions.cpp
+    # AIModel abstract base + engine adapters (dependency-free, always built)
+    third_party/ai_model/aimodel.cpp
+    src/agent/ai_model_llm_client.cpp
+    src/agent/ai_model_memory_backend.cpp
 )
+
+# Concrete AIModel backends are appended only when explicitly enabled, so the
+# default build never requires llama.cpp or cpp-httplib.
+if(AGENT_ENABLE_VLLM)
+    list(APPEND AGENT_CORE_SOURCES third_party/ai_model/aimodel_vllm.cpp)
+endif()
+if(AGENT_ENABLE_LLAMA)
+    list(APPEND AGENT_CORE_SOURCES third_party/ai_model/aimodel_llama.cpp)
+endif()
 
 add_library(agent_core STATIC ${AGENT_CORE_SOURCES})
 set_target_properties(agent_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -92,6 +116,34 @@ target_compile_options(agent_core PRIVATE
 if(DEFINED SANITIZER_FLAGS)
     target_compile_options(agent_core PRIVATE ${SANITIZER_FLAGS})
     target_link_options(agent_core PUBLIC ${SANITIZER_FLAGS})
+endif()
+
+# ── Optional backend dependencies ─────────────────────────────────────────────
+# Each enabled backend defines a preprocessor macro (AGENT_HAS_VLLM /
+# AGENT_HAS_LLAMA) so the C API can conditionally construct it.  The abstract
+# AIModel and adapters never reference these macros, so the default build is
+# fully self-contained.
+if(AGENT_ENABLE_VLLM)
+    # cpp-httplib is header-only; honour HTTPLIB_INCLUDE_DIR if provided.
+    find_path(HTTPLIB_INCLUDE_DIR httplib.h)
+    if(HTTPLIB_INCLUDE_DIR)
+        target_include_directories(agent_core PUBLIC ${HTTPLIB_INCLUDE_DIR})
+    else()
+        message(WARNING "AGENT_ENABLE_VLLM=ON but httplib.h was not found; "
+                        "set -DHTTPLIB_INCLUDE_DIR=/path/to/httplib")
+    endif()
+    target_compile_definitions(agent_core PUBLIC AGENT_HAS_VLLM)
+endif()
+
+if(AGENT_ENABLE_LLAMA)
+    # Expect the caller to point CMake at llama.cpp via -DLLAMA_DIR=...
+    if(DEFINED LLAMA_DIR)
+        target_include_directories(agent_core PUBLIC
+            ${LLAMA_DIR}/include ${LLAMA_DIR}/ggml/include)
+        target_link_directories(agent_core PUBLIC ${LLAMA_DIR}/build/bin)
+    endif()
+    target_link_libraries(agent_core PUBLIC llama ggml ggml-base)
+    target_compile_definitions(agent_core PUBLIC AGENT_HAS_LLAMA)
 endif()
 
 # ── agent_engine shared library (C ABI) ───────────────────────────────────────
@@ -152,6 +204,7 @@ add_agent_test(test_pattern_a_delegation)
 add_agent_test(test_pattern_b_messaging)
 add_agent_test(test_pattern_c_blackboard)
 add_agent_test(test_fan_out_in)
+add_agent_test(test_ai_model_adapter)
 
 # The C ABI test links against the shared library (not agent_core directly)
 # so it exercises the real ABI boundary.
