@@ -1,48 +1,83 @@
 # Component Reference
 
-Detailed documentation for every component in the agent engine.
+One file per component in the agent engine. All docs are generated from source.
 
 ## Core Orchestration
 
-| Component | File | Description |
+| Component | Source | Doc |
 |---|---|---|
-| [AgentManager](agent_manager.md) | `include/agent/agent_manager.hpp` | Central orchestrator; owns all shared infrastructure |
-| [Agent & AgentContext](agent.md) | `include/agent/agent.hpp` | Per-agent event loop and runtime state |
-| [BatchExecutor](batch_executor.md) | `include/agent/batch_executor.hpp` | DAG-based parallel work scheduler |
-| [ThreadPool](thread_pool.md) | `include/agent/thread_pool.hpp` | Fixed-size worker thread pool (L3 concurrency) |
+| AgentManager | `include/agent/agent_manager.hpp` | [agent_manager.md](agent_manager.md) |
+| Agent | `include/agent/agent.hpp` | [agent.md](agent.md) |
+| AgentContext | `include/agent/agent_context.hpp` | [agent_context.md](agent_context.md) |
+| BatchExecutor | `include/agent/batch_executor.hpp` | [batch_executor.md](batch_executor.md) |
+| ThreadPool | `include/agent/thread_pool.hpp` | [thread_pool.md](thread_pool.md) |
 
 ## Work Items
 
-| Component | File | Description |
+| Component | Source | Doc |
 |---|---|---|
-| [WorkItem, WorkResult & WorkFactory](work_item.md) | `include/agent/work_item.hpp` | Abstract base, result struct, and self-registering factory |
-| [Stages](stages.md) | `src/agent/stages/` | LLM-powered reasoning steps (Reason, Injection, Transform, Validate) |
-| [Actions](actions.md) | `src/agent/actions/` | Deterministic operations (13 built-in types) |
+| WorkItem & WorkResult | `include/agent/work_item.hpp` | [work_item.md](work_item.md) |
+| WorkFactory | `include/agent/work_factory.hpp` | [work_factory.md](work_factory.md) |
+| Stage (base) | `include/agent/stage.hpp` | [stage.md](stage.md) |
+| Action (base) | `include/agent/action.hpp` | [action.md](action.md) |
+
+### Stages (`src/agent/stages/`)
+
+| Component | Doc |
+|---|---|
+| ReasonStage | [reason_stage.md](reason_stage.md) |
+| InjectionStage | [injection_stage.md](injection_stage.md) |
+| TransformStage | [transform_stage.md](transform_stage.md) |
+| ValidateStage | [validate_stage.md](validate_stage.md) |
+| Overview | [stages.md](stages.md) |
+
+### Actions (`src/agent/actions/`)
+
+| Component | Doc |
+|---|---|
+| BashAction | [bash_action.md](bash_action.md) |
+| ReadAction | [read_action.md](read_action.md) |
+| WriteAction | [write_action.md](write_action.md) |
+| EditAction | [edit_action.md](edit_action.md) |
+| GlobAction | [glob_action.md](glob_action.md) |
+| GrepAction | [grep_action.md](grep_action.md) |
+| WebFetchAction | [web_fetch_action.md](web_fetch_action.md) |
+| WebSearchAction | [web_search_action.md](web_search_action.md) |
+| TaskAction | [task_action.md](task_action.md) |
+| TodoWriteAction | [todo_write_action.md](todo_write_action.md) |
+| Messaging actions | [messaging_actions.md](messaging_actions.md) |
+| Blackboard actions | [blackboard_actions.md](blackboard_actions.md) |
+| Memory actions | [memory_actions.md](memory_actions.md) |
+| MCPToolAction | [mcp_tool_action.md](mcp_tool_action.md) |
+| Overview | [actions.md](actions.md) |
 
 ## Infrastructure
 
-| Component | File | Description |
+| Component | Source | Doc |
 |---|---|---|
-| [PromptLoader](prompt_loader.md) | `include/agent/prompt_loader.hpp` | Template loading, substitution, and hot reload |
-| [EventBus](event_bus.md) | `include/agent/event_bus.hpp` | Synchronous publish/subscribe event bus |
-| [Blackboard](blackboard.md) | `include/agent/blackboard.hpp` | Thread-safe shared key-value store (Pattern C) |
-| [MessageInbox](message_inbox.md) | `include/agent/message_inbox.hpp` | Per-agent MPSC message queue (Pattern B) |
-| [QuotaManager](quota_manager.md) | `include/agent/quota.hpp` | Per-user resource limits and RAII guards |
-| [LLMClient & MemoryBackend](llm_client.md) | `include/agent/llm_client.hpp` | Abstract LLM and memory backend interfaces |
+| PromptLoader | `include/agent/prompt_loader.hpp` | [prompt_loader.md](prompt_loader.md) |
+| EventBus | `include/agent/event_bus.hpp` | [event_bus.md](event_bus.md) |
+| Blackboard | `include/agent/blackboard.hpp` | [blackboard.md](blackboard.md) |
+| MessageInbox | `include/agent/message_inbox.hpp` | [message_inbox.md](message_inbox.md) |
+| QuotaManager | `include/agent/quota.hpp` | [quota_manager.md](quota_manager.md) |
+| LLMClient | `include/agent/llm_client.hpp` | [llm_client.md](llm_client.md) |
+| MemoryBackend | `include/agent/memory_backend.hpp` | [memory_backend.md](memory_backend.md) |
 
 ## Model Integration
 
-| Component | File | Description |
+| Component | Source | Doc |
 |---|---|---|
-| [AIModel Hierarchy](ai_model.md) | `third_party/ai_model/` | Abstract model (generate + embed) with vLLM / llama.cpp backends |
-| [AIModelLLMClient](ai_model_llm_client.md) | `include/agent/ai_model_llm_client.hpp` | Adapter: `AIModel` → `LLMClient` |
-| [AIModelMemoryBackend](ai_model_memory_backend.md) | `include/agent/ai_model_memory_backend.hpp` | Adapter: `AIModel` → `MemoryBackend` |
+| AIModel (abstract base) | `third_party/ai_model/aimodel.hpp` | [ai_model.md](ai_model.md) |
+| AIModelVLLM | `third_party/ai_model/aimodel_vllm.hpp` | [ai_model_vllm.md](ai_model_vllm.md) |
+| AIModelLlama | `third_party/ai_model/aimodel_llama.hpp` | [ai_model_llama.md](ai_model_llama.md) |
+| AIModelLLMClient | `include/agent/ai_model_llm_client.hpp` | [ai_model_llm_client.md](ai_model_llm_client.md) |
+| AIModelMemoryBackend | `include/agent/ai_model_memory_backend.hpp` | [ai_model_memory_backend.md](ai_model_memory_backend.md) |
 
 ## Public Interface
 
-| Component | File | Description |
+| Component | Source | Doc |
 |---|---|---|
-| [C ABI](c_api.md) | `include/agent_engine/c_api.h` | Stable C interface for `libagent_engine.so` |
+| C ABI | `include/agent_engine/c_api.h` | [c_api.md](c_api.md) |
 
 ---
 
@@ -50,12 +85,10 @@ Detailed documentation for every component in the agent engine.
 
 ```
 L1: Per-user QuotaManager     — agent / LLM / tool limits per user
-L2: Dedicated std::thread     — one per Agent loop (AgentManager::AgentEntry::runner)
+L2: Dedicated std::thread     — one per Agent loop
 L3: ThreadPool                — shared pool used only by BatchExecutor
 L4: fan-out futures           — AgentManager::fanOut / am_fan_out
 ```
-
-See [concurrency.md](../concurrency.md) for the full explanation.
 
 ## Multi-Agent Patterns
 

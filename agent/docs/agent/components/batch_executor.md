@@ -2,132 +2,69 @@
 
 `include/agent/batch_executor.hpp` · `src/agent/batch_executor.cpp`
 
----
-
 ## Overview
 
-`BatchExecutor` executes a collection of `WorkItem`s with **dependency-aware parallelism** (Level 3 concurrency). Given a batch, it builds a DAG from `$ref` dependency declarations, validates acyclicity, and runs all items whose dependencies are already satisfied concurrently on the shared `ThreadPool`. As items complete, newly unblocked items are dispatched. Results are merged into `AgentContext::history` in the batch's **declared order** after all items finish.
+`BatchExecutor` executes a batch of `WorkItem` objects with dependency-aware parallelism. It builds a DAG from `$ref` dependencies, verifies acyclicity using Kahn's algorithm, then runs items concurrently on the shared `ThreadPool` as their dependencies are satisfied.
 
-One `BatchExecutor` instance lives inside `Agent`. It is created fresh per `Agent` and is not shared across threads.
+It is created fresh per batch and is not shared across threads.
 
----
-
-## Algorithm
-
-### 1. DAG Construction (`buildDAG`)
-
-For each `WorkItem` in the batch:
-
-1. Call `WorkItem::dependencies()` to get the set of referenced ids (all `$id` or `$id.field` patterns in `inputs`).
-2. For each dependency:
-   - If the id is already in `AgentContext::history` → satisfied immediately, no edge needed.
-   - If the id belongs to another item in the *same batch* → add an edge; this item will wait.
-   - If the id is unknown → treat as unsatisfied; will cause a skipped result at runtime.
-3. Apply **Kahn's algorithm** to detect cycles. If a cycle is found, `buildDAG` returns `false` and populates `error_out`. `execute` throws `std::runtime_error`.
-
-### 2. Reference Resolution
-
-Before dispatching any item to the pool, `BatchExecutor` calls `ctx.resolveReferences(item->inputs)` on the **agent thread**. This satisfies the happens-before requirement: by the time a pool worker reads the resolved value, the dependency result is fully committed to history (or to the local results array, which uses a mutex for pool-side writes).
-
-### 3. Execution
-
-```
-ready = {items with no pending in-batch deps}
-while items_remaining:
-    for each item in ready:
-        submit to ThreadPool  (or run inline — see below)
-    wait for any completion
-    record result
-    unlock dependents whose last dep just finished
-    ready = newly unblocked items
-```
-
-### 4. Inline Fast-Path (Starvation Avoidance)
-
-When a round has exactly **one ready item**, `BatchExecutor` runs it **inline on the calling (agent) thread** instead of submitting to the pool.
-
-This prevents a subtle deadlock: if the agent loop itself occupies a pool thread, and it submits work that needs another pool thread, the system can stall with all threads occupied by agent loops and no thread free to execute batch items.
-
-With the inline fast-path, single-item rounds never touch the pool — only true multi-item parallel rounds do. Combined with `AgentManager`'s policy of running each agent loop on a dedicated `std::thread` (not a pool thread), pool starvation is completely eliminated.
-
-### 5. Failure Semantics
-
-When an item fails:
-- Its `WorkResult.success = false` and `WorkResult.error` is set.
-- All items that **transitively depend** on the failed item are marked `skipped` with `skipped_reason = "dependency <id> failed"`.
-- Items with no path to the failed item continue running normally.
-
-### 6. Cancellation
-
-Before starting each item, `BatchExecutor` checks `ctx.cancellation_flag`. Once set, no new items are started; in-flight items are allowed to complete naturally.
-
-### 7. Deterministic Merge
-
-After the batch completes (all futures collected, inline calls done), results are folded into `ctx.recordResult()` in the batch's **declared order**, not in completion order. This makes history deterministic regardless of execution timing.
-
----
-
-## API
+## Construction
 
 ```cpp
 explicit BatchExecutor(ThreadPool& pool);
+```
 
+## `execute`
+
+```cpp
 std::vector<WorkResult> execute(
     std::vector<std::unique_ptr<WorkItem>> batch,
     AgentContext& ctx);
 ```
 
-`execute` takes ownership of the batch items, runs them, records results into `ctx`, and returns the results vector (in declared order). Throws `std::runtime_error` if a dependency cycle is detected.
+Executes the batch and records results into `ctx`. Returns results in the batch's **declared order** regardless of execution order. Throws `std::runtime_error` if the dependency graph contains a cycle.
 
----
+## Algorithm (L3 Concurrency)
 
-## Internal `Node` Structure
+1. **DAG construction** — For each item, call `item.dependencies()` to get its `$ref` ids. Refs that already exist in `ctx.history` are immediately satisfied. Refs that point to other items in the same batch create an in-batch dependency edge.
+
+2. **Cycle detection** — Kahn's algorithm: compute in-degree for each node, start with zero-in-degree nodes, peel the graph. If any nodes remain after the algorithm, a cycle exists and the batch is rejected.
+
+3. **Execution** — Items with no pending dependencies are "ready". All ready items are submitted to the thread pool concurrently. As each completes:
+   - Its result is stored.
+   - Its dependents are inspected; those whose last pending dependency just finished become newly ready.
+   - Newly ready items are submitted immediately.
+
+4. **Failure semantics** — A failed item's transitive dependents are not started. They are recorded as skipped with `skipped_reason` set. Independent items continue unaffected.
+
+5. **Cancellation** — `ctx.cancellation_flag` is checked before starting each item. Once set, no new items are started; already-running items complete normally.
+
+6. **Deterministic merge** — After all items finish (or are skipped/cancelled), results are folded into `ctx.history` in the batch's declared order at a single synchronisation point on the agent thread. Parallel workers never mutate history directly.
+
+## Fast Path
+
+When the batch contains exactly one ready item (the common case for sequential plans), the item is executed inline without submitting to the pool. This avoids thread-pool overhead for single-item batches.
+
+## Internal Node Structure
 
 ```cpp
 struct Node {
     WorkItem*              item{nullptr};
-    std::set<std::string>  pending_deps;   // in-batch deps not yet done
-    std::vector<size_t>    dependents;     // indices of nodes waiting on this
+    std::set<std::string>  pending_deps;   // in-batch deps not yet finished
+    std::vector<size_t>    dependents;      // indices of nodes depending on this
     bool                   done{false};
     bool                   skipped{false};
     std::string            skip_reason;
 };
 ```
 
-`pending_deps` is decremented as dependencies complete. When it reaches zero, the node is added to the ready set.
+## Stage vs Action Ordering
 
----
-
-## Thread-Safety Notes
-
-- `BatchExecutor` itself is single-threaded (one instance per `Agent`, called from the agent thread).
-- Pool workers write results into a shared `results[]` array protected by a local mutex inside `execute`.
-- `ctx.recordResult()` is called only after all futures are collected — never from pool threads.
-
----
-
-## Example
-
-Given this batch:
-
-```json
-[
-  {"id": "fetch",   "name": "WebFetchAction", "inputs": {"url": "https://example.com"}},
-  {"id": "parse",   "name": "BashAction",     "inputs": {"command": "..."}},
-  {"id": "report",  "name": "TransformStage", "inputs": {"text": "$fetch", "instruction": "summarise"}}
-]
-```
-
-- `fetch` and `parse` have no in-batch deps → both dispatched concurrently in round 1.
-- `report` depends on `$fetch` → waits until `fetch` completes.
-- Once `fetch` finishes, `report` is unlocked and dispatched (inline if `parse` is still in-flight, or to the pool if `parse` is already done).
-- Results are recorded in declared order: `fetch`, `parse`, `report`.
-
----
+Stages and Actions both derive from `WorkItem` and live in the same batch vector. Within a batch, stages execute **before** actions because the `Agent` loop drains the queue in declaration order and stages push their planned actions — the stage runs first, pushes actions, the loop drains those actions into the same batch. The DAG then handles ordering among the actions.
 
 ## Related Components
 
-- [`Agent`](agent.md) — owns `BatchExecutor`; calls `execute` each loop iteration
-- [`AgentContext`](agent.md) — supplies history for dep resolution and receives results
-- [`ThreadPool`](thread_pool.md) — executes parallel items
-- [`WorkItem`](work_item.md) — declares dependencies via `$ref` in inputs
+- [`Agent`](agent.md) — calls `execute` on each batch
+- [`AgentContext`](agent_context.md) — provides history for `$ref` resolution and records results
+- [`ThreadPool`](thread_pool.md) — the pool used to run items in parallel
+- [`WorkItem`](work_item.md) — `dependencies()` provides the DAG edges

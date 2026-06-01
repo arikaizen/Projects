@@ -2,120 +2,76 @@
 
 `include/agent/event_bus.hpp` · `src/agent/event_bus.cpp`
 
----
-
 ## Overview
 
-`EventBus` is a simple synchronous publish/subscribe bus. It decouples event producers (agent loops, `BatchExecutor`, `Blackboard`) from consumers (GUI panels, logging, monitoring). Callbacks fire on the engine thread that called `emit` — GUI consumers **must** marshal to their UI thread before touching UI objects.
+`EventBus` is a simple synchronous publish-subscribe bus. Callbacks fire on the calling (engine) thread synchronously with the `emit` call. The mutex is **not** held during dispatch, so subscribers may re-enter the `AgentManager` (e.g. to call `cancelAgent`).
 
-One `EventBus` instance lives inside `AgentManager` and is shared by all agents.
-
----
-
-## Subscription
+## Interface
 
 ```cpp
+using EventCallback = std::function<void(const nlohmann::json& event)>;
+
 void subscribe(EventCallback cb, void* key = nullptr);
 void unsubscribe(void* key);
-```
-
-`key` is any stable pointer that uniquely identifies the subscriber (e.g. `this`, a callback address, or a heap-allocated sentinel). Used for unsubscription.
-
-`subscribe` acquires the mutex and appends to the subscriber list.  
-`unsubscribe` acquires the mutex and removes the matching entry.
-
-```cpp
-// EventCallback type:
-using EventCallback = std::function<void(const nlohmann::json& event)>;
-```
-
----
-
-## Emission
-
-```cpp
 void emit(nlohmann::json event);
+static nlohmann::json makeEvent(const std::string& type, nlohmann::json extra = {});
 ```
 
-Fires all registered callbacks synchronously. Importantly, the mutex is **not held during dispatch** — subscribers may safely call back into `AgentManager` (e.g. to inspect agent status) without deadlocking.
+### `subscribe`
 
-The dispatch snapshot is taken under the lock, then the lock is released before any callback is invoked.
+Registers a callback. `key` is an opaque pointer used for unsubscription (typically `this` or the address of the callback). Null keys are allowed but can only be unsubscribed by removing all null-key subscribers.
 
----
+### `unsubscribe`
 
-## Event Construction
+Removes the subscriber whose `key` matches. Safe to call from within a callback (the dispatch loop works from a snapshot).
+
+### `emit`
+
+1. Takes a snapshot of current subscribers under the mutex.
+2. Releases the mutex.
+3. Iterates the snapshot and calls each callback.
+
+This snapshot-then-dispatch pattern means new subscriptions added during dispatch take effect on the next `emit`, and unsubscriptions during dispatch are safe.
+
+### `makeEvent`
 
 ```cpp
 static nlohmann::json makeEvent(const std::string& type, nlohmann::json extra = {});
 ```
 
-Builds a standard event envelope:
-
-```json
-{
-  "type":      "work_item_finished",
-  "timestamp": "2026-06-01T12:00:00.123Z",
-  ...extra fields...
-}
-```
-
-Callers merge extra fields (e.g. `agent_id`, `duration_ms`) into the envelope.
-
----
+Builds a typed event envelope with at minimum `{"type": "...", "timestamp": "<ISO8601>"}`. Additional fields from `extra` are merged in. All engine components use this when emitting events.
 
 ## Event Types
 
-| Type | Emitted by | Extra fields |
-|---|---|---|
-| `agent_spawned` | `AgentManager::spawnAgent` | `agent_id`, `user_id`, `name` |
-| `agent_started` | `AgentManager::runAgent` | `agent_id`, `task` |
-| `agent_finished` | `AgentManager::onAgentFinished` | `agent_id`, `result` |
-| `agent_failed` | `AgentManager::onAgentFinished` | `agent_id`, `error` |
-| `agent_cancelled` | `AgentManager::cancelAgent` | `agent_id` |
-| `agent_destroyed` | `AgentManager::destroyAgent` | `agent_id` |
-| `work_item_started` | `BatchExecutor` | `agent_id`, `item_id`, `item_name`, `ran_in_parallel` |
-| `work_item_finished` | `BatchExecutor` | `agent_id`, `item_id`, `success`, `duration_ms`, `ran_in_parallel` |
-| `batch_started` | `BatchExecutor` | `agent_id`, `batch_size` |
-| `batch_finished` | `BatchExecutor` | `agent_id`, `batch_size`, `duration_ms` |
-| `work_injected` | `AgentManager::injectWork` | `agent_id`, `item_name` |
-| `message_sent` | `AgentManager::sendMessage` | `from_id`, `to_id` |
-| `message_received` | `MessageInbox::push` | `to_id` |
-| `blackboard_updated` | `Blackboard::write` | `key` |
-| `mcp_connected` | `AgentManager::connectMCP` | `server_name`, `url` |
-| `mcp_disconnected` | `AgentManager::disconnectMCP` | `server_name` |
-| `mcp_notification` | `MCPToolAction` | `server_name`, `notification` |
-| `prompts_reloaded` | `AgentManager::reloadPrompts` | `prompts_dir` |
-| `quota_exceeded` | `AgentManager::spawnAgent` | `user_id`, `resource` |
-
----
+| Event type | Emitted by |
+|---|---|
+| `stage_start` | All stages |
+| `stage_done` | All stages (on success) |
+| `stage_error` | All stages (on failure) |
+| `agent_final_answer` | Stages when `final_answer` is set |
+| `validation_result` | `ValidateStage` |
+| `corrective_injection` | `ValidateStage` |
+| `blackboard_updated` | `Blackboard` |
+| `agent_spawned`, `agent_started`, `agent_finished`, `agent_failed`, `agent_cancelled`, `agent_destroyed` | `AgentManager` |
+| `work_item_started`, `work_item_finished` | `BatchExecutor` |
+| `batch_started`, `batch_finished` | `BatchExecutor` |
+| `work_injected` | `AgentManager::injectWork` |
+| `message_sent`, `message_received` | `AgentManager` |
+| `mcp_connected`, `mcp_disconnected` | `AgentManager` |
+| `prompts_reloaded` | `AgentManager` |
+| `quota_exceeded` | `QuotaManager` |
 
 ## Thread-Safety
 
-| Operation | Guard |
-|---|---|
-| `subscribe` / `unsubscribe` | `m_mutex` (exclusive) |
-| `emit` — snapshot | `m_mutex` (exclusive, briefly) |
-| `emit` — dispatch | No lock; re-entrant safe |
+`m_subs` is protected by `m_mutex`. The mutex is held only for the snapshot copy, not during dispatch. Dispatch itself is lock-free.
 
-Callbacks run with no lock held, so they may safely call any `AgentManager` method.
+## Warning
 
----
-
-## C ABI Exposure
-
-```c
-typedef void (*am_event_cb)(const char* event_json, void* user_data);
-am_status_t am_subscribe_events(AgentManager* mgr, am_event_cb cb, void* user_data);
-am_status_t am_unsubscribe_events(AgentManager* mgr, am_event_cb cb);
-```
-
-The C ABI wraps each callback in a C++ lambda that serialises the JSON event to a `const char*` string. `user_data` is threaded through to the C callback. See [C ABI](c_api.md).
-
----
+Callbacks fire on engine threads. GUI consumers **must marshal to their UI thread** before touching any UI object.
 
 ## Related Components
 
-- [`AgentManager`](agent_manager.md) — owns the bus; exposes `subscribeEvents` / `unsubscribeEvents`
-- [`Blackboard`](blackboard.md) — emits `blackboard_updated` on write
-- [`BatchExecutor`](batch_executor.md) — emits `work_item_*` and `batch_*` events
-- [`AgentContext`](agent.md) — exposes `eventBus()` accessor for use from actions
+- [`AgentManager`](agent_manager.md) — subscribes via `subscribeEvents`; emits lifecycle events
+- [`Blackboard`](blackboard.md) — emits `blackboard_updated`
+- [`Stages`](stages.md) — emit stage lifecycle events
+- [`C ABI`](c_api.md) — `am_subscribe_events`, `am_unsubscribe_events`
