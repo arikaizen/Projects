@@ -1,37 +1,33 @@
-# AIModel Hierarchy
+# AIModel (abstract base)
 
-`third_party/ai_model/` — copied from the project's `AI/convo/` module
+`third_party/ai_model/aimodel.hpp` · `third_party/ai_model/aimodel.cpp`
+
+> Part of the model integration set. See also:
+> [AIModelVLLM](ai_model_vllm.md) · [AIModelLlama](ai_model_llama.md) ·
+> [AIModelLLMClient](ai_model_llm_client.md) · [AIModelMemoryBackend](ai_model_memory_backend.md)
 
 ---
 
 ## Overview
 
-`AIModel` is an abstract base class for a language model that can **generate text** and **produce embeddings**. It was lifted from the project's `AI/convo/` library into the agent engine's `third_party/ai_model/` so the engine can run on real models through the [`AIModelLLMClient`](ai_model_llm_client.md) and [`AIModelMemoryBackend`](ai_model_memory_backend.md) adapters.
+`AIModel` is the abstract base class for a language model that can **generate text** and **produce embeddings**. It was copied from the project's `AI/convo/` library into `agent/third_party/ai_model/` so the agent engine can run on real models through two adapters. It lives in the **global namespace** (it is third-party code preserved verbatim, not `namespace agent`).
 
-The class lives in the **global namespace** (not `namespace agent`) because it is third-party code preserved verbatim.
+The design splits each capability into a **public validated method** (in the base) and a **protected raw virtual** (implemented by each backend). The base never talks to a model directly — it validates inputs, manages the embedding cache, computes cosine similarity, and delegates the actual work to `RawGenerate` / `RawEmbed`.
 
 ```
-AIModel  (abstract — generation + embeddings + validation)
-├── AIModelLlama   (llama.cpp / local GGUF; opt-in)
-└── AIModelVLLM    (HTTP / OpenAI-compatible API; opt-in)
+                    ┌─────────────────────────────────────────┐
+   caller ───►      │  AIModel  (validation + cache + ranking) │
+                    │     Generate / Embed / Similarity/Search │
+                    └───────────────┬──────────────┬───────────┘
+                                    │ RawGenerate  │ RawEmbed   (pure virtual)
+                    ┌───────────────▼──────────────▼───────────┐
+                    │  AIModelVLLM        │  AIModelLlama       │
+                    └─────────────────────┴─────────────────────┘
 ```
 
 ---
 
-## Files
-
-| File | Contents | Built by default? |
-|---|---|---|
-| `types.hpp` | `Role`, `Message`, `RoleToStr`, `RoleFromStr` | header only |
-| `aimodel.hpp` / `aimodel.cpp` | abstract `AIModel` base | ✅ always |
-| `aimodel_vllm.hpp` / `aimodel_vllm.cpp` | `AIModelVLLM` HTTP backend | ⛔ only with `-DAGENT_ENABLE_VLLM=ON` |
-| `aimodel_llama.hpp` / `aimodel_llama.cpp` | `AIModelLlama` local backend | ⛔ only with `-DAGENT_ENABLE_LLAMA=ON` |
-
-The abstract base (`aimodel.cpp`) compiles with only the C++ standard library, so it — and the adapters built on it — are always part of `agent_core`. The concrete backends pull in heavy dependencies (cpp-httplib, llama.cpp, CUDA) and are therefore behind CMake options that default **OFF**.
-
----
-
-## Abstract Interface
+## Class Definition
 
 ```cpp
 class AIModel {
@@ -49,10 +45,12 @@ public:
 
     void ClearEmbedCache() noexcept;
 
+    // Backend identity:
     virtual std::string GetModelName()        const = 0;
     virtual int         GetMaxContextLength() const = 0;
 
 protected:
+    AIModel() = default;
     // Backends implement these two raw operations:
     virtual std::string        RawGenerate(const std::string& prompt, float t, int max) = 0;
     virtual std::vector<float> RawEmbed(const std::string& text) = 0;
@@ -61,121 +59,139 @@ protected:
 };
 ```
 
-### Validation (in the public methods)
-
-The base class validates inputs before delegating to the `Raw*` virtuals:
-
-| Method | Throws `std::invalid_argument` / `std::runtime_error` when |
-|---|---|
-| `Generate` | prompt blank; temperature ∉ [0, 2]; max_tokens < 1; result blank |
-| `Embed` | text blank; embedding has zero magnitude |
-| `Similarity` | either text blank |
-| `Search` | query blank; `labels.size() != texts.size()`; `top_n < 1` |
-
-These exceptions are what the adapters catch and convert into engine-friendly results (`Response{success=false}`).
-
-### Built-in semantic search
-
-`Search` embeds the query and every candidate text (using the cache), ranks by cosine similarity, and returns the top-N `(score, label)` pairs. This is exactly what [`AIModelMemoryBackend`](ai_model_memory_backend.md) delegates to.
-
-### Embedding cache
-
-`Embed(text, use_cache=true)` memoises results in `m_embedding_cache`, so repeated embeds of the same text (common during `Search`) are free. `ClearEmbedCache()` empties it.
+The class is **non-copyable and non-movable** (the deleted special members reflect that a model owns heavyweight, non-trivially-copyable resources such as a loaded GGUF model or an HTTP client).
 
 ---
 
-## AIModelVLLM (opt-in)
+## Public Methods (defined in `aimodel.cpp`)
 
-HTTP backend for any vLLM / OpenAI-compatible server.
+### `Generate`
 
 ```cpp
-AIModelVLLM(const std::string& base_url,
-            const std::string& model_name,
-            const std::string& api_key = "",
-            const std::string& embed_model_name = "",
-            int timeout_seconds = 120,
-            int max_context = 8192);
+std::string Generate(const std::string& prompt, float temperature = 0.7f, int max_tokens = 512);
 ```
 
-| Endpoint | Method |
-|---|---|
-| `POST /v1/completions` | `RawGenerate` |
-| `POST /v1/embeddings` | `RawEmbed` |
-| `POST /v1/chat/completions` | `ChatCompletion` (direct access) |
+Validates, then calls the backend's `RawGenerate`.
 
-Requires `httplib.h` (header-only cpp-httplib) + nlohmann/json. Enable with:
+| Check | Exception |
+|---|---|
+| `prompt` blank (only whitespace) | `std::invalid_argument` |
+| `temperature` ∉ [0.0, 2.0] | `std::invalid_argument` |
+| `max_tokens` < 1 | `std::invalid_argument` |
+| result blank | `std::runtime_error` |
+
+These are exactly the exceptions [`AIModelLLMClient`](ai_model_llm_client.md) catches and turns into `Response{success=false}`.
+
+### `Embed`
+
+```cpp
+std::vector<float> Embed(const std::string& text, bool use_cache = true);
+```
+
+Returns the embedding vector for `text`. With `use_cache=true` (default), the result is memoised in `m_embedding_cache` keyed by the exact text, so repeated embeds (very common during `Search`) are free.
+
+| Check | Exception |
+|---|---|
+| `text` blank | `std::invalid_argument` |
+| embedding has zero magnitude | `std::runtime_error` ("does this model support embeddings?") |
+
+### `Similarity`
+
+```cpp
+float Similarity(const std::string& a, const std::string& b);
+```
+
+Cosine similarity of `Embed(a)` and `Embed(b)`. Returns a value in `[-1, 1]` (typically `[0, 1]` for text embeddings). Throws if either text is blank.
+
+### `Search`
+
+```cpp
+std::vector<std::pair<float, std::string>> Search(
+    const std::string& query,
+    const std::vector<std::string>& labels,
+    const std::vector<std::string>& texts,
+    int top_n = 3);
+```
+
+Embeds `query` and every `texts[i]`, computes cosine similarity to each, sorts descending, and returns the top-`N` `(score, label)` pairs. This is the engine for [`AIModelMemoryBackend::search`](ai_model_memory_backend.md).
+
+| Check | Exception |
+|---|---|
+| `query` blank | `std::invalid_argument` |
+| `labels.size() != texts.size()` | `std::invalid_argument` |
+| `top_n` < 1 | `std::invalid_argument` |
+
+### `ClearEmbedCache`
+
+```cpp
+void ClearEmbedCache() noexcept;
+```
+
+Empties `m_embedding_cache`. Call after a large `Search` over transient documents if you do not want them retained.
+
+---
+
+## Internal Math (file-local helpers in `aimodel.cpp`)
+
+| Helper | Purpose |
+|---|---|
+| `IsBlank(s)` | true if `s` is empty or all whitespace |
+| `VecNorm(v)` | Euclidean norm `√(Σ vᵢ²)` |
+| `CosineSim(a, b)` | `dot(a,b) / (‖a‖·‖b‖)`; returns 0 if either norm is 0 |
+
+> **Historical note:** the original `AI/convo` code had a bug — `if (VecNorm(result) == 0.0f){}` with empty braces made an embedding-error throw unconditional. The copied version carries the fix (`if (...) { throw ...; }`), as documented in `AI/REFACTOR.md`.
+
+---
+
+## Pure-Virtual Contract (implemented by backends)
+
+```cpp
+virtual std::string        RawGenerate(const std::string& prompt, float t, int max) = 0;
+virtual std::vector<float> RawEmbed(const std::string& text) = 0;
+virtual std::string        GetModelName()        const = 0;
+virtual int                GetMaxContextLength() const = 0;
+```
+
+A backend implements these four. `RawGenerate`/`RawEmbed` receive **already-validated** inputs (non-blank prompt, sane temperature/tokens), so they can focus purely on talking to the model.
+
+---
+
+## Build
+
+`aimodel.cpp` depends only on the C++ standard library, so it is **always** compiled into `agent_core`. The concrete backends are opt-in:
 
 ```bash
-cmake -S . -B build -DAGENT_ENABLE_VLLM=ON -DHTTPLIB_INCLUDE_DIR=/path/to/httplib
+cmake -S . -B build -DAGENT_ENABLE_VLLM=ON   # AIModelVLLM
+cmake -S . -B build -DAGENT_ENABLE_LLAMA=ON  # AIModelLlama
 ```
-
-This also defines the `AGENT_HAS_VLLM` macro, which lets `am_create` construct it from config.
 
 ---
 
-## AIModelLlama (opt-in)
-
-Local GGUF backend via llama.cpp.
+## Writing a Custom Backend
 
 ```cpp
-AIModelLlama(const std::string& model_path,
-             int context_size = 4096, int thread_count = 4);
-```
-
-Requires `llama.h` and the llama.cpp libraries (optionally CUDA). Enable with:
-
-```bash
-cmake -S . -B build -DAGENT_ENABLE_LLAMA=ON -DLLAMA_DIR=/path/to/llama.cpp
-```
-
-This defines the `AGENT_HAS_LLAMA` macro.
-
----
-
-## How It Plugs Into the Engine
-
-```
-AIModel (this hierarchy)
-   │
-   ├── AIModelLLMClient  ─────►  agent::LLMClient  ──►  used by all Stages
-   │     (Generate)
-   │
-   └── AIModelMemoryBackend ──►  agent::MemoryBackend ► used by Memory*Action
-         (Embed / Search)
-```
-
-A single `AIModel` instance can back **both** adapters at once — one model powers reasoning *and* memory.
-
----
-
-## Why `AIConvo` Was Not Copied
-
-The `AI/convo/` module also contains `AIConvo` (a stateful conversation layer with its own history). It was deliberately **not** brought over: the agent engine already owns conversation state in `AgentContext::history`, and every `Stage` builds a fully-rendered prompt per call. Using `AIConvo` would duplicate that history. The stateless `AIModel::Generate` layer is the correct integration point. See [`AIModelLLMClient`](ai_model_llm_client.md) for the rationale.
-
----
-
-## Extending to a New Model
-
-Adding a backend is purely additive — nothing in the agent engine changes:
-
-```cpp
-class AIModelOllama : public AIModel {
-    std::string GetModelName()        const override { return "llama3"; }
-    int         GetMaxContextLength() const override { return 8192; }
+class AIModelEcho : public AIModel {
+public:
+    std::string GetModelName()        const override { return "echo"; }
+    int         GetMaxContextLength() const override { return 4096; }
 protected:
-    std::string        RawGenerate(const std::string&, float, int) override;
-    std::vector<float> RawEmbed(const std::string&) override;
+    std::string RawGenerate(const std::string& p, float, int) override { return "ECHO:" + p; }
+    std::vector<float> RawEmbed(const std::string& t) override {
+        std::vector<float> v(26, 0.f);
+        for (unsigned char c : t) if (std::isalpha(c)) v[std::tolower(c) - 'a'] += 1.f;
+        return v;   // must be non-zero for alpha text (base rejects zero vectors)
+    }
 };
 ```
 
-Then `AIModelLLMClient(model)` and `AIModelMemoryBackend(model)` work unchanged.
+The in-tree test `tests/agent/test_ai_model_adapter.cpp` uses exactly this pattern (a `FakeModel`) to verify both adapters with no external dependencies.
 
 ---
 
 ## Related Components
 
-- [`AIModelLLMClient`](ai_model_llm_client.md) — `AIModel` → `LLMClient` adapter
-- [`AIModelMemoryBackend`](ai_model_memory_backend.md) — `AIModel` → `MemoryBackend` adapter
-- [`LLMClient & MemoryBackend`](llm_client.md) — the engine interfaces being adapted to
-- [`AgentManager`](agent_manager.md) — receives the adapted client/backend at construction
-- [C ABI](c_api.md) — `am_create` can construct `AIModelVLLM` when `AGENT_HAS_VLLM` is defined
+- [AIModelVLLM](ai_model_vllm.md) — HTTP / OpenAI-compatible backend
+- [AIModelLlama](ai_model_llama.md) — local GGUF backend via llama.cpp
+- [AIModelLLMClient](ai_model_llm_client.md) — adapts `Generate` to `agent::LLMClient`
+- [AIModelMemoryBackend](ai_model_memory_backend.md) — adapts `Embed`/`Search` to `agent::MemoryBackend`
+- [LLMClient & MemoryBackend](llm_client.md) — the engine interfaces being adapted to

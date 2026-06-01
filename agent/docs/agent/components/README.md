@@ -34,7 +34,9 @@ Detailed documentation for every component in the agent engine.
 
 | Component | File | Description |
 |---|---|---|
-| [AIModel Hierarchy](ai_model.md) | `third_party/ai_model/` | Abstract model (generate + embed) with vLLM / llama.cpp backends |
+| [AIModel (abstract base)](ai_model.md) | `third_party/ai_model/aimodel.hpp` | Abstract model: generation + embeddings + validation + ranking |
+| [AIModelVLLM](ai_model_vllm.md) | `third_party/ai_model/aimodel_vllm.hpp` | HTTP / OpenAI-compatible backend (opt-in) |
+| [AIModelLlama](ai_model_llama.md) | `third_party/ai_model/aimodel_llama.hpp` | Local GGUF backend via llama.cpp (opt-in) |
 | [AIModelLLMClient](ai_model_llm_client.md) | `include/agent/ai_model_llm_client.hpp` | Adapter: `AIModel` → `LLMClient` |
 | [AIModelMemoryBackend](ai_model_memory_backend.md) | `include/agent/ai_model_memory_backend.hpp` | Adapter: `AIModel` → `MemoryBackend` |
 
