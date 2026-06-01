@@ -24,6 +24,11 @@
 #include "agent/llm_client.hpp"
 #include "agent/memory_backend.hpp"
 #include "agent/quota.hpp"
+#include "agent/ai_model_llm_client.hpp"
+
+#ifdef AGENT_HAS_VLLM
+#include "ai_model/aimodel_vllm.hpp"
+#endif
 
 #include <nlohmann/json.hpp>
 
@@ -116,15 +121,24 @@ extern "C" {
  *   "thread_pool_size"  int
  *   "max_agent_depth"   int
  *   "default_user_id"  string
- *   "llm"              object  (ignored in this build; MockLLMClient is used)
+ *   "llm"              object  — selects the LLM backend:
+ *                        {"backend":"vllm", "base_url":"http://...",
+ *                         "model":"...", "api_key":"...",
+ *                         "embed_model":"...", "max_context":8192}
+ *                        Requires the engine to be built with
+ *                        -DAGENT_ENABLE_VLLM=ON.  When absent or the backend is
+ *                        unavailable, a stub MockLLMClient is used.
  */
 AgentManager* am_create(const char* config_json) {
     try {
         agent::AgentManager::Config cfg;
 
+        // Parsed config (empty object when none supplied); reused below to pick
+        // the LLM backend.
+        nlohmann::json j = nlohmann::json::object();
+
         // Parse config if provided; silently use defaults on null/empty input.
         if (config_json && config_json[0] != '\0') {
-            nlohmann::json j;
             try {
                 j = nlohmann::json::parse(config_json);
             } catch (const std::exception& e) {
@@ -146,17 +160,42 @@ AgentManager* am_create(const char* config_json) {
             }
         }
 
+        // Select the LLM backend from config.  A real backend (e.g. vLLM) is
+        // used when requested AND compiled in; otherwise we fall back to a stub
         // MockLLMClient that returns an empty JSON array plan.
-        // Real deployments replace this with an HTTP-backed LLMClient.
-        auto llm = std::make_shared<agent::MockLLMClient>(
-            [](const agent::LLMClient::Request&) -> agent::LLMClient::Response {
-                return {
-                    /*content=*/ "[]",
-                    /*success=*/ true,
-                    /*error=*/   ""
-                };
-            }
-        );
+        std::shared_ptr<agent::LLMClient> llm;
+
+        const bool want_vllm =
+            j.contains("llm") && j["llm"].is_object() &&
+            j["llm"].value("backend", std::string{}) == "vllm";
+
+        if (want_vllm) {
+#ifdef AGENT_HAS_VLLM
+            const auto& lj = j["llm"];
+            auto model = std::make_unique<AIModelVLLM>(
+                lj.value("base_url", std::string{"http://localhost:8000"}),
+                lj.value("model",       std::string{}),
+                lj.value("api_key",     std::string{}),
+                lj.value("embed_model", std::string{}),
+                lj.value("timeout_seconds", 120),
+                lj.value("max_context", 8192));
+            llm = std::make_shared<agent::AIModelLLMClient>(std::move(model));
+#else
+            setError("am_create: llm.backend=\"vllm\" requested but the engine "
+                     "was built without -DAGENT_ENABLE_VLLM=ON");
+            return nullptr;
+#endif
+        } else {
+            llm = std::make_shared<agent::MockLLMClient>(
+                [](const agent::LLMClient::Request&) -> agent::LLMClient::Response {
+                    return {
+                        /*content=*/ "[]",
+                        /*success=*/ true,
+                        /*error=*/   ""
+                    };
+                }
+            );
+        }
 
         auto memory = std::make_shared<agent::NoOpMemoryBackend>();
 
