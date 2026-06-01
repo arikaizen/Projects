@@ -2,11 +2,9 @@
 
 `include/agent/stage.hpp`
 
----
-
 ## Overview
 
-`Stage` is the abstract marker base for all **LLM-powered reasoning** work items. It derives from [`WorkItem`](work_item.md) and fixes its kind to `Kind::Stage`.
+`Stage` is the marker base class for all LLM-powered reasoning steps. It inherits from `WorkItem` and overrides `kind()` to return `Kind::Stage`.
 
 ```cpp
 class Stage : public WorkItem {
@@ -16,45 +14,32 @@ public:
 };
 ```
 
-That single override is the entire class — `Stage` adds no data. Its purpose is to **classify** an item so the engine can treat reasoning steps differently from deterministic [`Action`](action.md)s.
+No additional logic is added here. All behavior is in the concrete subclasses.
 
----
+## Role in the Engine
 
-## Why the distinction matters
+`BatchExecutor` does not treat stages differently from actions during parallel scheduling. The sequential ordering of stages relative to actions within a batch is a natural consequence of how the `Agent` loop works:
 
-- **Sequencing:** stages are processed so each sees the full prior history before the next reasoning step runs; the engine does not parallelise reasoning the way it parallelises independent actions.
-- **Catalog & events:** `WorkResult::item_kind` is reported as `"Stage"`, and the factory catalog labels the item `Kind::Stage`.
+1. The agent pops a stage from the queue.
+2. The stage executes and pushes action items onto the queue.
+3. The loop drains those actions via `try_pop()`.
+4. The entire drain (stage + actions) forms a single batch submitted to `BatchExecutor`.
 
----
+Because the stage is always the first item in the batch and actions depend on its output (implicitly, through LLM-generated plan ordering), they execute after it.
 
-## Concrete Stages
+## Built-in Stages
 
-| Class | Doc |
-|---|---|
-| `ReasonStage` | [reason_stage.md](reason_stage.md) |
-| `InjectionStage` | [injection_stage.md](injection_stage.md) |
-| `TransformStage` | [transform_stage.md](transform_stage.md) |
-| `ValidateStage` | [validate_stage.md](validate_stage.md) |
+| Stage | Factory name | Purpose |
+|---|---|---|
+| `ReasonStage` | `"ReasonStage"` | Primary planning — surveys state and generates a full plan |
+| `InjectionStage` | `"InjectionStage"` | Meta-planning — inspects the last result and injects follow-up items |
+| `TransformStage` | `"TransformStage"` | LLM text transformation with an instruction and input text |
+| `ValidateStage` | `"ValidateStage"` | LLM-powered validation with optional corrective injection |
 
----
+See [stages.md](stages.md) for the full overview.
 
-## Writing a Stage
+## Related Components
 
-```cpp
-class MyStage : public Stage {
-public:
-    MyStage(std::string id, nlohmann::json inputs = {})
-        : Stage(std::move(id), "MyStage", std::move(inputs)) {}
-    WorkResult execute(AgentContext& ctx) override { /* render prompt, call ctx.llm(), ... */ }
-};
-void registerMyStage(WorkFactory& f);   // factory.registerItem(spec, ctor)
-```
-
----
-
-## Related
-
-- [WorkItem](work_item.md) — base of `Stage`
-- [Action](action.md) — the deterministic sibling base
-- [Stages overview](stages.md) — the four built-ins
-- [WorkFactory](work_factory.md) — registration
+- [`WorkItem`](work_item.md) — base class
+- [`Action`](action.md) — sibling base for deterministic items
+- [`stages.md`](stages.md) — overview of all built-in stages

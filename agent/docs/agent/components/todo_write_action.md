@@ -1,41 +1,65 @@
 # TodoWriteAction
 
 `src/agent/actions/todo_write_action.hpp` · `src/agent/actions/todo_write_action.cpp`
-**Factory name:** `TodoWriteAction` · **Kind:** Action
 
----
+## Overview
 
-## Purpose
+`TodoWriteAction` manages the per-agent todo list stored in `AgentContext::todo_list`. This is a simple `std::vector<std::string>` that lives for the lifetime of the agent run and is accessible only from the agent loop thread.
 
-Manages the per-agent todo list stored in `AgentContext::todo_list`.
+## Factory Registration
 
-## Inputs
+```
+name:  "TodoWriteAction"
+kind:  Action
+```
 
-| Field | Type | Required | Description |
+**Input schema:**
+
+| Input | Type | Required | Description |
 |---|---|---|---|
-| `operation` | string | **yes** | One of `add`, `remove`, `clear`, `list` |
-| `item` | string | for `add`/`remove` | Todo item text |
+| `operation` | string | Yes | One of: `"add"`, `"remove"`, `"clear"`, `"list"` |
+| `item` | string | Required for `add`/`remove` | Todo item text |
 
 ## Operations
 
 | Operation | Effect |
 |---|---|
-| `add` | Append `item` to the list |
-| `remove` | Remove first occurrence of `item` |
-| `clear` | Empty the list |
-| `list` | Return the list unchanged |
+| `add` | Appends `item` to the todo list |
+| `remove` | Removes the first occurrence of `item` from the list (no-op if not found) |
+| `clear` | Removes all items |
+| `list` | No mutation; returns current list |
 
 ## Output
 
+All operations return:
+
+| Field | Value |
+|---|---|
+| `success` | `true` on any valid operation |
+| `output.todo_list` | Current state of the todo list after the operation |
+
+## Example
+
 ```json
-{"todo_list": ["Review PR #42", "Write tests"]}
+[
+  { "name": "TodoWriteAction", "id": "t1",
+    "inputs": { "operation": "add", "item": "Download dataset" } },
+  { "name": "TodoWriteAction", "id": "t2",
+    "inputs": { "operation": "add", "item": "Train model" } },
+  { "name": "TodoWriteAction", "id": "t3",
+    "inputs": { "operation": "list" } }
+]
 ```
-(`clear` returns an empty array.)
 
-## Thread-Safety
+`t3.todo_list` resolves to `["Download dataset", "Train model"]`.
 
-`todo_list` is only accessed from the agent's single loop thread — no concurrent access by design, so no mutex is needed.
+## Notes
 
-## Related
+- `todo_list` is private to the agent and is **not** shared via the Blackboard. Use `BlackboardWriteAction` if shared state is needed.
+- The `ReasonStage` prompt can include the current todo list via `{{HISTORY}}` (which serialises the last N results, including todo operations).
 
-- [Actions overview](actions.md) · [AgentContext](agent_context.md) — owns `todo_list` · [WorkItem](work_item.md)
+## Related Components
+
+- [`Action`](action.md) — base class
+- [`AgentContext`](agent_context.md) — owns `todo_list`
+- [`BlackboardWriteAction`](blackboard_actions.md) — for shared state across agents

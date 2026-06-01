@@ -1,58 +1,102 @@
 # Messaging Actions
 
 `src/agent/actions/messaging_actions.hpp` · `src/agent/actions/messaging_actions.cpp`
-**Kind:** Action · **Pattern:** B (agent-to-agent messaging)
-Registered by `registerMessagingActions(factory)`.
 
-This file provides two actions for **Pattern B** messaging via each agent's [`MessageInbox`](message_inbox.md).
+## Overview
+
+The messaging actions implement **Pattern B** (agent-to-agent messaging). Messages are arbitrary JSON payloads delivered via `MessageInbox`. Two action types are provided: `SendMessageAction` and `ReceiveMessagesAction`.
 
 ---
 
 ## SendMessageAction
 
-**Factory name:** `SendMessageAction`
+Sends a JSON message to another agent's inbox.
 
-Sends a JSON message to another agent's inbox via `AgentManager::sendMessage`.
+### Factory Registration
 
-### Inputs
+```
+name:  "SendMessageAction"
+kind:  Action
+```
 
-| Field | Type | Required | Description |
+### Input Schema
+
+| Input | Type | Required | Description |
 |---|---|---|---|
-| `to` | string | **yes** | Destination agent id |
-| `message` | any JSON | **yes** | Arbitrary payload to send |
+| `to` | string | Yes | Destination agent ID |
+| `message` | any | Yes | Arbitrary JSON payload |
+
+### Execution
+
+1. Resolves `$ref` values in inputs.
+2. Calls `ctx.manager()->sendMessage(from_id, to, message)`.
+3. `AgentManager` places a `Message{from_id, to, payload, timestamp}` in the destination's `MessageInbox`.
 
 ### Output
 
-```json
-{"sent": true, "to": "agent_2"}
-```
+| Field | Value |
+|---|---|
+| `success` | `true` if the message was enqueued |
+| `output.sent` | `true` |
+| `output.to` | Destination agent ID |
 
 ---
 
 ## ReceiveMessagesAction
 
-**Factory name:** `ReceiveMessagesAction`
-
 Drains this agent's inbox and returns all pending messages.
 
-### Inputs
+### Factory Registration
 
-None.
+```
+name:  "ReceiveMessagesAction"
+kind:  Action
+```
+
+### Input Schema
+
+No inputs required.
+
+### Execution
+
+1. Calls `ctx.manager()->drainInbox(this_agent_id)`.
+2. `AgentManager` atomically removes and returns all messages from the agent's `MessageInbox`.
 
 ### Output
 
+| Field | Value |
+|---|---|
+| `success` | `true` |
+| `output.messages` | JSON array of message objects |
+
+Each message:
+
 ```json
-{"messages": [{"from_id": "agent_1", "to_id": "agent_2", "payload": {...}, "timestamp": "..."}]}
+{
+  "from_id": "agent-A",
+  "to_id": "agent-B",
+  "payload": { "key": "value" },
+  "timestamp": "2025-01-01T00:00:00Z"
+}
 ```
 
 ---
 
-## Thread-Safety
+## Pattern B Flow
 
-`AgentManager::sendMessage` and `drainInbox`, and `MessageInbox` itself, are mutex-guarded — safe to call concurrently.
+```
+Agent A                        Agent B
+  ↓                              ↓
+SendMessageAction             ReceiveMessagesAction
+  → AgentManager::sendMessage   ← AgentManager::drainInbox
+        ↓                              ↑
+    MessageInbox (B)  ───────────────
+```
 
-## Related
+Agents polling their inbox should include `ReceiveMessagesAction` in their plans periodically to avoid message buildup.
 
-- [Actions overview](actions.md) · [MessageInbox](message_inbox.md) — the underlying queue
-- [AgentManager](agent_manager.md) — `sendMessage`/`broadcast`/`drainInbox`
-- [Blackboard actions](blackboard_actions.md) — Pattern C alternative
+## Related Components
+
+- [`Action`](action.md) — base class
+- [`MessageInbox`](message_inbox.md) — the per-agent queue these actions operate on
+- [`AgentManager`](agent_manager.md) — `sendMessage` and `drainInbox`

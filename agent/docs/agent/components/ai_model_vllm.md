@@ -2,156 +2,113 @@
 
 `third_party/ai_model/aimodel_vllm.hpp` · `third_party/ai_model/aimodel_vllm.cpp`
 
-> A concrete [`AIModel`](ai_model.md) backend. **Opt-in** — built only with `-DAGENT_ENABLE_VLLM=ON`.
-
----
-
 ## Overview
 
-`AIModelVLLM` is an HTTP backend that talks to any **vLLM** server or other **OpenAI-compatible** API. It implements the [`AIModel`](ai_model.md) contract (`RawGenerate`, `RawEmbed`, `GetModelName`, `GetMaxContextLength`) by issuing JSON requests over `cpp-httplib` and parsing the responses with nlohmann/json.
+`AIModelVLLM` implements `AIModel` for a remote vLLM server (or any OpenAI-compatible HTTP API). It communicates via `cpp-httplib` using three endpoints:
 
-This is the backend most useful for the agent engine in containerised / cloud settings: no local model weights, no GPU in-process — just a URL.
-
----
-
-## Dependencies
-
-| Dependency | Why |
+| Endpoint | Used for |
 |---|---|
-| `httplib.h` (cpp-httplib, header-only) | HTTP client |
-| nlohmann/json | request/response serialisation (already an engine dependency) |
+| `POST /v1/completions` | `RawGenerate` — single-turn text completion |
+| `POST /v1/chat/completions` | `ChatCompletion` — multi-turn chat |
+| `POST /v1/embeddings` | `RawEmbed` — text embedding |
 
-Enable and point CMake at the header:
-
-```bash
-cmake -S . -B build -DAGENT_ENABLE_VLLM=ON -DHTTPLIB_INCLUDE_DIR=/path/to/httplib
-```
-
-This defines the **`AGENT_HAS_VLLM`** macro, which lets [`am_create`](c_api.md) construct the backend from JSON config.
-
----
+**Requires:** CMake option `-DAGENT_ENABLE_VLLM=ON` and `httplib.h` on the include path.
 
 ## Construction
 
 ```cpp
 AIModelVLLM(const std::string& base_url,
             const std::string& model_name,
-            const std::string& api_key          = "",
+            const std::string& api_key = "",
             const std::string& embed_model_name = "",
-            int                timeout_seconds   = 120,
-            int                max_context       = 8192);
+            int timeout_seconds = 120,
+            int max_context = 8192);
 ```
 
 | Parameter | Default | Description |
 |---|---|---|
-| `base_url` | — | Server root, e.g. `http://localhost:8000` |
-| `model_name` | — | Model id sent in every generation request |
-| `api_key` | `""` | If non-empty, sent as `Authorization: Bearer <key>` |
-| `embed_model_name` | `""` | Separate embedding model; falls back to `model_name` when empty |
-| `timeout_seconds` | `120` | Applied to connection, read, and write timeouts |
+| `base_url` | — | Server base URL, e.g. `"http://localhost:8000"` |
+| `model_name` | — | Model identifier sent in API requests |
+| `api_key` | `""` | Bearer token for the `Authorization` header (empty = no auth) |
+| `embed_model_name` | `""` | Model name for embedding requests; falls back to `model_name` if empty |
+| `timeout_seconds` | `120` | HTTP request timeout |
 | `max_context` | `8192` | Reported by `GetMaxContextLength()` |
 
-The constructor builds a `httplib::Client` for `base_url` and sets all three timeouts.
+## `RawGenerate`
 
----
+Calls `POST /v1/completions` with:
 
-## HTTP Endpoints
+```json
+{
+  "model": "<model_name>",
+  "prompt": "<prompt>",
+  "temperature": <t>,
+  "max_tokens": <max>
+}
+```
 
-| Method | HTTP call | Request body | Response field read |
-|---|---|---|---|
-| `RawGenerate` | `POST /v1/completions` | `{model, prompt, temperature, max_tokens}` | `choices[0].text` |
-| `RawEmbed` | `POST /v1/embeddings` | `{model, input}` | `data[0].embedding` |
-| `ChatCompletion` | `POST /v1/chat/completions` | `{model, messages, temperature, max_tokens}` | `choices[0].message.content` |
+Returns `response["choices"][0]["text"]`.
 
-All requests carry `Content-Type: application/json` and the optional bearer header from `AuthHeaders()`.
-
-### Error handling
-
-Each method throws `std::runtime_error` when:
-- the HTTP request fails entirely (no response object), or
-- the status is not `200` (the message includes the status code and response body), or
-- the response JSON is malformed / missing the expected field.
-
-These propagate up to the validated `AIModel::Generate` / `Embed`, and ultimately to [`AIModelLLMClient::complete`](ai_model_llm_client.md), which converts them into `Response{success=false}` so an agent stage can inspect the failure instead of crashing.
-
----
-
-## Public Extras
-
-### `ChatCompletion`
+## `ChatCompletion`
 
 ```cpp
 std::string ChatCompletion(const nlohmann::json& messages,
                            float temperature, int max_tokens);
 ```
 
-Direct access to the `/v1/chat/completions` endpoint with a caller-supplied `messages` array (role/content objects). Useful when you want proper chat-template formatting rather than the raw `/v1/completions` path that `RawGenerate` uses.
+Calls `POST /v1/chat/completions` with the provided messages array. Returns the assistant content from `choices[0].message.content`. Not called by `AIModelLLMClient` (which uses stateless `Generate`), but available for custom integrations.
 
-> Note: the [`AIModelLLMClient`](ai_model_llm_client.md) adapter calls `Generate` (→ `RawGenerate` → `/v1/completions`), *not* `ChatCompletion`, because the agent engine folds its own system+user prompt into a single string. If you need chat-template behaviour, that is the seam to customise.
+## `RawEmbed`
 
-### `AuthHeaders`
+Calls `POST /v1/embeddings` with:
+
+```json
+{ "model": "<embed_model_name>", "input": "<text>" }
+```
+
+Returns `data[0].embedding` as `std::vector<float>`. Results are cached by `AIModel::Embed`.
+
+## `AuthHeaders`
 
 ```cpp
 httplib::Headers AuthHeaders() const;
 ```
 
-Returns `{{"Authorization", "Bearer <api_key>"}}` when an API key was supplied, otherwise an empty header set.
+Returns `Authorization: Bearer <api_key>` if an API key was provided, otherwise empty headers.
 
----
+## CMake Build
 
-## Identity
-
-```cpp
-std::string GetModelName()        const override;  // returns model_name
-int         GetMaxContextLength() const override;  // returns max_context
+```cmake
+cmake -DAGENT_ENABLE_VLLM=ON ..
 ```
 
----
+This adds `aimodel_vllm.cpp` to the build, finds `httplib.h`, and defines the `AGENT_HAS_VLLM` macro. The C ABI (`am_create`) reads `config["llm"]["backend"] == "vllm"` to select this backend at runtime.
 
-## Usage
-
-### Direct C++
+## Example Usage
 
 ```cpp
-#include "ai_model/aimodel_vllm.hpp"
-#include "agent/ai_model_llm_client.hpp"
-
-AIModelVLLM model("http://localhost:8000",
-                  "meta-llama/Llama-3-8b-instruct");
-auto llm = std::make_shared<agent::AIModelLLMClient>(model);
-AgentManager manager(config, llm);
+auto model = std::make_unique<AIModelVLLM>(
+    "http://localhost:8000", "meta-llama/Llama-3.1-8B-Instruct");
+auto llm = std::make_shared<AIModelLLMClient>(std::move(model));
+auto mgr = AgentManager(config, llm);
 ```
 
-### Via the C ABI (`am_create`)
+Via C ABI:
 
 ```json
 {
-  "thread_pool_size": 16,
+  "prompts_dir": "./prompts",
   "llm": {
-    "backend":     "vllm",
-    "base_url":    "http://localhost:8000",
-    "model":       "meta-llama/Llama-3-8b-instruct",
-    "api_key":     "",
-    "embed_model": "BAAI/bge-m3",
-    "max_context": 8192
+    "backend": "vllm",
+    "base_url": "http://localhost:8000",
+    "model_name": "meta-llama/Llama-3.1-8B-Instruct"
   }
 }
 ```
 
-`am_create` reads this block and constructs `AIModelVLLM` (wrapped in an owning [`AIModelLLMClient`](ai_model_llm_client.md)) **only** when the engine was built with `AGENT_ENABLE_VLLM`. Otherwise it returns `AM_ERROR_INTERNAL` with an explanatory `am_last_error`, or — if no `llm` block is present — falls back to the mock stub.
-
----
-
-## Thread-Safety
-
-`httplib::Client` serialises requests on a single connection. For high concurrency across many agents, construct one `AIModelVLLM` per worker or place a connection pool in front. The `AIModel` embedding cache is the only shared mutable state and is safe for the read-mostly access pattern of `Search`.
-
----
-
 ## Related Components
 
-- [AIModel](ai_model.md) — abstract base this implements
-- [AIModelLlama](ai_model_llama.md) — local-model sibling backend
-- [AIModelLLMClient](ai_model_llm_client.md) — adapts this to `agent::LLMClient`
-- [AIModelMemoryBackend](ai_model_memory_backend.md) — adapts this to `agent::MemoryBackend`
-- [C ABI](c_api.md) — `am_create` constructs this from config
+- [`AIModel`](ai_model.md) — abstract base class
+- [`AIModelLLMClient`](ai_model_llm_client.md) — uses `Generate` for LLM calls
+- [`AIModelMemoryBackend`](ai_model_memory_backend.md) — uses `Embed` / `Search` for memory
+- [`C ABI`](c_api.md) — selects this backend via `config["llm"]["backend"] == "vllm"`

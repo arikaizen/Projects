@@ -2,31 +2,51 @@
 
 `src/agent/stages/` — LLM-powered work items deriving from [`Stage`](stage.md) → [`WorkItem`](work_item.md).
 
-Each stage renders a prompt template via [`PromptLoader`](prompt_loader.md), calls the LLM through [`LLMClient`](llm_client.md), interprets the response, and may push new work items onto the queue. All four are registered with the [`WorkFactory`](work_factory.md) during `AgentManager` construction.
+Stages call `ctx.llm().complete(request)` to invoke the language model. They execute **sequentially** within the agent loop: each stage sees the full prior history before the next one starts.
 
-> Each stage has its own detailed page — this is just the index.
-
-| Stage | Factory name | Role | Pushes to | Doc |
+| Stage | Factory name | Prompt template | LLM mode | Doc |
 |---|---|---|---|---|
-| ReasonStage | `ReasonStage` | Plan from full agent state | back | [reason_stage.md](reason_stage.md) |
-| InjectionStage | `InjectionStage` | React to one prior result | front | [injection_stage.md](injection_stage.md) |
-| TransformStage | `TransformStage` | LLM text transform (no queue side-effects) | — | [transform_stage.md](transform_stage.md) |
-| ValidateStage | `ValidateStage` | Validate a result; optional corrective injection | front | [validate_stage.md](validate_stage.md) |
+| ReasonStage | `ReasonStage` | `reason_stage.md` | `json_mode=true` | [reason_stage.md](reason_stage.md) |
+| InjectionStage | `InjectionStage` | `injection_stage.md` | `json_mode=true` | [injection_stage.md](injection_stage.md) |
+| TransformStage | `TransformStage` | `transform_stage.md` | `json_mode=false` | [transform_stage.md](transform_stage.md) |
+| ValidateStage | `ValidateStage` | `validate_stage.md` | `json_mode=true` | [validate_stage.md](validate_stage.md) |
 
-## Common shape
+## Common Behavior
 
-All stages set `WorkResult.item_kind = "Stage"`, emit `stage_start` / `stage_done` / `stage_error` events, and call the LLM in JSON mode (except `TransformStage`, which returns free text). The planning stages (`ReasonStage`, `InjectionStage`) validate each plan item against the factory (registered name, unique id, satisfied `$ref` deps) before pushing.
+All four stages share the same structural pattern:
 
-## Prompt templates
+1. Record `item_kind = "Stage"` and `timestamp` on the result.
+2. Emit a `stage_start` event on the `EventBus`.
+3. Render a system prompt via `ctx.promptLoader().render(template_name, vars)`.
+4. Call `ctx.llm().complete({system_prompt, user_msg, json_mode, temperature, max_tokens})`.
+5. Parse the response, push new items to the queue if appropriate.
+6. Set `result.success`, `result.output`, `result.error`.
+7. Record `duration` via a `steady_clock` pair.
+8. Emit `stage_done` or `stage_error` on the `EventBus`.
 
-| Template | Stage | Key placeholders |
-|---|---|---|
-| `reason_stage.md` | ReasonStage | `{{CATALOG}}`, `{{HISTORY}}`, `{{QUEUE}}`, `{{TASK}}`, `{{OUTPUT_SCHEMA}}` |
-| `injection_stage.md` | InjectionStage | + `{{PREVIOUS_RESULT}}` |
-| `transform_stage.md` | TransformStage | `{{INSTRUCTION}}`, `{{INPUT_TEXT}}` |
-| `validate_stage.md` | ValidateStage | `{{TARGET_OUTPUT}}`, `{{CRITERIA}}` (+ corrective variants) |
+## `final_answer` Termination
 
-## Related
+Any stage can terminate the agent by setting `ctx.should_stop = true` and populating `ctx.final_output`. This is triggered when:
+- The LLM returns a top-level `{"final_answer": "..."}` object instead of a plan array, or
+- A plan item carries a `"final_answer"` field.
 
-- [Stage (base class)](stage.md) · [Actions overview](actions.md)
-- [WorkFactory](work_factory.md) · [PromptLoader](prompt_loader.md) · [AgentContext](agent_context.md)
+The `EventBus` emits an `agent_final_answer` event in this case.
+
+## Prompt Templates
+
+Each stage requires one or more Markdown template files in `AgentManager::Config::prompts_dir`. Missing templates cause a `std::runtime_error` at render time. Templates use `{{PLACEHOLDER}}` substitution.
+
+| Stage | Required placeholders |
+|---|---|
+| `ReasonStage` | `{{CATALOG}}`, `{{HISTORY}}`, `{{QUEUE}}`, `{{TASK}}`, `{{OUTPUT_SCHEMA}}` |
+| `InjectionStage` | `{{CATALOG}}`, `{{HISTORY}}`, `{{QUEUE}}`, `{{TASK}}`, `{{PREVIOUS_RESULT}}`, `{{OUTPUT_SCHEMA}}` |
+| `TransformStage` | `{{INSTRUCTION}}`, `{{INPUT_TEXT}}` |
+| `ValidateStage` | `{{TARGET_OUTPUT}}`, `{{CRITERIA}}` (+ `{{CATALOG}}`, `{{OUTPUT_SCHEMA}}` when `corrective_injection=true`) |
+
+## Related Components
+
+- [`Stage`](stage.md) — base class
+- [`LLMClient`](llm_client.md) — called by all four stages
+- [`PromptLoader`](prompt_loader.md) — renders templates for all stages
+- [`WorkFactory`](work_factory.md) — all four stages register themselves here
+- [`AgentContext`](agent_context.md) — provides queue, history, and LLM access

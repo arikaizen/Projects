@@ -1,34 +1,74 @@
 # WriteAction
 
 `src/agent/actions/write_action.hpp` · `src/agent/actions/write_action.cpp`
-**Factory name:** `WriteAction` · **Kind:** Action
 
----
+## Overview
 
-## Purpose
+`WriteAction` writes a string to a file, truncating any existing content. Parent directories are created automatically if they do not exist.
 
-Writes content to a file, creating parent directories as needed. Overwrites any existing content.
+## Factory Registration
 
-## Inputs
+```
+name:  "WriteAction"
+kind:  Action
+```
 
-| Field | Type | Required | Description |
+**Input schema:**
+
+| Input | Type | Required | Description |
 |---|---|---|---|
-| `path` | string | **yes** | Destination file path |
-| `content` | string | **yes** | Text content to write |
+| `path` | string | Yes | Destination file path (absolute or relative) |
+| `content` | string | Yes | Text content to write |
 
-`$ref` values are resolved before use (e.g. write a previous result's output to disk).
+## Execution
+
+1. Resolves `$ref` values in inputs.
+2. Creates any missing parent directories via `std::filesystem::create_directories`.
+3. Opens the file with `std::ios::out | std::ios::trunc | std::ios::binary`.
+4. Writes the full content string.
 
 ## Output
 
+| Field | Value |
+|---|---|
+| `success` | `true` if the file was written without error |
+| `output.path` | The written file path |
+| `output.bytes_written` | Number of bytes written (`0` on failure) |
+| `error` | `"Cannot open file for writing: <path>"` on failure |
+
+## Example
+
 ```json
-{"path": "<path>", "bytes_written": 1234}
+{
+  "name": "WriteAction",
+  "id": "w1",
+  "inputs": {
+    "path": "/tmp/output.txt",
+    "content": "Hello, world!\n"
+  }
+}
 ```
-On error: `{"path": "<path>", "bytes_written": 0}` with `success=false`.
 
-## Thread-Safety
+Writing transformed content from a previous stage:
 
-Concurrent writes to the **same path** are unsafe. Ensure only one `WriteAction` targets a given path at a time (serialize via `$ref` dependencies if needed).
+```json
+{
+  "name": "WriteAction",
+  "id": "w2",
+  "inputs": {
+    "path": "/tmp/summary.md",
+    "content": "$t1.transformed_text"
+  }
+}
+```
 
-## Related
+## Notes
 
-- [Actions overview](actions.md) · [ReadAction](read_action.md) · [EditAction](edit_action.md) · [WorkItem](work_item.md)
+- `WriteAction` always truncates the file. To preserve existing content and make targeted edits, use [`EditAction`](edit_action.md).
+- Two `WriteAction` items writing the same file must be ordered via `$ref` to avoid a data race.
+
+## Related Components
+
+- [`Action`](action.md) — base class
+- [`ReadAction`](read_action.md) — reads files
+- [`EditAction`](edit_action.md) — replaces a substring in an existing file

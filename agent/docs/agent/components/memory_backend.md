@@ -2,21 +2,17 @@
 
 `include/agent/memory_backend.hpp`
 
----
-
 ## Overview
 
-`MemoryBackend` is the abstract interface for an agent's long-term memory. Implementations connect to a vector database, SQLite, or any other store. The no-op default (`NoOpMemoryBackend`) compiles cleanly and lets the rest of the system run without a configured memory store.
-
-It is supplied to `AgentManager` at construction and exposed to actions via `AgentContext::memory()`.
-
----
+`MemoryBackend` is the abstract interface for long-term agent memory. Implementations connect to a vector database, SQLite, or any other store. The default `NoOpMemoryBackend` compiles cleanly and allows all other engine functionality to work without a configured memory store.
 
 ## Interface
 
 ```cpp
 class MemoryBackend {
 public:
+    virtual ~MemoryBackend() = default;
+
     virtual void write(const std::string& id, const std::string& content,
                        const nlohmann::json& metadata = {}) = 0;
     virtual std::vector<MemoryEntry> search(const std::string& query, int top_k = 5) = 0;
@@ -25,67 +21,73 @@ public:
 };
 ```
 
-### MemoryEntry
+| Method | Signature | Description |
+|---|---|---|
+| `write` | `(id, content, metadata)` | Upsert an entry by id |
+| `search` | `(query, top_k) → vector<MemoryEntry>` | Semantic search; returns top-k results by relevance |
+| `list` | `(filter) → vector<MemoryEntry>` | List all entries, optionally filtered |
+| `remove` | `(id)` | Delete an entry |
+
+## `MemoryEntry`
 
 ```cpp
 struct MemoryEntry {
     std::string    id;
     std::string    content;
     nlohmann::json metadata;
-    float          score{0.0f};   // relevance from search(); 0 from list()
+    float          score{0.0f};   // relevance score from semantic search
 };
 ```
 
----
+`score` is populated by `search` implementations; `list` typically returns `score=0.0`.
 
-## NoOpMemoryBackend
+## `NoOpMemoryBackend`
 
 ```cpp
 class NoOpMemoryBackend : public MemoryBackend {
-    void write(...) override {}
-    std::vector<MemoryEntry> search(...) override { return {}; }
-    std::vector<MemoryEntry> list(...)   override { return {}; }
-    void remove(...)                     override {}
+    void write(const std::string&, const std::string&, const nlohmann::json&) override {}
+    std::vector<MemoryEntry> search(const std::string&, int) override { return {}; }
+    std::vector<MemoryEntry> list(const std::string&) override { return {}; }
+    void remove(const std::string&) override {}
 };
 ```
 
-Used automatically when `AgentManager` is constructed without a `memory` argument (and by the default C ABI `am_create`).
+Used automatically when `AgentManager` is constructed without a `memory` argument.
 
----
-
-## Real Implementation
-
-[`AIModelMemoryBackend`](ai_model_memory_backend.md) implements this interface using an [`AIModel`](ai_model.md)'s `Embed`/`Search`, providing semantic memory. One model can back both the LLM client and memory.
-
-```cpp
-auto mem = std::make_shared<agent::AIModelMemoryBackend>(model);
-AgentManager manager(config, llm, mem);
-```
-
-### Implementing your own
+## Implementing a Real Backend
 
 ```cpp
 class ChromaBackend : public MemoryBackend {
+public:
     void write(const std::string& id, const std::string& content,
-               const nlohmann::json& meta) override { /* upsert(embed(content)) */ }
-    std::vector<MemoryEntry> search(const std::string& q, int k) override { /* query */ }
-    // list / remove ...
+               const nlohmann::json& metadata) override {
+        m_client.upsert(id, embed(content), metadata);
+    }
+    std::vector<MemoryEntry> search(const std::string& query, int top_k) override {
+        auto hits = m_client.query(embed(query), top_k);
+        // convert hits to MemoryEntry ...
+    }
+    // ...
 };
+
+auto mgr = AgentManager(config, llm, std::make_shared<ChromaBackend>());
 ```
 
-> Implementations must provide their own thread-safety — agents may call memory concurrently.
+## Real Implementation
 
----
+The engine ships `AIModelMemoryBackend` which implements `MemoryBackend` via `AIModel::Embed` and `AIModel::Search`:
 
-## Consumed By
+```cpp
+auto model  = std::make_unique<AIModelVLLM>(...);
+auto memory = std::make_shared<AIModelMemoryBackend>(*model);
+auto mgr    = AgentManager(config, llm, memory);
+```
 
-The three [memory actions](memory_actions.md): `MemoryWriteAction`, `MemoryReadAction`, `MemoryListAction`.
+See [`AIModelMemoryBackend`](ai_model_memory_backend.md) for full details.
 
----
+## Related Components
 
-## Related
-
-- [LLMClient](llm_client.md) — the sibling abstract interface
-- [AIModelMemoryBackend](ai_model_memory_backend.md) — semantic implementation
-- [Memory actions](memory_actions.md) — plan-level access
-- [AgentContext](agent_context.md) — exposes `memory()`
+- [`AIModelMemoryBackend`](ai_model_memory_backend.md) — production `MemoryBackend` backed by `AIModel`
+- [`MemoryWriteAction`](memory_actions.md), [`MemoryReadAction`](memory_actions.md), [`MemoryListAction`](memory_actions.md) — action wrappers
+- [`AgentContext`](agent_context.md) — holds `shared_ptr<MemoryBackend>`; exposes `ctx.memory()`
+- [`AgentManager`](agent_manager.md) — receives the `MemoryBackend` at construction

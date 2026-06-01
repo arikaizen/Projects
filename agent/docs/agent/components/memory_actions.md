@@ -1,77 +1,115 @@
 # Memory Actions
 
 `src/agent/actions/memory_actions.hpp` · `src/agent/actions/memory_actions.cpp`
-**Kind:** Action · Registered by `registerMemoryActions(factory)`.
 
-Three actions expose the agent's [`MemoryBackend`](memory_backend.md) (long-term memory) to plans. With the [`AIModelMemoryBackend`](ai_model_memory_backend.md) wired in, these become semantic (embedding-based) operations; with the default `NoOpMemoryBackend` they are inert.
+## Overview
+
+The memory actions provide access to the agent's long-term memory backend (`MemoryBackend`). Three action types are provided: write, semantic search, and list. All delegate to `ctx.memory()` which is either `NoOpMemoryBackend` (default) or a real backend such as `AIModelMemoryBackend`.
 
 ---
 
 ## MemoryWriteAction
 
-**Factory name:** `MemoryWriteAction`
+Stores a text entry in long-term memory with a unique id and optional metadata.
 
-### Inputs
+### Factory Registration
 
-| Field | Type | Required | Description |
+```
+name:  "MemoryWriteAction"
+kind:  Action
+```
+
+### Input Schema
+
+| Input | Type | Required | Description |
 |---|---|---|---|
-| `id` | string | **yes** | Unique memory entry id |
-| `content` | string | **yes** | Content to store |
-| `metadata` | object | no | Optional metadata |
+| `id` | string | Yes | Unique memory entry ID |
+| `content` | string | Yes | Content to store |
+| `metadata` | object | No | Arbitrary JSON metadata |
 
 ### Output
 
-```json
-{"id": "mem_001", "written": true}
-```
+| Field | Value |
+|---|---|
+| `success` | `true` if written (always `true` with `NoOpMemoryBackend`) |
+| `output.id` | The stored entry ID |
+| `output.written` | `true` |
 
 ---
 
 ## MemoryReadAction
 
-**Factory name:** `MemoryReadAction`
+Performs a semantic search against stored memory entries.
 
-Semantic / keyword search over the backend.
+### Factory Registration
 
-### Inputs
+```
+name:  "MemoryReadAction"
+kind:  Action
+```
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `query` | string | **yes** | Search query |
-| `top_k` | integer | no (default 5) | Max results |
+### Input Schema
+
+| Input | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `query` | string | Yes | — | Natural-language search query |
+| `top_k` | integer | No | `5` | Maximum number of results |
 
 ### Output
 
+| Field | Value |
+|---|---|
+| `success` | `true` |
+| `output.entries` | JSON array of matching entries |
+
+Each entry:
+
 ```json
-{"entries": [{"id": "mem_001", "content": "...", "metadata": {}, "score": 0.92}]}
+{ "id": "mem1", "content": "...", "score": 0.87 }
 ```
+
+Returns an empty array with `NoOpMemoryBackend`.
 
 ---
 
 ## MemoryListAction
 
-**Factory name:** `MemoryListAction`
+Lists all memory entries, optionally filtered by a substring.
 
-### Inputs
+### Factory Registration
 
-| Field | Type | Required | Description |
+```
+name:  "MemoryListAction"
+kind:  Action
+```
+
+### Input Schema
+
+| Input | Type | Required | Description |
 |---|---|---|---|
-| `filter` | string | no | Optional substring filter |
+| `filter` | string | No | Substring filter applied to entry content or id |
 
 ### Output
 
-```json
-{"entries": [ ... ]}
-```
+| Field | Value |
+|---|---|
+| `success` | `true` |
+| `output.entries` | JSON array with `id` and `content` fields (no score) |
 
 ---
 
-## Thread-Safety
+## Backend Status
 
-Delegates to the `MemoryBackend` implementation, which owns its synchronization (per the `memory_backend.hpp` contract). `AIModelMemoryBackend` is mutex-guarded.
+| Backend | Behaviour |
+|---|---|
+| `NoOpMemoryBackend` (default) | All writes are silently discarded; reads return empty |
+| `AIModelMemoryBackend` | Full semantic write/search/list via `AIModel::Embed` + `AIModel::Search` |
 
-## Related
+To enable real memory: construct `AgentManager` with `std::make_shared<AIModelMemoryBackend>(model)`.
 
-- [Actions overview](actions.md) · [MemoryBackend](memory_backend.md) — the interface
-- [AIModelMemoryBackend](ai_model_memory_backend.md) — real semantic implementation
-- [WorkItem](work_item.md)
+## Related Components
+
+- [`Action`](action.md) — base class
+- [`MemoryBackend`](memory_backend.md) — abstract interface these actions call
+- [`AIModelMemoryBackend`](ai_model_memory_backend.md) — real semantic memory implementation
+- [`AgentContext`](agent_context.md) — `ctx.memory()` accessor

@@ -1,68 +1,68 @@
 # TransformStage
 
 `src/agent/stages/transform_stage.hpp` · `src/agent/stages/transform_stage.cpp`
-**Factory name:** `TransformStage` · **Kind:** Stage · **Prompt:** `prompts/transform_stage.md`
 
----
+## Overview
 
-## Purpose
+`TransformStage` applies a natural-language instruction to an input text using the LLM. Unlike `ReasonStage` and `InjectionStage`, it requests free-text output (`json_mode=false`) and returns the transformed text directly.
 
-A general-purpose LLM text transformation. It applies a natural-language `instruction` to an input `text` and returns the transformed string. Unlike the planning stages, it produces **free text** (JSON mode is off) and does not push new work items.
+Typical use cases: reformat content, summarise, translate, extract information, or post-process action output.
 
-Typical uses: summarise, translate, reformat, extract.
+## Factory Registration
 
----
-
-## Inputs
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `instruction` | string | **yes** | What to do to the text |
-| `text` | string | **yes** | The text to transform — may be a `$ref` to a prior result's string field |
-
-```json
-{
-  "name": "TransformStage", "id": "summary",
-  "inputs": {"instruction": "Summarise in 3 bullets", "text": "$fetch.body"}
-}
+```
+name:  "TransformStage"
+kind:  Stage
 ```
 
-Both inputs are run through `resolveReferences` first, so `text` (and even `instruction`) can be `$ref` values. Missing or non-string inputs throw `std::invalid_argument`.
+**Input schema:**
 
----
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `instruction` | string | Yes | Transformation instruction for the LLM (e.g. "summarise in 3 bullet points") |
+| `text` | string | Yes | Text to transform. May be a `$ref` resolving to a string field from a previous result. |
 
 ## Execution
 
-1. `resolveReferences(inputs)` — resolves any `$ref` tokens against history.
-2. Renders `transform_stage.md` with `{{INSTRUCTION}}` and `{{INPUT_TEXT}}`.
-3. Calls the LLM with **`json_mode=false`** (`temperature=0.5`, `max_tokens=4096`).
-4. Returns the raw completion as the transformed text.
+1. Calls `ctx.resolveReferences(inputs)` to expand any `$ref` values in `instruction` and `text`.
+2. Validates that both `instruction` and `text` are present and are strings.
+3. Renders `transform_stage.md` via `PromptLoader` with `{{INSTRUCTION}}` and `{{INPUT_TEXT}}`.
+4. Calls `ctx.llm().complete({system_prompt, user_msg, json_mode=false, temperature=0.5, max_tokens=4096})`.
+5. Returns the LLM's response as `output.transformed_text`.
 
----
+## Output
 
-## Result Output
+| Field | Value |
+|---|---|
+| `success` | `true` on successful LLM call |
+| `output.transformed_text` | The LLM's free-text output |
+
+## Example
 
 ```json
-{"transformed_text": "• point one\n• point two\n• point three"}
+{
+  "name": "TransformStage",
+  "id": "t1",
+  "inputs": {
+    "instruction": "Summarise in three bullet points",
+    "text": "$read1.content"
+  }
+}
 ```
 
----
-
-## Parallelism
-
-`TransformStage` has no side effects on the queue, so multiple independent `TransformStage` items in one batch run **concurrently** on the thread pool (subject to their `$ref` dependencies).
-
----
+`$read1.content` resolves to the `content` field of the `ReadAction` result with id `read1`.
 
 ## Events Emitted
 
-`stage_start`, `stage_done`, `stage_error`.
+| Event type | When |
+|---|---|
+| `stage_start` | Before the LLM call |
+| `stage_done` | After successful execution |
+| `stage_error` | On LLM failure or missing/invalid inputs |
 
----
+## Related Components
 
-## Related
-
-- [Stages overview](stages.md) · [ReasonStage](reason_stage.md) · [InjectionStage](injection_stage.md) · [ValidateStage](validate_stage.md)
-- [AgentContext](agent_context.md) — `$ref` resolution
-- [BatchExecutor](batch_executor.md) — parallel execution
-- [PromptLoader](prompt_loader.md) · [LLMClient](llm_client.md)
+- [`Stage`](stage.md) / [`stages.md`](stages.md) — base class and overview
+- [`PromptLoader`](prompt_loader.md) — renders `transform_stage.md`
+- [`LLMClient`](llm_client.md) — the LLM call (free-text mode)
+- [`AgentContext`](agent_context.md) — `resolveReferences` expands `$ref` in inputs

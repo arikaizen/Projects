@@ -1,73 +1,42 @@
 # C ABI — libagent_engine
 
-`include/agent_engine/c_api.h` · `src/c_api/c_api.cpp` · `agent_engine.map`
-
----
+`include/agent_engine/c_api.h` · `src/c_api/c_api.cpp`
 
 ## Overview
 
-The C ABI exposes every `AgentManager` capability through a stable C interface. It allows `libagent_engine.so` to be consumed from any language with a C FFI (Python, Go, Rust, GUI toolkits, etc.) without exposing any C++ types across the boundary.
-
-**ABI version:** 1 (returned by `am_api_version()`).
-
----
+`libagent_engine` exposes the full C++ agent engine through a stable C ABI. No C++ types cross the boundary — all structured data is null-terminated UTF-8 JSON. The ABI is versioned (`am_api_version()` returns `1`).
 
 ## Design Rules
 
-| Rule | Implementation |
+| Rule | Detail |
 |---|---|
-| No C++ types cross the ABI | All structured data is null-terminated UTF-8 JSON |
-| Opaque handles | `AgentManager*` and `AgentFuture*` are pointers to incomplete types |
-| Buffer-out pattern | `(char* buf, size_t out_size)` pairs; return value = bytes needed (excl. null) |
-| Thread-local last-error | `am_last_error()` per thread; valid until next ABI call on that thread |
-| No exceptions across the ABI | Every entry point catches all C++ exceptions and converts to status codes |
-| Memory ownership | Engine allocates and frees its own memory; caller-provided buffers remain caller-owned |
+| No C++ types | All structured data is JSON strings |
+| Opaque handles | `AgentManager*` and `AgentFuture*` are pointers to incomplete struct types |
+| Buffer-out pattern | Caller provides `(buf, size)`; return value is bytes that would have been written (excluding null). If `ret >= out_size`, retry with a larger buffer |
+| Thread-local last-error | `am_last_error(mgr)` returns the most recent error for the calling thread; valid until the next ABI call on that thread |
+| No exceptions | Every entry point catches all C++ exceptions and converts to status codes |
+| Memory ownership | Engine allocates and frees its own memory; never return a `char*` the caller must `free()` |
 | Thread-safety | Every function is safe to call concurrently on the same `AgentManager*` |
-
----
 
 ## Status Codes
 
 ```c
 typedef enum {
-    AM_OK                        = 0,
-    AM_ERROR_INVALID_ARG         = 1,
-    AM_ERROR_NOT_FOUND           = 2,
-    AM_ERROR_INTERNAL            = 3,
-    AM_ERROR_TIMEOUT             = 4,
-    AM_ERROR_BUFFER_TOO_SMALL    = 5,
-    AM_ERROR_NOT_INITIALIZED     = 6,
-    AM_ERROR_DEPRECATED          = 7,
-    AM_ERROR_CANCELLED           = 8,
-    AM_ERROR_PROMPT_NOT_FOUND    = 9,
+    AM_OK                       = 0,
+    AM_ERROR_INVALID_ARG        = 1,
+    AM_ERROR_NOT_FOUND          = 2,
+    AM_ERROR_INTERNAL           = 3,
+    AM_ERROR_TIMEOUT            = 4,
+    AM_ERROR_BUFFER_TOO_SMALL   = 5,
+    AM_ERROR_NOT_INITIALIZED    = 6,
+    AM_ERROR_DEPRECATED         = 7,
+    AM_ERROR_CANCELLED          = 8,
+    AM_ERROR_PROMPT_NOT_FOUND   = 9,
     AM_ERROR_PROMPT_SUBSTITUTION = 10,
-    AM_ERROR_QUOTA_EXCEEDED      = 11,
-    AM_ERROR_DEPENDENCY_CYCLE    = 12,
+    AM_ERROR_QUOTA_EXCEEDED     = 11,
+    AM_ERROR_DEPENDENCY_CYCLE   = 12,
 } am_status_t;
 ```
-
----
-
-## Buffer-Out Pattern
-
-Functions that return variable-length JSON use the buffer-out idiom:
-
-```c
-char buf[256];
-am_status_t s = am_get_status(mgr, agent_id, buf, sizeof(buf));
-if (s == AM_ERROR_BUFFER_TOO_SMALL) {
-    // retry — the return value tells us how many bytes are needed
-    size_t need = ...; // re-call with buf=NULL, out_size=0 to query size
-    char* big = malloc(need + 1);
-    am_get_status(mgr, agent_id, big, need + 1);
-    // use big...
-    free(big);
-}
-```
-
-When `buf == NULL` or `out_size == 0`, the function returns the number of bytes the full output would occupy (excluding the null terminator), allowing a two-pass size-then-fill pattern.
-
----
 
 ## Lifecycle
 
@@ -77,16 +46,24 @@ When `buf == NULL` or `out_size == 0`, the function returns the number of bytes 
 AgentManager* am_create(const char* config_json);
 ```
 
-Creates an `AgentManager`. Returns `NULL` on failure; call `am_last_error(NULL)` for the message.
+Creates an `AgentManager` from a JSON config object. Returns `NULL` on failure; call `am_last_error(NULL)` for the message.
 
-`config_json` keys (all optional):
+**Config keys:**
 
-| Key | Type | Default | Description |
+| Key | Type | Default | Meaning |
 |---|---|---|---|
 | `prompts_dir` | string | `"./prompts"` | Prompt template directory |
 | `thread_pool_size` | int | `16` | Worker thread count |
 | `max_agent_depth` | int | `3` | Sub-agent nesting limit |
 | `default_user_id` | string | `"default"` | Default user id |
+| `llm` | object | — | LLM backend config (see below) |
+
+**LLM config (`config["llm"]`):**
+
+| Backend | Key | Required fields |
+|---|---|---|
+| Mock (default) | `"backend": "mock"` | None |
+| vLLM | `"backend": "vllm"` | `"base_url"`, `"model_name"` (requires `-DAGENT_ENABLE_VLLM=ON`) |
 
 ### `am_destroy`
 
@@ -94,125 +71,45 @@ Creates an `AgentManager`. Returns `NULL` on failure; call `am_last_error(NULL)`
 void am_destroy(AgentManager* mgr);
 ```
 
-Cancels all running agents, joins threads, shuts down the pool, frees all memory.
+Cancels all running agents, joins their threads, and frees all resources.
 
-### `am_last_error`
+### `am_last_error` / `am_api_version`
 
 ```c
 const char* am_last_error(AgentManager* mgr);
+int         am_api_version(void);
 ```
-
-Returns the thread-local error string from the most recent failed call. Valid until the next ABI call on the current thread. `mgr` may be `NULL` (used when `am_create` itself fails).
-
-### `am_api_version`
-
-```c
-int am_api_version(void);
-```
-
-Returns `1`.
-
----
 
 ## Agent Lifecycle
-
-### `am_spawn_agent`
 
 ```c
 am_status_t am_spawn_agent(AgentManager* mgr, const char* config_json,
                             char* out_id_buf, size_t out_size);
-```
-
-Spawns a new agent. `out_id_buf` receives the agent id string.
-
-`config_json` keys:
-
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `user_id` | string | `default_user_id` | Owner; quotas enforced per user |
-| `name` | string | `"agent"` | Human-readable name |
-| `max_iterations` | int | `100` | Loop iteration cap |
-| `max_depth` | int | `3` | Sub-agent depth cap |
-| `extra` | object | `{}` | Passed through to `AgentConfig::extra` |
-
-Returns `AM_ERROR_QUOTA_EXCEEDED` if the user is at their agent limit.
-
-### `am_destroy_agent`
-
-```c
 am_status_t am_destroy_agent(AgentManager* mgr, const char* agent_id);
-```
-
-Cancels and destroys the agent (joins the runner thread).
-
-### `am_list_agents`
-
-```c
 am_status_t am_list_agents(AgentManager* mgr, const char* user_id,
                             char* out_json, size_t out_size);
-```
-
-JSON array of status objects. Pass `user_id=""` for all agents.
-
-### `am_get_status`
-
-```c
 am_status_t am_get_status(AgentManager* mgr, const char* agent_id,
                            char* out_json, size_t out_size);
-```
-
-Returns `{"id","name","status","user_id","iterations","result?"}`.
-
-### `am_cancel_agent`
-
-```c
 am_status_t am_cancel_agent(AgentManager* mgr, const char* agent_id);
 ```
 
-Sets the cancellation flag. The agent stops after the current batch.
+`am_spawn_agent` config keys: `user_id`, `name`, `max_iterations`, `max_depth`, `extra`.
 
----
+Returns `AM_ERROR_QUOTA_EXCEEDED` if the user is at their agent limit.
 
 ## Pattern A — Run / Future / Pipe
-
-### `am_run_agent`
 
 ```c
 AgentFuture* am_run_agent(AgentManager* mgr, const char* agent_id,
                            const char* task_json);
+am_status_t  am_future_wait(AgentFuture* future, int timeout_ms,
+                             char* out_result_json, size_t out_size);
+void         am_future_free(AgentFuture* future);
+am_status_t  am_pipe(AgentManager* mgr, const char* from_id,
+                      const char* to_id, const char* template_string);
 ```
 
-Starts the agent loop. Returns an `AgentFuture*` (must be freed with `am_future_free`). Returns `NULL` on error.
-
-### `am_future_wait`
-
-```c
-am_status_t am_future_wait(AgentFuture* future, int timeout_ms,
-                            char* out_result_json, size_t out_size);
-```
-
-Blocks until the future resolves or `timeout_ms` elapses. Pass `-1` to wait forever, `0` to poll.
-
-Returns `AM_ERROR_TIMEOUT` if the deadline passes.
-
-### `am_future_free`
-
-```c
-void am_future_free(AgentFuture* future);
-```
-
-Frees the future object without cancelling the agent.
-
-### `am_pipe`
-
-```c
-am_status_t am_pipe(AgentManager* mgr, const char* from_id,
-                     const char* to_id, const char* template_string);
-```
-
-Registers a delegation pipe. When `from_id` finishes, `template_string` is applied to its output (`{prev_output}` substitution) and given as the task to `to_id`.
-
----
+`am_future_wait`: `timeout_ms = -1` means wait forever; `0` is a poll.
 
 ## Pattern B — Messaging
 
@@ -225,10 +122,6 @@ am_status_t am_drain_inbox(AgentManager* mgr, const char* agent_id,
                             char* out_json, size_t out_size);
 ```
 
-`am_drain_inbox` returns a JSON array of `Message` objects.
-
----
-
 ## Pattern C — Blackboard
 
 ```c
@@ -240,36 +133,20 @@ am_status_t am_blackboard_keys(AgentManager* mgr, const char* prefix,
                                 char* out_json, size_t out_size);
 ```
 
----
-
 ## Fan-Out / Fan-In
-
-### `am_fan_out`
 
 ```c
 am_status_t am_fan_out(AgentManager* mgr, const char* configs_json_array,
                         const char* shared_task,
                         AgentFuture*** out_futures, size_t* out_count);
-```
-
-Spawns N agents and starts them all with `shared_task`. Allocates an array of `AgentFuture*`; caller frees each future with `am_future_free` and the array with `am_fan_out_free_array`.
-
-```c
-void am_fan_out_free_array(AgentFuture** arr);
-```
-
-### `am_research_from_angles`
-
-```c
+void        am_fan_out_free_array(AgentFuture** arr);
 am_status_t am_research_from_angles(AgentManager* mgr,
                                      const char* angles_json_array,
                                      const char* topic,
                                      char* out_result_json, size_t out_size);
 ```
 
-Convenience fan-out + fan-in: one researcher per angle, one synthesiser. Blocks until the synthesiser finishes.
-
----
+`am_fan_out` allocates an array of `AgentFuture*`. The caller frees each future with `am_future_free` then frees the array with `am_fan_out_free_array`.
 
 ## Real-Time Injection
 
@@ -278,17 +155,7 @@ am_status_t am_inject_work(AgentManager* mgr, const char* agent_id,
                             const char* work_item_json);
 ```
 
-`work_item_json`:
-```json
-{
-  "name":     "ReadAction",
-  "id":       "r42",
-  "inputs":   {"path": "/tmp/file.txt"},
-  "position": "front"
-}
-```
-
----
+`work_item_json` format: `{"name":"ReadAction","id":"r42","inputs":{...},"position":"front"|"back"}`.
 
 ## Events
 
@@ -299,11 +166,7 @@ am_status_t am_subscribe_events(AgentManager* mgr, am_event_cb cb, void* user_da
 am_status_t am_unsubscribe_events(AgentManager* mgr, am_event_cb cb);
 ```
 
-Callbacks fire on engine threads. GUI consumers must marshal to their UI thread before touching UI objects.
-
-See [`EventBus`](event_bus.md) for the full list of event types and their fields.
-
----
+Callbacks fire on engine threads. See [EventBus](event_bus.md) for the full list of event types.
 
 ## Hot Reload / Config
 
@@ -314,12 +177,7 @@ am_status_t am_set_user_quota(AgentManager* mgr, const char* user_id,
                                const char* quota_json);
 ```
 
-`quota_json`:
-```json
-{"max_concurrent_agents": 5, "max_llm_inflight": 2, "max_tool_inflight": 10}
-```
-
----
+`quota_json`: `{"max_concurrent_agents":N, "max_llm_inflight":N, "max_tool_inflight":N}`.
 
 ## MCP Management
 
@@ -329,39 +187,9 @@ am_status_t am_disconnect_mcp(AgentManager* mgr, const char* server_name);
 am_status_t am_list_mcp_servers(AgentManager* mgr, char* out_json, size_t out_size);
 ```
 
-`server_config_json`:
-```json
-{"name": "myserver", "url": "http://localhost:8080", "extra": {}}
-```
-
----
-
-## Symbol Visibility
-
-`agent_engine.map` (a GNU ld version script) restricts exported symbols:
-
-```
-AGENT_ENGINE_1 {
-  global: am_api_version; am_create; am_destroy; ... (all am_* symbols)
-  local: *;
-};
-```
-
-Only the `am_*` functions are visible to consumers. All C++ symbols from `agent_core` are hidden, preventing ABI pollution.
-
----
-
-## Internal Implementation Notes
-
-- Each C function follows the pattern: `try { ... return AM_OK; } catch (std::exception& e) { set_last_error(e.what()); return AM_ERROR_INTERNAL; }`.
-- Handles are `reinterpret_cast<AgentManager*>` of the actual C++ object.
-- `AgentFuture` wraps a `std::future<nlohmann::json>` and the agent id; allocated with `new`, freed by `am_future_free`.
-- The thread-local last-error string is a `thread_local std::string` in `c_api.cpp`.
-
----
-
 ## Related Components
 
-- [`AgentManager`](agent_manager.md) — the C++ object behind every handle
-- All other components — exposed through this interface
-- [`examples/cli_driver.cpp`](../../examples/cli_driver.cpp) — end-to-end C ABI usage demo
+- [`AgentManager`](agent_manager.md) — all `am_*` functions delegate here
+- [`EventBus`](event_bus.md) — event types emitted to `am_event_cb` subscribers
+- [`QuotaManager`](quota_manager.md) — `am_set_user_quota`, `AM_ERROR_QUOTA_EXCEEDED`
+- [`PromptLoader`](prompt_loader.md) — `am_reload_prompts`, `am_set_prompts_dir`

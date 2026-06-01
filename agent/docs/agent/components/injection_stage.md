@@ -1,61 +1,75 @@
 # InjectionStage
 
 `src/agent/stages/injection_stage.hpp` · `src/agent/stages/injection_stage.cpp`
-**Factory name:** `InjectionStage` · **Kind:** Stage · **Prompt:** `prompts/injection_stage.md`
 
----
+## Overview
 
-## Purpose
+`InjectionStage` is a meta-reasoning step. Unlike `ReasonStage` which surveys the full agent state, `InjectionStage` focuses on a single previous result and asks the LLM "given this output, what should happen next?" Items are injected at the **front** of the queue (high-priority), not the back.
 
-A meta-stage that inspects **one previous result** and decides what to inject next. Where [`ReasonStage`](reason_stage.md) plans from the whole agent state, `InjectionStage` is narrower — "given this output, what follow-up work is needed?" — and pushes the resulting items to the **front** of the queue so they run before anything already queued.
+## Factory Registration
 
----
-
-## Inputs
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `target_id` | string | no | Id of the result to inspect; defaults to the **last** result |
-| `task` | string | no | Overrides `AgentConfig::task` for this stage |
-
-```json
-{"name": "InjectionStage", "id": "inj1", "inputs": {"target_id": "fetch_step"}}
+```
+name:  "InjectionStage"
+kind:  Stage
 ```
 
-If `target_id` is given but no matching result exists, the stage fails. If omitted and there is no previous result, it fails.
+**Input schema:**
 
----
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `target_id` | string | No | ID of result to inspect; defaults to the last result |
+| `task` | string | No | Override task description for this step |
 
 ## Execution
 
-1. Resolves the target result (`resultById(target_id)` or `lastResult()`).
-2. Renders `injection_stage.md` with `{{CATALOG}}`, `{{HISTORY}}`, `{{QUEUE}}`, `{{TASK}}`, `{{PREVIOUS_RESULT}}` (the target's output), `{{OUTPUT_SCHEMA}}`.
-3. Calls the LLM in JSON mode (`temperature=0.3`, `max_tokens=4096`).
-4. Interprets the response the same way as `ReasonStage` (top-level `final_answer` object, or an array plan).
+1. Locates the target result: `inputs["target_id"]` if present, otherwise `ctx.lastResult()`.
+2. Gathers template variables: `CATALOG`, `HISTORY`, `QUEUE`, `TASK`, `PREVIOUS_RESULT` (the target's output JSON), `OUTPUT_SCHEMA`.
+3. Renders `injection_stage.md` via `PromptLoader`.
+4. Calls `ctx.llm().complete({system_prompt, user_msg, json_mode=true, temperature=0.3, max_tokens=4096})`.
+5. Parses the JSON response (same format as `ReasonStage`).
+6. Validates each plan item.
+7. Pushes items to the **front** of the queue in reverse order so execution order matches plan order.
 
-### Front-injection ordering
+## Front-of-Queue Push
 
-The plan is validated left-to-right (same rules as `ReasonStage`), then pushed to the **front in reverse order**, so the final execution order matches the plan's declared order. A `final_answer` on the last entry stops the agent after the injected items run.
+Items are collected, validated, then pushed in reverse order to `Position::Front`:
 
----
-
-## Result Output
-
-```json
-{"injected_count": 2, "plan": [ ...the injected items... ]}
 ```
-or `{"answer": "..."}` on a final answer.
+Plan: [A, B, C]  →  push C to front → push B to front → push A to front
+Queue: [A, B, C, ...existing...]
+```
 
----
+This ensures the injected items execute before anything already in the queue.
+
+## Output
+
+| Field | Value |
+|---|---|
+| `success` | `true` on successful LLM call and valid plan |
+| `output.injected_count` | Number of items injected |
+| `output.plan` | The raw plan array |
+
+On termination path: `output` is `{"answer": "..."}` and `ctx.should_stop = true`.
 
 ## Events Emitted
 
-`stage_start`, `stage_done`, `stage_error`, `agent_final_answer`.
+| Event type | When |
+|---|---|
+| `stage_start` | Before the LLM call |
+| `stage_done` | After successful execution |
+| `stage_error` | On LLM failure, missing target, or invalid plan |
+| `agent_final_answer` | When a `final_answer` is received |
 
----
+## Validation
 
-## Related
+Same rules as `ReasonStage`:
+1. Every `name` must be registered in `WorkFactory`.
+2. Every `id` must be unique across history and the current plan.
+3. Every `$ref` must point to a known id.
 
-- [Stages overview](stages.md) · [ReasonStage](reason_stage.md) · [TransformStage](transform_stage.md) · [ValidateStage](validate_stage.md)
-- [AgentContext](agent_context.md) — `lastResult` / `resultById`, front-push
-- [WorkFactory](work_factory.md) · [PromptLoader](prompt_loader.md) · [LLMClient](llm_client.md)
+## Related Components
+
+- [`Stage`](stage.md) / [`stages.md`](stages.md) — base class and overview
+- [`ReasonStage`](reason_stage.md) — same validation logic, but pushes to the back
+- [`AgentContext`](agent_context.md) — `push(..., Position::Front)` used here
+- [`PromptLoader`](prompt_loader.md) — renders `injection_stage.md`

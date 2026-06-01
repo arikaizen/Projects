@@ -2,11 +2,9 @@
 
 `include/agent/action.hpp`
 
----
-
 ## Overview
 
-`Action` is the abstract marker base for all **deterministic** work items — file I/O, shell, web, messaging, blackboard, memory, MCP. It derives from [`WorkItem`](work_item.md) and fixes its kind to `Kind::Action`.
+`Action` is the marker base class for all deterministic operations. It inherits from `WorkItem` and overrides `kind()` to return `Kind::Action`.
 
 ```cpp
 class Action : public WorkItem {
@@ -16,55 +14,51 @@ public:
 };
 ```
 
-Like [`Stage`](stage.md), it adds no data — it exists to **classify** the item.
+No additional logic is added here. All behavior is in the concrete subclasses.
 
----
+## Role in the Engine
 
-## Why the distinction matters
+Actions are the items that `BatchExecutor` runs in parallel. Because they are deterministic (no LLM calls), they can safely execute concurrently as long as their `$ref` dependencies allow it.
 
-Actions are the items the engine runs **in parallel**. Within a batch, all actions whose `$ref` dependencies are satisfied are dispatched concurrently on the [`ThreadPool`](thread_pool.md) by the [`BatchExecutor`](batch_executor.md). `WorkResult::item_kind` is reported as `"Action"`.
+Actions that write to the same file must be ordered via `$ref` dependencies. For example, if `WriteAction` writes a file and `EditAction` modifies it, `EditAction`'s `path` input should reference the write result via `$step_id.path` to force sequential ordering.
 
----
+## Common Pattern
 
-## Concrete Actions (13 built-in)
+Every concrete action:
+1. Calls `ctx.resolveReferences(inputs)` to expand any `$ref` values.
+2. Performs its operation.
+3. Returns a `WorkResult` with `item_kind = "Action"`, `success`, `output`, and `error` fields populated.
+4. Records `duration` via a start/end `std::chrono::steady_clock` pair.
 
-| Category | Classes | Doc |
+## Built-in Actions (13 types)
+
+| Action | Factory name | Category |
 |---|---|---|
-| Shell | `BashAction` | [bash_action.md](bash_action.md) |
-| Files | `ReadAction`, `WriteAction`, `EditAction` | [read](read_action.md) · [write](write_action.md) · [edit](edit_action.md) |
-| Search | `GlobAction`, `GrepAction` | [glob](glob_action.md) · [grep](grep_action.md) |
-| Web | `WebFetchAction`, `WebSearchAction` | [fetch](web_fetch_action.md) · [search](web_search_action.md) |
-| Agents | `TaskAction` | [task_action.md](task_action.md) |
-| Todo | `TodoWriteAction` | [todo_write_action.md](todo_write_action.md) |
-| Messaging (B) | `SendMessageAction`, `ReceiveMessagesAction` | [messaging_actions.md](messaging_actions.md) |
-| Blackboard (C) | `BlackboardWrite/Read/List` | [blackboard_actions.md](blackboard_actions.md) |
-| Memory | `MemoryWrite/Read/List` | [memory_actions.md](memory_actions.md) |
-| MCP | `MCPToolAction` | [mcp_tool_action.md](mcp_tool_action.md) |
+| `BashAction` | `"BashAction"` | Shell |
+| `ReadAction` | `"ReadAction"` | Filesystem |
+| `WriteAction` | `"WriteAction"` | Filesystem |
+| `EditAction` | `"EditAction"` | Filesystem |
+| `GlobAction` | `"GlobAction"` | Filesystem |
+| `GrepAction` | `"GrepAction"` | Filesystem |
+| `WebFetchAction` | `"WebFetchAction"` | Network |
+| `WebSearchAction` | `"WebSearchAction"` | Network |
+| `TaskAction` | `"TaskAction"` | Multi-agent (Pattern A) |
+| `TodoWriteAction` | `"TodoWriteAction"` | Agent state |
+| `SendMessageAction` | `"SendMessageAction"` | Messaging (Pattern B) |
+| `ReceiveMessagesAction` | `"ReceiveMessagesAction"` | Messaging (Pattern B) |
+| `BlackboardWriteAction` | `"BlackboardWriteAction"` | Blackboard (Pattern C) |
+| `BlackboardReadAction` | `"BlackboardReadAction"` | Blackboard (Pattern C) |
+| `BlackboardListAction` | `"BlackboardListAction"` | Blackboard (Pattern C) |
+| `MemoryWriteAction` | `"MemoryWriteAction"` | Long-term memory |
+| `MemoryReadAction` | `"MemoryReadAction"` | Long-term memory |
+| `MemoryListAction` | `"MemoryListAction"` | Long-term memory |
+| `MCPToolAction` | `"MCPToolAction"` | MCP |
 
----
+See [actions.md](actions.md) for the full overview.
 
-## Writing an Action
+## Related Components
 
-```cpp
-class MyAction : public Action {
-public:
-    MyAction(std::string id, std::string name, nlohmann::json inputs = {})
-        : Action(std::move(id), std::move(name), std::move(inputs)) {}
-    WorkResult execute(AgentContext& ctx) override {
-        auto resolved = ctx.resolveReferences(inputs);   // resolve $ref first
-        /* do the deterministic work ... */
-    }
-};
-void registerMyAction(WorkFactory& f);
-```
-
-Actions that share a path/file are not safe to run concurrently — express ordering with `$ref` dependencies so the [`BatchExecutor`](batch_executor.md) serialises them.
-
----
-
-## Related
-
-- [WorkItem](work_item.md) — base of `Action`
-- [Stage](stage.md) — the LLM-powered sibling base
-- [Actions overview](actions.md) — the built-ins
-- [BatchExecutor](batch_executor.md) — parallel execution · [WorkFactory](work_factory.md) — registration
+- [`WorkItem`](work_item.md) — base class
+- [`Stage`](stage.md) — sibling base for LLM-powered items
+- [`actions.md`](actions.md) — overview of all built-in actions
+- [`BatchExecutor`](batch_executor.md) — executes actions in parallel

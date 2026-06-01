@@ -2,39 +2,26 @@
 
 `include/agent/ai_model_memory_backend.hpp` · `src/agent/ai_model_memory_backend.cpp`
 
----
-
 ## Overview
 
-`AIModelMemoryBackend` adapts an [`AIModel`](ai_model.md)'s embedding + semantic-search capability to the engine's [`MemoryBackend`](llm_client.md) interface. It replaces the `NoOpMemoryBackend` stub with a working semantic memory store — backed by the same `AIModel` that powers the LLM client.
+`AIModelMemoryBackend` is an adapter that backs the engine's `MemoryBackend` with an `AIModel`'s embedding and semantic-search capability. Entries are stored in an in-process `std::map`; semantic ranking is delegated to `AIModel::Search` (which embeds the query and all stored texts and returns the top-k by cosine similarity).
 
-```
-AIModel::Embed / AIModel::Search
-        ▲
-        │  AIModelMemoryBackend::search()
-        │
-agent::MemoryBackend  ──► used by MemoryWriteAction / MemoryReadAction / MemoryListAction
-```
+## Design Notes
 
----
+- **In-memory store**: The store is a `std::map<std::string, Record>` guarded by a mutex. It does not persist across process restarts. For persistence, add serialisation to `write` and `remove` or replace the store with a database client.
+- **Lock-free search**: `search` snapshots the store contents under lock, then releases the lock before calling `AIModel::Search` (which may be slow — it embeds every stored text). This prevents the mutex from being held during blocking embedding work.
+- **Embedding cache**: `AIModel::Embed` caches results by input text, so repeated searches over the same stored content are fast.
+- **External model ownership**: The adapter holds a non-owning reference to an `AIModel`. The model must outlive the backend (and therefore the `AgentManager`).
 
-## How It Works
-
-The adapter keeps an in-memory store of records (`id → {content, metadata}`). On `search`, it:
-
-1. Snapshots the store under a mutex.
-2. Hands every stored `(label=id, text=content)` plus the query to `AIModel::Search`, which embeds them all (using the model's embedding cache) and ranks by cosine similarity.
-3. Maps the ranked `(score, id)` pairs back to `MemoryEntry` objects with their original content and metadata.
-
-The embedding work happens **outside** the lock, so concurrent agents are not serialised on slow embedding calls.
-
----
-
-## API
+## Construction
 
 ```cpp
 explicit AIModelMemoryBackend(AIModel& model);
+```
 
+## Interface
+
+```cpp
 void write(const std::string& id, const std::string& content,
            const nlohmann::json& metadata = {}) override;
 std::vector<MemoryEntry> search(const std::string& query, int top_k = 5) override;
@@ -44,86 +31,50 @@ void remove(const std::string& id) override;
 
 ### `write`
 
-Inserts or replaces the record under `id`. Thread-safe.
+Acquires `m_mutex` and upserts `{content, metadata}` under `id`.
 
 ### `search`
 
-Returns the top-`k` records most semantically similar to `query`, each with a cosine-similarity `score`. Returns an empty vector if the store is empty or `query` is empty.
-
-```cpp
-auto hits = mem.search("how is the build configured", 3);
-// hits[0].id, hits[0].content, hits[0].metadata, hits[0].score
-```
+1. Acquires `m_mutex` and takes a snapshot of the store.
+2. Releases `m_mutex`.
+3. Builds `labels` and `texts` vectors from the snapshot.
+4. Calls `m_model.Search(query, labels, texts, top_k)` which embeds query and texts, ranks by cosine similarity, and returns `(score, label)` pairs.
+5. Constructs `MemoryEntry` objects from the results.
 
 ### `list`
 
-Returns all records, or those whose **id or content** contains `filter` as a substring. `score` is `0.0` (no ranking performed).
+Acquires `m_mutex`, iterates the store, and returns all entries whose id or content contains `filter` as a substring. Returns all entries when `filter` is empty.
 
 ### `remove`
 
-Deletes the record under `id`. No-op if absent.
+Acquires `m_mutex` and erases the entry for `id`. Also calls `ClearEmbedCache` to remove stale cached embeddings (since the text no longer exists).
 
----
-
-## MemoryEntry
+## Internal Structure
 
 ```cpp
-struct MemoryEntry {
-    std::string    id;
+struct Record {
     std::string    content;
     nlohmann::json metadata;
-    float          score;   // cosine similarity from search(); 0.0 from list()
 };
+AIModel&                        m_model;
+mutable std::mutex              m_mutex;
+std::map<std::string, Record>   m_store;
 ```
 
----
-
-## Thread-Safety
-
-The internal `std::map` store is guarded by a `std::mutex`. `search` copies a snapshot under the lock and runs the embedding/ranking afterwards without holding it. `AIModel::Embed` is assumed thread-safe per the `AIModel` contract (its only shared state is the embedding cache).
-
----
-
-## Usage
+## Example
 
 ```cpp
-#include "agent/ai_model_memory_backend.hpp"
-#include "agent/ai_model_llm_client.hpp"
-#include "ai_model/aimodel_vllm.hpp"   // requires AGENT_ENABLE_VLLM
-
-// One model powers both the LLM client and memory:
-auto shared_model = std::make_shared<AIModelVLLM>("http://localhost:8000", "my-model");
-auto llm = std::make_shared<agent::AIModelLLMClient>(*shared_model);
-auto mem = std::make_shared<agent::AIModelMemoryBackend>(*shared_model);
-
-AgentManager manager(config, llm, mem);
+AIModelVLLM model("http://localhost:8000", "llama-3.1-8b",
+                   /*api_key=*/"", "embed-model-v2");
+auto memory = std::make_shared<AIModelMemoryBackend>(model);
+auto mgr    = AgentManager(config, llm, memory);
 ```
 
-> The model must outlive both adapters. Hold it in a `shared_ptr` (as above) or use the owning `AIModelLLMClient(unique_ptr<AIModel>)` constructor for the LLM side and keep a separate owned model for memory.
-
-Agents then use it through the memory actions:
-
-```json
-{"name": "MemoryWriteAction", "id": "m1", "inputs": {"id": "note1", "content": "..."}}
-{"name": "MemoryReadAction",  "id": "m2", "inputs": {"query": "...", "top_k": 5}}
-```
-
-See [`actions.md`](actions.md).
-
----
-
-## Replaces
-
-| Stub | Replaced by |
-|---|---|
-| `NoOpMemoryBackend` (default) | `AIModelMemoryBackend` wrapping a real `AIModel` |
-
----
+After wiring, `MemoryWriteAction` / `MemoryReadAction` in agent plans use real semantic search.
 
 ## Related Components
 
-- [`AIModel`](ai_model.md) — supplies `Embed` / `Search`
-- [`AIModelLLMClient`](ai_model_llm_client.md) — sibling adapter; can share the same model
-- [`LLMClient & MemoryBackend`](llm_client.md) — the `MemoryBackend` interface implemented here
-- [`Actions`](actions.md) — `MemoryWriteAction`, `MemoryReadAction`, `MemoryListAction`
-- [`AgentContext`](agent.md) — exposes `memory()` to actions
+- [`MemoryBackend`](memory_backend.md) — the interface this class implements
+- [`AIModel`](ai_model.md) — the model hierarchy this class wraps
+- [`AIModelLLMClient`](ai_model_llm_client.md) — companion adapter for LLM calls
+- [`MemoryWriteAction`](memory_actions.md), [`MemoryReadAction`](memory_actions.md), [`MemoryListAction`](memory_actions.md) — action-layer consumers

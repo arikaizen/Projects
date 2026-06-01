@@ -1,77 +1,78 @@
 # ValidateStage
 
 `src/agent/stages/validate_stage.hpp` · `src/agent/stages/validate_stage.cpp`
-**Factory name:** `ValidateStage` · **Kind:** Stage · **Prompt:** `prompts/validate_stage.md` (+ corrective variants)
 
----
+## Overview
 
-## Purpose
+`ValidateStage` asks the LLM to evaluate a previous result against a set of criteria. It returns a `{"valid": bool, "reason": "..."}` response. Optionally, when validation fails, it makes a second LLM call to produce a corrective plan and injects those items at the front of the queue.
 
-LLM-powered validation of a previous result against stated `criteria`. Optionally, when validation fails, it asks the LLM for a **corrective plan** and injects those items at the front of the queue to self-heal.
+## Factory Registration
 
----
-
-## Inputs
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `target_id` | string | no | Id of the result to validate; defaults to the **last** result |
-| `criteria` | string | **yes** | Natural-language validation criteria |
-| `corrective_injection` | boolean | no (default `false`) | If `true` and invalid, inject corrective work items |
-
-```json
-{
-  "name": "ValidateStage", "id": "check1",
-  "inputs": {"target_id": "write1", "criteria": "Must be valid JSON with a 'name' field",
-             "corrective_injection": true}
-}
+```
+name:  "ValidateStage"
+kind:  Stage
 ```
 
----
+**Input schema:**
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `target_id` | string | No | ID of result to validate; defaults to the last result |
+| `criteria` | string | Yes | Validation criteria description for the LLM |
+| `corrective_injection` | boolean | No | If `true` and validation fails, inject corrective work items |
 
 ## Execution
 
-1. Locate the target (`resultById(target_id)` or `lastResult()`); throws if absent.
-2. Render the validation prompt. The loader tries `validate_stage` (or `validate_stage_corrective` when corrective injection is enabled) and **falls back** to the base `validate_stage` template if the variant file is missing.
-   - Placeholders: `{{TARGET_OUTPUT}}`, `{{CRITERIA}}`, plus `{{CATALOG}}` / `{{OUTPUT_SCHEMA}}` when corrective.
-3. Call the LLM in JSON mode (`temperature=0.2`, `max_tokens=2048`) expecting `{"valid": bool, "reason": "..."}`.
-4. If invalid **and** `corrective_injection` is true:
-   - Render a corrective-plan prompt (`validate_stage_corrective_plan`, with a fallback) including the failure `reason`.
-   - Ask the LLM for a JSON array corrective plan.
-   - Validate each item (registered name, unique id, satisfied `$ref` deps) and push to the **front** in reverse order.
+1. Locates the target result via `inputs["target_id"]` or `ctx.lastResult()`.
+2. Extracts `criteria` from inputs.
+3. Selects the prompt template:
+   - `validate_stage_corrective` when `corrective_injection=true` (falls back to `validate_stage` if not found on disk).
+   - `validate_stage` otherwise.
+4. Calls `ctx.llm().complete({..., json_mode=true, temperature=0.2, max_tokens=2048})`.
+5. Parses the response as `{"valid": bool, "reason": "..."}`.
+6. If `!valid && corrective_injection`:
+   - Makes a second LLM call requesting a corrective plan array.
+   - Validates the plan using the same rules as `ReasonStage`.
+   - Pushes valid corrective items to the **front** of the queue in reverse order.
+7. Returns `output = {"valid": bool, "reason": "..."}` regardless of the corrective path.
 
----
+## Output
 
-## Result Output
-
-```json
-{"valid": false, "reason": "Missing 'name' field"}
-```
-
-When corrective items are injected, a `corrective_injection` event is emitted (with the count and reason); the result output still reports `valid`/`reason`.
-
----
-
-## Prompt Templates Used
-
-| Template | When |
+| Field | Value |
 |---|---|
-| `validate_stage` | default validation; fallback for all variants |
-| `validate_stage_corrective` | validation when `corrective_injection=true` (optional) |
-| `validate_stage_corrective_plan` | generating the corrective plan (optional) |
+| `success` | `true` as long as the LLM calls and JSON parsing succeeded |
+| `output.valid` | `true` if the target result passes the criteria |
+| `output.reason` | The LLM's explanation |
 
-Missing optional templates degrade gracefully to `validate_stage`.
-
----
+Note: `success=true` even when `valid=false`. `success=false` only when the LLM call itself fails or returns unparseable JSON.
 
 ## Events Emitted
 
-`stage_start`, `stage_done`, `stage_error`, `validation_result` (target_id, valid, reason), `corrective_injection`.
+| Event type | When |
+|---|---|
+| `stage_start` | Before the first LLM call |
+| `stage_done` | After the stage completes |
+| `stage_error` | On LLM failure or bad response format |
+| `validation_result` | After parsing the validation response (includes `valid`, `reason`, `target_id`) |
+| `corrective_injection` | After successfully injecting corrective items |
 
----
+## Example
 
-## Related
+```json
+{
+  "name": "ValidateStage",
+  "id": "v1",
+  "inputs": {
+    "target_id": "bash1",
+    "criteria": "The command output must contain exactly one line starting with 'SUCCESS'",
+    "corrective_injection": true
+  }
+}
+```
 
-- [Stages overview](stages.md) · [ReasonStage](reason_stage.md) · [InjectionStage](injection_stage.md) · [TransformStage](transform_stage.md)
-- [AgentContext](agent_context.md) — target lookup, front-push
-- [WorkFactory](work_factory.md) · [PromptLoader](prompt_loader.md) · [LLMClient](llm_client.md)
+## Related Components
+
+- [`Stage`](stage.md) / [`stages.md`](stages.md) — base class and overview
+- [`InjectionStage`](injection_stage.md) — similar corrective injection logic
+- [`PromptLoader`](prompt_loader.md) — renders `validate_stage.md` (and optional `validate_stage_corrective`)
+- [`LLMClient`](llm_client.md) — two LLM calls when `corrective_injection=true`

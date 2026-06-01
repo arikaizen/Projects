@@ -1,6 +1,6 @@
 # Component Reference
 
-Detailed documentation — **one file per component** in the agent engine.
+One file per component in the agent engine. All docs are generated from source.
 
 ## Core Orchestration
 
@@ -29,7 +29,7 @@ Detailed documentation — **one file per component** in the agent engine.
 | InjectionStage | [injection_stage.md](injection_stage.md) |
 | TransformStage | [transform_stage.md](transform_stage.md) |
 | ValidateStage | [validate_stage.md](validate_stage.md) |
-| _overview_ | [stages.md](stages.md) |
+| Overview | [stages.md](stages.md) |
 
 ### Actions (`src/agent/actions/`)
 
@@ -49,7 +49,7 @@ Detailed documentation — **one file per component** in the agent engine.
 | Blackboard actions | [blackboard_actions.md](blackboard_actions.md) |
 | Memory actions | [memory_actions.md](memory_actions.md) |
 | MCPToolAction | [mcp_tool_action.md](mcp_tool_action.md) |
-| _overview_ | [actions.md](actions.md) |
+| Overview | [actions.md](actions.md) |
 
 ## Infrastructure
 
@@ -89,8 +89,6 @@ L2: Dedicated std::thread     — one per Agent loop
 L3: ThreadPool                — shared pool used only by BatchExecutor
 L4: fan-out futures           — AgentManager::fanOut / am_fan_out
 ```
-
-See [concurrency.md](../concurrency.md).
 
 ## Multi-Agent Patterns
 

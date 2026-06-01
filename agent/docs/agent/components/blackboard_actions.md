@@ -1,75 +1,116 @@
 # Blackboard Actions
 
 `src/agent/actions/blackboard_actions.hpp` · `src/agent/actions/blackboard_actions.cpp`
-**Kind:** Action · **Pattern:** C (shared key-value state)
-Registered by `registerBlackboardActions(factory)`.
 
-Three actions expose the shared [`Blackboard`](blackboard.md) to agent plans.
+## Overview
+
+The blackboard actions implement **Pattern C** (shared state). They provide read/write/list access to the `Blackboard` — a thread-safe, shared key-value store accessible by all agents under the same `AgentManager`. Three action types are provided.
 
 ---
 
 ## BlackboardWriteAction
 
-**Factory name:** `BlackboardWriteAction`
+Writes a JSON value under a key.
 
-### Inputs
+### Factory Registration
 
-| Field | Type | Required | Description |
+```
+name:  "BlackboardWriteAction"
+kind:  Action
+```
+
+### Input Schema
+
+| Input | Type | Required | Description |
 |---|---|---|---|
-| `key` | string | **yes** | Blackboard key |
-| `value` | any JSON | **yes** | Value to store |
+| `key` | string | Yes | Blackboard key |
+| `value` | any | Yes | Arbitrary JSON value to store |
 
 ### Output
 
-```json
-{"key": "research.summary", "written": true}
-```
+| Field | Value |
+|---|---|
+| `success` | `true` if written |
+| `output.key` | The key |
+| `output.written` | `true` |
 
 ---
 
 ## BlackboardReadAction
 
-**Factory name:** `BlackboardReadAction`
+Reads a value from the blackboard by key.
 
-### Inputs
+### Factory Registration
 
-| Field | Type | Required | Description |
+```
+name:  "BlackboardReadAction"
+kind:  Action
+```
+
+### Input Schema
+
+| Input | Type | Required | Description |
 |---|---|---|---|
-| `key` | string | **yes** | Key to read |
+| `key` | string | Yes | Blackboard key to read |
 
 ### Output
 
-```json
-{"key": "research.summary", "value": {...}, "found": true}
-```
-When the key is absent: `{"key": "...", "found": false}`.
+| Field | Value |
+|---|---|
+| `success` | `true` if key exists, `false` if not found |
+| `output.key` | The key |
+| `output.value` | The stored JSON value (only when `found=true`) |
+| `output.found` | `true` or `false` |
+| `error` | `"Key not found: <key>"` when not found |
 
 ---
 
 ## BlackboardListAction
 
-**Factory name:** `BlackboardListAction`
+Lists all blackboard keys, optionally filtered by prefix.
 
-### Inputs
+### Factory Registration
 
-| Field | Type | Required | Description |
+```
+name:  "BlackboardListAction"
+kind:  Action
+```
+
+### Input Schema
+
+| Input | Type | Required | Description |
 |---|---|---|---|
-| `prefix` | string | no | Optional key-prefix filter |
+| `prefix` | string | No | Filter keys to those starting with this prefix |
 
 ### Output
 
-```json
-{"keys": ["research.summary", "research.sources"]}
-```
+| Field | Value |
+|---|---|
+| `success` | `true` |
+| `output.keys` | JSON array of matching key strings |
 
 ---
 
-## Thread-Safety
+## Pattern C Flow
 
-All three delegate to `Blackboard`, whose operations hold an internal mutex — safe under concurrent agent access.
+```
+Agent A                        Agent B
+  ↓                              ↓
+BlackboardWriteAction         BlackboardReadAction
+  → Blackboard::write(k,v)   ← Blackboard::read(k)
+        ↓                            ↑
+    shared Blackboard  ─────────────
+```
 
-## Related
+The blackboard emits a `blackboard_updated` event on `EventBus` after each write.
 
-- [Actions overview](actions.md) · [Blackboard](blackboard.md) — the store
-- [AgentManager](agent_manager.md) — `blackboardWrite/Read/Keys/Delete`
-- [Messaging actions](messaging_actions.md) — Pattern B alternative
+## Notes
+
+- Blackboard access is available from any agent via `ctx.blackboard()`.
+- These actions require `ctx.blackboard() != nullptr`, which is always true when an agent is spawned through `AgentManager`.
+
+## Related Components
+
+- [`Action`](action.md) — base class
+- [`Blackboard`](blackboard.md) — the shared store these actions operate on
+- [`AgentContext`](agent_context.md) — `ctx.blackboard()` accessor
