@@ -25,6 +25,7 @@
 //   merge loop after all items are done — never by multiple threads at once.
 #include "agent/batch_executor.hpp"
 #include "agent/agent_context.hpp"
+#include "agent/agent_logger.hpp"
 #include "agent/event_bus.hpp"
 #include "agent/work_item.hpp"
 
@@ -245,6 +246,12 @@ std::vector<WorkResult> BatchExecutor::execute(
         r.item_name       = raw_item->name;
         r.item_kind       = (raw_item->kind() == WorkItem::Kind::Stage) ? "Stage" : "Action";
         r.ran_in_parallel = parallel;
+
+        const bool is_action = (raw_item->kind() == WorkItem::Kind::Action);
+        if (is_action && ctx.logger())
+            ctx.logger()->actionStart(ctx.config().agent_id,
+                                      raw_item->name, raw_item->id, raw_item->inputs);
+
         try {
             r = raw_item->execute(ctx);
         } catch (const std::exception& ex) {
@@ -261,6 +268,11 @@ std::vector<WorkResult> BatchExecutor::execute(
         r.duration        = std::chrono::duration_cast<std::chrono::milliseconds>(
                                 std::chrono::steady_clock::now() - start);
         r.timestamp       = std::chrono::system_clock::now();
+
+        if (is_action && ctx.logger())
+            ctx.logger()->actionDone(ctx.config().agent_id,
+                                     r.item_name, r.item_id, r.success,
+                                     r.output, r.duration.count(), r.error);
         return r;
     };
 

@@ -2,6 +2,7 @@
 #include "agent/agent_context.hpp"
 #include "agent/work_factory.hpp"
 #include "agent/event_bus.hpp"
+#include "agent/agent_logger.hpp"
 #include <chrono>
 #include <iostream>
 #include <map>
@@ -48,6 +49,8 @@ WorkResult ReplayStage::execute(AgentContext& ctx) {
 
     if (auto* bus = ctx.eventBus())
         bus->emit(EventBus::makeEvent("stage_start", {{"stage", name}, {"id", id}}));
+    if (auto* logger = ctx.logger())
+        logger->stageStart(ctx.config().agent_id, name, id, inputs);
 
     try {
         nlohmann::json steps = inputs.value("steps", nlohmann::json::array());

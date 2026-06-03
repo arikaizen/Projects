@@ -3,6 +3,7 @@
 #include "agent/work_factory.hpp"
 #include "agent/prompt_loader.hpp"
 #include "agent/event_bus.hpp"
+#include "agent/agent_logger.hpp"
 #include <chrono>
 #include <iostream>
 #include <set>
@@ -40,6 +41,8 @@ WorkResult ReasonStage::execute(AgentContext& ctx) {
     if (auto* bus = ctx.eventBus()) {
         bus->emit(EventBus::makeEvent("stage_start", {{"stage", name}, {"id", id}}));
     }
+    if (auto* logger = ctx.logger())
+        logger->stageStart(ctx.config().agent_id, name, id, inputs);
 
     try {
         // Gather template variables
@@ -61,7 +64,7 @@ WorkResult ReasonStage::execute(AgentContext& ctx) {
         std::string user_msg = "Based on the current state, produce your plan now.";
 
         std::cerr << "[STAGE] ReasonStage(" << id << ") calling LLM\n";
-        auto resp = ctx.llm().complete({system_prompt, user_msg, /*json_mode=*/true, 0.3f, 4096});
+        auto resp = llmComplete(ctx, {system_prompt, user_msg, /*json_mode=*/true, 0.3f, 4096});
         if (!resp.success) {
             result.success = false;
             result.error   = "LLM call failed: " + resp.error;
@@ -131,6 +134,8 @@ WorkResult ReasonStage::execute(AgentContext& ctx) {
         // Save raw plan to blackboard so ObserveStage can persist it to PlanCache on success
         if (auto* bb = ctx.blackboard())
             bb->write("agent:last_plan", parsed);
+        if (auto* logger = ctx.logger())
+            logger->planPushed(ctx.config().agent_id, name, id, parsed);
 
         std::cerr << "[STAGE] ReasonStage(" << id << ") pushed " << parsed.size() << " plan item(s)\n";
         result.success = true;
@@ -147,6 +152,9 @@ WorkResult ReasonStage::execute(AgentContext& ctx) {
 
     result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start);
+    if (auto* logger = ctx.logger())
+        logger->stageDone(ctx.config().agent_id, name, id, result.success,
+                          result.output, result.duration.count(), result.error);
 
     if (auto* bus = ctx.eventBus()) {
         bus->emit(EventBus::makeEvent("stage_done", {

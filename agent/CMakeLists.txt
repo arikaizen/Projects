@@ -63,6 +63,8 @@ set(AGENT_CORE_SOURCES
     src/agent/agent.cpp
     src/agent/agent_manager.cpp
     src/agent/plan_cache.cpp
+    src/agent/agent_logger.cpp
+    src/agent/stage.cpp
     src/agent/stages/understand_stage.cpp
     src/agent/stages/orient_stage.cpp
     src/agent/stages/locate_stage.cpp

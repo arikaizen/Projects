@@ -3,6 +3,7 @@
 #include "agent/work_factory.hpp"
 #include "agent/prompt_loader.hpp"
 #include "agent/event_bus.hpp"
+#include "agent/agent_logger.hpp"
 #include <chrono>
 #include <iostream>
 
@@ -22,6 +23,8 @@ WorkResult RespondStage::execute(AgentContext& ctx) {
     if (auto* bus = ctx.eventBus()) {
         bus->emit(EventBus::makeEvent("stage_start", {{"stage", name}, {"id", id}}));
     }
+    if (auto* logger = ctx.logger())
+        logger->stageStart(ctx.config().agent_id, name, id, inputs);
 
     try {
         std::string task    = ctx.config().task;
@@ -43,7 +46,7 @@ WorkResult RespondStage::execute(AgentContext& ctx) {
         std::string user_msg = "Compose the final response to the user now.";
 
         std::cerr << "[STAGE] RespondStage(" << id << ") calling LLM\n";
-        auto resp = ctx.llm().complete({system_prompt, user_msg, /*json_mode=*/true, 0.3f, 4096});
+        auto resp = llmComplete(ctx, {system_prompt, user_msg, /*json_mode=*/true, 0.3f, 4096});
         if (!resp.success) {
             result.success = false;
             result.error   = "LLM call failed: " + resp.error;
@@ -65,6 +68,8 @@ WorkResult RespondStage::execute(AgentContext& ctx) {
 
         ctx.should_stop  = true;
         ctx.final_output = {{"answer", answer}};
+        if (auto* logger = ctx.logger())
+            logger->finalAnswer(ctx.config().agent_id, ctx.final_output, ctx.iteration_count);
 
         result.success = true;
         result.output  = ctx.final_output;

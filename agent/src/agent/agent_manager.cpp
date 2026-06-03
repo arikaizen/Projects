@@ -81,11 +81,13 @@ AgentManager::AgentManager(Config                         config,
                           static_cast<std::size_t>(m_config.thread_pool_size)))
     , m_quota        (std::make_shared<QuotaManager>())
     , m_plan_cache   (std::make_unique<PlanCache>(m_config.cache_dir))
+    , m_agent_logger (std::make_unique<AgentLogger>(m_config.log_dir))
 {
     registerBuiltinItems();
     std::cerr << "[AgentManager] initialised (pool=" << m_config.thread_pool_size
               << ", prompts=" << m_config.prompts_dir.string()
-              << ", cache=" << m_config.cache_dir.string() << ")\n";
+              << ", cache=" << m_config.cache_dir.string()
+              << ", logs=" << m_config.log_dir.string() << ")\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +169,8 @@ std::unique_ptr<AgentContext> AgentManager::makeContext(const AgentEntry& entry)
         entry.inbox.get(),
         m_event_bus.get(),
         this,
-        m_plan_cache.get());
+        m_plan_cache.get(),
+        m_agent_logger.get());
 }
 
 // ---------------------------------------------------------------------------

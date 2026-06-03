@@ -3,6 +3,7 @@
 #include "agent/work_factory.hpp"
 #include "agent/prompt_loader.hpp"
 #include "agent/event_bus.hpp"
+#include "agent/agent_logger.hpp"
 #include <chrono>
 #include <iostream>
 #include <set>
@@ -37,6 +38,8 @@ WorkResult PlanAdaptStage::execute(AgentContext& ctx) {
 
     if (auto* bus = ctx.eventBus())
         bus->emit(EventBus::makeEvent("stage_start", {{"stage", name}, {"id", id}}));
+    if (auto* logger = ctx.logger())
+        logger->stageStart(ctx.config().agent_id, name, id, inputs);
 
     try {
         std::string task = ctx.config().task;
@@ -57,7 +60,7 @@ WorkResult PlanAdaptStage::execute(AgentContext& ctx) {
         std::string user_msg = "Produce the adapted plan now.";
 
         std::cerr << "[STAGE] PlanAdaptStage(" << id << ") calling LLM\n";
-        auto resp = ctx.llm().complete({system_prompt, user_msg, /*json_mode=*/true, 0.3f, 4096});
+        auto resp = llmComplete(ctx, {system_prompt, user_msg, /*json_mode=*/true, 0.3f, 4096});
         if (!resp.success) {
             result.success = false;
             result.error   = "LLM call failed: " + resp.error;

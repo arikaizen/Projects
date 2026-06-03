@@ -21,6 +21,7 @@ namespace agent {
 
 class AgentManager;  // forward declaration
 class PlanCache;     // forward declaration
+class AgentLogger;   // forward declaration
 
 struct AgentConfig {
     std::string    agent_id;
@@ -46,7 +47,8 @@ public:
         MessageInbox*                  inbox,
         EventBus*                      event_bus,
         AgentManager*                  manager,
-        PlanCache*                     plan_cache = nullptr);
+        PlanCache*                     plan_cache  = nullptr,
+        AgentLogger*                   agent_logger = nullptr);
 
     // ── Queue ────────────────────────────────────────────────────────────────
 
@@ -116,6 +118,7 @@ public:
     EventBus*          eventBus()            { return m_event_bus; }
     AgentManager*      manager()             { return m_manager; }
     PlanCache*         planCache()           { return m_plan_cache; }
+    AgentLogger*       logger()              { return m_agent_logger; }
 
     // ── Per-agent todo list ──────────────────────────────────────────────────
 
@@ -132,6 +135,7 @@ private:
     EventBus*                      m_event_bus;
     AgentManager*                  m_manager;
     PlanCache*                     m_plan_cache;
+    AgentLogger*                   m_agent_logger;
 
     mutable std::mutex              m_queue_mutex;
     std::condition_variable         m_queue_cv;

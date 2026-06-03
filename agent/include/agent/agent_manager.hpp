@@ -1,6 +1,7 @@
 #pragma once
 #include "agent.hpp"
 #include "agent_context.hpp"
+#include "agent_logger.hpp"
 #include "blackboard.hpp"
 #include "event_bus.hpp"
 #include "llm_client.hpp"
@@ -42,6 +43,7 @@ public:
     struct Config {
         std::filesystem::path prompts_dir{"./prompts"};
         std::filesystem::path cache_dir{"./agent_cache"};
+        std::filesystem::path log_dir{"./agent_logs"};
         int                   thread_pool_size{16};
         int                   max_agent_depth{3};
         std::string           default_user_id{"default"};
@@ -141,6 +143,7 @@ private:
     std::shared_ptr<ThreadPool>    m_pool;
     std::shared_ptr<QuotaManager>  m_quota;
     std::unique_ptr<PlanCache>     m_plan_cache;
+    std::unique_ptr<AgentLogger>   m_agent_logger;
 
     // ── Agent registry ───────────────────────────────────────────────────────
     struct AgentEntry {

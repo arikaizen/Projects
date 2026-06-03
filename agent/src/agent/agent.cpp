@@ -15,6 +15,7 @@
 // same batch if they arrive before step 3.
 #include "agent/agent.hpp"
 #include "agent/agent_context.hpp"
+#include "agent/agent_logger.hpp"
 #include "agent/batch_executor.hpp"
 #include "agent/event_bus.hpp"
 
@@ -55,7 +56,10 @@ Agent::RunResult Agent::run()
     AgentContext& ctx = *m_ctx;
     const std::string agent_id = ctx.config().agent_id;
 
-    std::cerr << "[AGENT] " << agent_id << " starting\n";
+    if (ctx.logger())
+        ctx.logger()->agentStart(agent_id, ctx.config().task);
+    else
+        std::cerr << "[AGENT] " << agent_id << " starting\n";
 
     if (ctx.eventBus()) {
         ctx.eventBus()->emit(EventBus::makeEvent("agent_started",
@@ -116,7 +120,10 @@ Agent::RunResult Agent::run()
                                  "cancelled"};
             }
             // Normal queue-empty termination
-            std::cerr << "[AGENT] " << agent_id << " queue empty, finishing\n";
+            if (ctx.logger())
+                ctx.logger()->agentDone(agent_id, "queue_empty", ctx.final_output, ctx.iteration_count);
+            else
+                std::cerr << "[AGENT] " << agent_id << " queue empty, finishing\n";
             if (ctx.eventBus()) {
                 ctx.eventBus()->emit(EventBus::makeEvent("agent_finished",
                                      {{"agent_id", agent_id},
@@ -170,9 +177,15 @@ Agent::RunResult Agent::run()
         }
 
         if (!plan_batch.empty()) {
-            std::cerr << "[AGENT] " << agent_id
-                      << " executing plan batch of " << plan_batch.size()
-                      << " items\n";
+            if (ctx.logger()) {
+                std::vector<std::string> ids;
+                for (const auto& item : plan_batch) ids.push_back(item->name + "/" + item->id);
+                ctx.logger()->batchStart(agent_id, static_cast<int>(plan_batch.size()),
+                                         "plan", ids);
+            } else {
+                std::cerr << "[AGENT] " << agent_id
+                          << " executing plan batch of " << plan_batch.size() << " items\n";
+            }
 
             if (ctx.eventBus()) {
                 ctx.eventBus()->emit(EventBus::makeEvent("batch_started",

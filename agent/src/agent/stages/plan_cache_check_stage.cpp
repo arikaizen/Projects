@@ -4,6 +4,7 @@
 #include "agent/work_factory.hpp"
 #include "agent/prompt_loader.hpp"
 #include "agent/event_bus.hpp"
+#include "agent/agent_logger.hpp"
 #include <chrono>
 #include <iostream>
 
@@ -36,6 +37,8 @@ WorkResult PlanCacheCheckStage::execute(AgentContext& ctx) {
 
     if (auto* bus = ctx.eventBus())
         bus->emit(EventBus::makeEvent("stage_start", {{"stage", name}, {"id", id}}));
+    if (auto* logger = ctx.logger())
+        logger->stageStart(ctx.config().agent_id, name, id, inputs);
 
     auto done = [&](bool success, const std::string& err = {}) {
         result.success  = success;
@@ -113,7 +116,7 @@ WorkResult PlanCacheCheckStage::execute(AgentContext& ctx) {
         std::string user_msg = "Compare the current task against the cached run and classify.";
 
         std::cerr << "[STAGE] PlanCacheCheckStage(" << id << ") calling LLM for task diff\n";
-        auto resp = ctx.llm().complete({system_prompt, user_msg, /*json_mode=*/true, 0.1f, 512});
+        auto resp = llmComplete(ctx, {system_prompt, user_msg, /*json_mode=*/true, 0.1f, 512});
         if (!resp.success) {
             // LLM failed — default to fresh start, not an error
             std::cerr << "[STAGE] PlanCacheCheckStage LLM failed — defaulting to fresh start\n";

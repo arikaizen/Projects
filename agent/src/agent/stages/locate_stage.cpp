@@ -3,6 +3,7 @@
 #include "agent/work_factory.hpp"
 #include "agent/prompt_loader.hpp"
 #include "agent/event_bus.hpp"
+#include "agent/agent_logger.hpp"
 #include <chrono>
 #include <iostream>
 #include <set>
@@ -43,6 +44,8 @@ WorkResult LocateStage::execute(AgentContext& ctx) {
     if (auto* bus = ctx.eventBus()) {
         bus->emit(EventBus::makeEvent("stage_start", {{"stage", name}, {"id", id}}));
     }
+    if (auto* logger = ctx.logger())
+        logger->stageStart(ctx.config().agent_id, name, id, inputs);
 
     try {
         std::string task = ctx.config().task;
@@ -65,7 +68,7 @@ WorkResult LocateStage::execute(AgentContext& ctx) {
         std::string user_msg = "Identify the resources to locate and return the action plan now.";
 
         std::cerr << "[STAGE] LocateStage(" << id << ") calling LLM\n";
-        auto resp = ctx.llm().complete({system_prompt, user_msg, /*json_mode=*/true, 0.2f, 2048});
+        auto resp = llmComplete(ctx, {system_prompt, user_msg, /*json_mode=*/true, 0.2f, 2048});
         if (!resp.success) {
             result.success = false;
             result.error   = "LLM call failed: " + resp.error;
@@ -154,6 +157,9 @@ WorkResult LocateStage::execute(AgentContext& ctx) {
 
     result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start);
+    if (auto* logger = ctx.logger())
+        logger->stageDone(ctx.config().agent_id, name, id, result.success,
+                          result.output, result.duration.count(), result.error);
     if (auto* bus = ctx.eventBus()) {
         bus->emit(EventBus::makeEvent("stage_done", {
             {"stage", name}, {"id", id}, {"success", result.success}

@@ -3,6 +3,7 @@
 #include "agent/work_factory.hpp"
 #include "agent/prompt_loader.hpp"
 #include "agent/event_bus.hpp"
+#include "agent/agent_logger.hpp"
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
@@ -23,6 +24,8 @@ WorkResult TransformStage::execute(AgentContext& ctx) {
     if (auto* bus = ctx.eventBus()) {
         bus->emit(EventBus::makeEvent("stage_start", {{"stage", name}, {"id", id}}));
     }
+    if (auto* logger = ctx.logger())
+        logger->stageStart(ctx.config().agent_id, name, id, inputs);
 
     try {
         // Resolve $ref values in inputs before extracting fields
@@ -48,7 +51,7 @@ WorkResult TransformStage::execute(AgentContext& ctx) {
         std::cerr << "[STAGE] TransformStage(" << id << ") calling LLM\n";
 
         // Free-text output: json_mode = false
-        auto resp = ctx.llm().complete({system_prompt, user_msg, /*json_mode=*/false, 0.5f, 4096});
+        auto resp = llmComplete(ctx, {system_prompt, user_msg, /*json_mode=*/false, 0.5f, 4096});
         if (!resp.success) {
             result.success = false;
             result.error   = "LLM call failed: " + resp.error;
