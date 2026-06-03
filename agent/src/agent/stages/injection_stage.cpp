@@ -183,6 +183,9 @@ WorkResult InjectionStage::execute(AgentContext& ctx) {
 
     result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start);
+    if (auto* logger = ctx.logger())
+        logger->stageDone(ctx.config().agent_id, name, id, result.success,
+                          result.output, result.duration.count(), result.error);
 
     if (auto* bus = ctx.eventBus()) {
         bus->emit(EventBus::makeEvent("stage_done", {

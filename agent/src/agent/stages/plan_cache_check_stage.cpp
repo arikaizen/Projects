@@ -68,6 +68,8 @@ WorkResult PlanCacheCheckStage::execute(AgentContext& ctx) {
                 ctx.push(std::move(s), AgentContext::Position::Back);
             }
             result.output = {{"route", "fresh"}, {"reason", "no cache backend"}};
+            if (auto* logger = ctx.logger())
+                logger->cacheEvent(ctx.config().agent_id, "miss", {{"reason", "no cache backend"}});
             done(true);
             return result;
         }
@@ -83,6 +85,8 @@ WorkResult PlanCacheCheckStage::execute(AgentContext& ctx) {
                 ctx.push(std::move(s), AgentContext::Position::Back);
             }
             result.output = {{"route", "fresh"}, {"reason", "no cached plan"}};
+            if (auto* logger = ctx.logger())
+                logger->cacheEvent(ctx.config().agent_id, "miss", {{"reason", "no_cached_plan"}});
             done(true);
             return result;
         }
@@ -99,6 +103,8 @@ WorkResult PlanCacheCheckStage::execute(AgentContext& ctx) {
             }
             result.output = {{"route", "replay"}, {"reason", "exact task match"},
                              {"run_count", cached->run_count}};
+            if (auto* logger = ctx.logger())
+                logger->cacheEvent(ctx.config().agent_id, "replay", {{"reason", "exact_match"}});
             done(true);
             return result;
         }
@@ -173,6 +179,8 @@ WorkResult PlanCacheCheckStage::execute(AgentContext& ctx) {
             result.output = {{"route", "fresh"}, {"reason", reason}};
         }
 
+        if (auto* logger = ctx.logger())
+            logger->cacheEvent(ctx.config().agent_id, match, {{"reason", reason}});
         done(true);
 
     } catch (const std::exception& e) {
