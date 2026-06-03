@@ -85,6 +85,10 @@ private:
     // Truncate a string to max_len chars for stderr, appending "…" if cut.
     static std::string trunc(const std::string& s, size_t max_len = 300);
 
+    // Print multi-line content as an indented block to stderr.
+    void printBlock(const std::string& agent_id, const std::string& header,
+                    const std::string& content, const std::string& indent = "    ");
+
     std::filesystem::path                m_log_dir;
     mutable std::mutex                   m_mutex;
     std::map<std::string, std::ofstream> m_streams;

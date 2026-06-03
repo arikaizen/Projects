@@ -100,14 +100,28 @@ std::string AgentLogger::trunc(const std::string& s, size_t max_len)
     return s.substr(0, max_len) + "…";
 }
 
+// Print multi-line content with per-line prefix+indent, used for LLM blocks.
+void AgentLogger::printBlock(const std::string& agent_id,
+                              const std::string& header,
+                              const std::string& content,
+                              const std::string& indent)
+{
+    std::cerr << prefix(agent_id) << indent << header << "\n";
+    std::istringstream ss(content);
+    std::string line;
+    while (std::getline(ss, line))
+        std::cerr << prefix(agent_id) << indent << "│ " << line << "\n";
+    std::cerr << prefix(agent_id) << indent << "└─\n";
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Agent lifecycle
 // ─────────────────────────────────────────────────────────────────────────────
 
 void AgentLogger::agentStart(const std::string& agent_id, const std::string& task)
 {
-    std::cerr << prefix(agent_id) << "═══ AGENT START ═══\n"
-              << prefix(agent_id) << "  task: " << trunc(task, 200) << "\n";
+    std::cerr << prefix(agent_id) << "═══ AGENT START ═══\n";
+    printBlock(agent_id, "task:", task, "  ");
     writeEntry(agent_id, {{"event","agent_start"},{"task",task}});
 }
 
@@ -148,8 +162,14 @@ void AgentLogger::stageStart(const std::string& agent_id, const std::string& sta
 {
     std::cerr << prefix(agent_id) << "─── Stage: " << stage_name
               << " (" << stage_id << ")\n";
-    if (!inputs.is_null() && !inputs.empty())
-        std::cerr << prefix(agent_id) << "    inputs: " << trunc(inputs.dump()) << "\n";
+    if (!inputs.is_null() && !inputs.empty()) {
+        std::string inp_str = inputs.dump(2);
+        std::istringstream ss(inp_str);
+        std::string line;
+        std::cerr << prefix(agent_id) << "    inputs:\n";
+        while (std::getline(ss, line))
+            std::cerr << prefix(agent_id) << "      " << line << "\n";
+    }
     writeEntry(agent_id, {{"event","stage_start"},{"stage",stage_name},
                           {"stage_id",stage_id},{"inputs",inputs}});
 }
@@ -161,10 +181,17 @@ void AgentLogger::stageDone(const std::string& agent_id, const std::string& stag
 {
     std::string mark = success ? "✓" : "✗";
     std::cerr << prefix(agent_id) << "─── Stage DONE: " << stage_name
-              << " " << mark << " (" << duration_ms << "ms)";
+              << " " << mark << " (" << duration_ms << "ms)\n";
+    if (success && !output.is_null() && !output.empty()) {
+        std::string out_str = output.dump(2);
+        std::istringstream ss(out_str);
+        std::string line;
+        std::cerr << prefix(agent_id) << "    output:\n";
+        while (std::getline(ss, line))
+            std::cerr << prefix(agent_id) << "      " << line << "\n";
+    }
     if (!success && !error.empty())
-        std::cerr << " — " << trunc(error, 120);
-    std::cerr << "\n";
+        std::cerr << prefix(agent_id) << "    error: " << error << "\n";
     writeEntry(agent_id, {{"event","stage_done"},{"stage",stage_name},
                           {"stage_id",stage_id},{"success",success},
                           {"output",output},{"duration_ms",duration_ms},
@@ -180,12 +207,15 @@ void AgentLogger::llmCall(const std::string& agent_id, const std::string& stage_
                            const std::string& user_msg, bool json_mode,
                            float temperature, int max_tokens)
 {
-    std::cerr << prefix(agent_id) << "    LLM CALL [" << stage_name << "]"
+    std::cerr << prefix(agent_id) << "    ┌── LLM CALL [" << stage_name << "]"
               << " temp=" << temperature << " max_tokens=" << max_tokens
-              << (json_mode ? " json_mode" : "") << "\n"
-              << prefix(agent_id) << "    SYSTEM (" << system_prompt.size() << " chars): "
-              << trunc(system_prompt, 400) << "\n"
-              << prefix(agent_id) << "    USER: " << trunc(user_msg, 200) << "\n";
+              << (json_mode ? " json_mode" : "") << "\n";
+    printBlock(agent_id,
+               "SYSTEM PROMPT (" + std::to_string(system_prompt.size()) + " chars):",
+               system_prompt, "    ");
+    printBlock(agent_id,
+               "USER (" + std::to_string(user_msg.size()) + " chars):",
+               user_msg, "    ");
     writeEntry(agent_id, {{"event","llm_call"},{"stage",stage_name},{"stage_id",stage_id},
                           {"system_prompt",system_prompt},{"user_msg",user_msg},
                           {"json_mode",json_mode},{"temperature",temperature},
@@ -197,10 +227,11 @@ void AgentLogger::llmResponse(const std::string& agent_id, const std::string& st
                                bool success, const std::string& error)
 {
     if (success) {
-        std::cerr << prefix(agent_id) << "    LLM RESPONSE ✓ (" << content.size() << " chars):\n"
-                  << prefix(agent_id) << "      " << trunc(content, 500) << "\n";
+        printBlock(agent_id,
+                   "LLM RESPONSE ✓ (" + std::to_string(content.size()) + " chars):",
+                   content, "    ");
     } else {
-        std::cerr << prefix(agent_id) << "    LLM RESPONSE ✗: " << trunc(error, 200) << "\n";
+        std::cerr << prefix(agent_id) << "    LLM RESPONSE ✗: " << error << "\n";
     }
     writeEntry(agent_id, {{"event","llm_response"},{"stage",stage_name},{"stage_id",stage_id},
                           {"content",content},{"success",success},{"error",error}});
@@ -213,14 +244,20 @@ void AgentLogger::llmResponse(const std::string& agent_id, const std::string& st
 void AgentLogger::planPushed(const std::string& agent_id, const std::string& stage_name,
                               const std::string& stage_id, const nlohmann::json& plan)
 {
-    std::cerr << prefix(agent_id) << "    PLAN: " << plan.size() << " item(s)\n";
+    std::cerr << prefix(agent_id) << "    PLAN (" << plan.size() << " item(s)):\n";
     if (plan.is_array()) {
         for (size_t i = 0; i < plan.size(); ++i) {
             std::string iname = plan[i].value("name", std::string("?"));
             std::string iid   = plan[i].value("id",   std::string("?"));
-            std::string inp   = plan[i].value("inputs", nlohmann::json::object()).dump();
-            std::cerr << prefix(agent_id) << "      [" << i << "] " << iname << "/" << iid
-                      << " inputs=" << trunc(inp, 150) << "\n";
+            nlohmann::json inp = plan[i].value("inputs", nlohmann::json::object());
+            std::cerr << prefix(agent_id) << "      [" << i << "] " << iname << " (id=" << iid << ")\n";
+            if (!inp.empty()) {
+                std::string inp_str = inp.dump(2);
+                std::istringstream ss(inp_str);
+                std::string line;
+                while (std::getline(ss, line))
+                    std::cerr << prefix(agent_id) << "           " << line << "\n";
+            }
         }
     }
     writeEntry(agent_id, {{"event","plan_pushed"},{"stage",stage_name},
@@ -235,8 +272,15 @@ void AgentLogger::actionStart(const std::string& agent_id, const std::string& ac
                                const std::string& action_id, const nlohmann::json& resolved_inputs)
 {
     std::cerr << prefix(agent_id) << "─── Action: " << action_name
-              << " (" << action_id << ")\n"
-              << prefix(agent_id) << "    inputs: " << trunc(resolved_inputs.dump(), 300) << "\n";
+              << " (" << action_id << ")\n";
+    if (!resolved_inputs.is_null() && !resolved_inputs.empty()) {
+        std::string inp_str = resolved_inputs.dump(2);
+        std::istringstream ss(inp_str);
+        std::string line;
+        std::cerr << prefix(agent_id) << "    inputs:\n";
+        while (std::getline(ss, line))
+            std::cerr << prefix(agent_id) << "      " << line << "\n";
+    }
     writeEntry(agent_id, {{"event","action_start"},{"action",action_name},
                           {"action_id",action_id},{"inputs",resolved_inputs}});
 }
@@ -249,10 +293,16 @@ void AgentLogger::actionDone(const std::string& agent_id, const std::string& act
     std::string mark = success ? "✓" : "✗";
     std::cerr << prefix(agent_id) << "─── Action DONE: " << action_name
               << " " << mark << " (" << duration_ms << "ms)\n";
-    if (success)
-        std::cerr << prefix(agent_id) << "    output: " << trunc(output.dump(), 400) << "\n";
-    else
-        std::cerr << prefix(agent_id) << "    error: " << trunc(error, 200) << "\n";
+    if (success && !output.is_null() && !output.empty()) {
+        std::string out_str = output.dump(2);
+        std::istringstream ss(out_str);
+        std::string line;
+        std::cerr << prefix(agent_id) << "    output:\n";
+        while (std::getline(ss, line))
+            std::cerr << prefix(agent_id) << "      " << line << "\n";
+    }
+    if (!success)
+        std::cerr << prefix(agent_id) << "    error: " << error << "\n";
     writeEntry(agent_id, {{"event","action_done"},{"action",action_name},
                           {"action_id",action_id},{"success",success},
                           {"output",output},{"duration_ms",duration_ms},{"error",error}});
@@ -265,8 +315,12 @@ void AgentLogger::actionDone(const std::string& agent_id, const std::string& act
 void AgentLogger::blackboardWrite(const std::string& agent_id, const std::string& stage_name,
                                    const std::string& key, const nlohmann::json& value)
 {
-    std::cerr << prefix(agent_id) << "    BLACKBOARD[" << key << "] = "
-              << trunc(value.dump(), 200) << "\n";
+    std::string val_str = value.is_string() ? value.get<std::string>() : value.dump(2);
+    std::istringstream ss(val_str);
+    std::string line;
+    std::cerr << prefix(agent_id) << "    BLACKBOARD[" << key << "]:\n";
+    while (std::getline(ss, line))
+        std::cerr << prefix(agent_id) << "      " << line << "\n";
     writeEntry(agent_id, {{"event","blackboard_write"},{"stage",stage_name},
                           {"key",key},{"value",value}});
 }
@@ -297,19 +351,29 @@ void AgentLogger::observeDecision(const std::string& agent_id, const std::string
 void AgentLogger::finalAnswer(const std::string& agent_id, const nlohmann::json& answer,
                                int iteration)
 {
-    std::string ans_str = answer.is_string()
-        ? answer.get<std::string>()
-        : answer.dump();
-    std::cerr << prefix(agent_id) << "═══ FINAL ANSWER (iteration=" << iteration << ") ═══\n"
-              << prefix(agent_id) << "  " << trunc(ans_str, 1000) << "\n";
+    std::string ans_str = answer.is_string() ? answer.get<std::string>() : answer.dump(2);
+    std::cerr << prefix(agent_id) << "═══ FINAL ANSWER (iteration=" << iteration << ") ═══\n";
+    std::istringstream ss(ans_str);
+    std::string line;
+    while (std::getline(ss, line))
+        std::cerr << prefix(agent_id) << "  " << line << "\n";
     writeEntry(agent_id, {{"event","final_answer"},{"answer",answer},{"iteration",iteration}});
 }
 
 void AgentLogger::cacheEvent(const std::string& agent_id, const std::string& sub_event,
                               const nlohmann::json& data)
 {
-    std::cerr << prefix(agent_id) << "    CACHE [" << sub_event << "]: "
-              << trunc(data.dump(), 150) << "\n";
+    std::cerr << prefix(agent_id) << "    CACHE [" << sub_event << "]";
+    if (!data.is_null() && !data.empty()) {
+        std::cerr << ":\n";
+        std::string d = data.dump(2);
+        std::istringstream ss(d);
+        std::string line;
+        while (std::getline(ss, line))
+            std::cerr << prefix(agent_id) << "      " << line << "\n";
+    } else {
+        std::cerr << "\n";
+    }
     writeEntry(agent_id, {{"event","cache_" + sub_event},{"data",data}});
 }
 
