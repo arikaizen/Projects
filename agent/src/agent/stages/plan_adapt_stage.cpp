@@ -150,6 +150,8 @@ WorkResult PlanAdaptStage::execute(AgentContext& ctx) {
         // Save adapted plan to blackboard for ObserveStage to cache on success
         if (auto* bb = ctx.blackboard())
             bb->write("agent:last_plan", parsed);
+        if (auto* logger = ctx.logger())
+            logger->planPushed(ctx.config().agent_id, name, id, parsed);
 
         // Push ObserveStage with $ref deps on all adapted items
         if (!ctx.should_stop && !pushed_ids.empty() && ctx.factory().isRegistered("ObserveStage")) {
@@ -178,6 +180,9 @@ WorkResult PlanAdaptStage::execute(AgentContext& ctx) {
 
     result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start);
+    if (auto* logger = ctx.logger())
+        logger->stageDone(ctx.config().agent_id, name, id, result.success,
+                          result.output, result.duration.count(), result.error);
     if (auto* bus = ctx.eventBus())
         bus->emit(EventBus::makeEvent("stage_done",
             {{"stage", name}, {"id", id}, {"success", result.success}}));

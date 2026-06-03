@@ -110,6 +110,8 @@ WorkResult ReplayStage::execute(AgentContext& ctx) {
         // Write original steps to blackboard so ObserveStage can re-save to cache
         if (auto* bb = ctx.blackboard())
             bb->write("agent:last_plan", steps);
+        if (auto* logger = ctx.logger())
+            logger->planPushed(ctx.config().agent_id, name, id, steps);
 
         // Push ObserveStage with $ref deps on all replayed items
         if (!pushed_ids.empty() && ctx.factory().isRegistered("ObserveStage")) {
@@ -138,6 +140,9 @@ WorkResult ReplayStage::execute(AgentContext& ctx) {
 
     result.duration = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start);
+    if (auto* logger = ctx.logger())
+        logger->stageDone(ctx.config().agent_id, name, id, result.success,
+                          result.output, result.duration.count(), result.error);
     if (auto* bus = ctx.eventBus())
         bus->emit(EventBus::makeEvent("stage_done",
             {{"stage", name}, {"id", id}, {"success", result.success}}));
