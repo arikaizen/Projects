@@ -201,6 +201,15 @@ std::vector<WorkResult> BatchExecutor::execute(
 
     std::map<std::size_t, std::future<WorkResult>> in_flight;
 
+    // Completion notification channel: workers push their index here instead of
+    // the agent thread busy-polling every 1ms.
+    struct CompletionChannel {
+        std::mutex              mtx;
+        std::condition_variable cv;
+        std::queue<std::size_t> done;
+    };
+    auto completion = std::make_shared<CompletionChannel>();
+
     // Initial ready set
     std::vector<std::size_t> ready;
     for (std::size_t i = 0; i < n; ++i)
@@ -371,7 +380,15 @@ std::vector<WorkResult> BatchExecutor::execute(
                     }));
                 }
                 in_flight[idx] = m_pool.submit(
-                    [&runItem, raw_item]() -> WorkResult { return runItem(raw_item, true); });
+                    [&runItem, raw_item, idx, completion]() -> WorkResult {
+                        auto r = runItem(raw_item, true);
+                        {
+                            std::lock_guard<std::mutex> lk(completion->mtx);
+                            completion->done.push(idx);
+                        }
+                        completion->cv.notify_one();
+                        return r;
+                    });
             }
 
             // Run the chosen item inline on this thread.
@@ -413,15 +430,17 @@ std::vector<WorkResult> BatchExecutor::execute(
             break;
         }
 
-        // ── Poll for completed futures ───────────────────────────────────────
+        // ── Wait for completed futures (blocking, no busy-poll) ─────────────
+        // Workers post their index to the completion channel when done.
+        // We block here until at least one completes, then drain all available.
         std::vector<std::size_t> just_completed;
-        while (just_completed.empty()) {
-            for (auto& [idx, fut] : in_flight) {
-                if (fut.wait_for(std::chrono::milliseconds(1)) == std::future_status::ready)
-                    just_completed.push_back(idx);
+        {
+            std::unique_lock<std::mutex> lk(completion->mtx);
+            completion->cv.wait(lk, [&] { return !completion->done.empty(); });
+            while (!completion->done.empty()) {
+                just_completed.push_back(completion->done.front());
+                completion->done.pop();
             }
-            if (just_completed.empty())
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
         // ── Collect and propagate ────────────────────────────────────────────
