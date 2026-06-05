@@ -1,0 +1,655 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1"
+              connect="1" arrows="1" fold="1" page="1" pageScale="1"
+              pageWidth="1840" pageHeight="2200" math="0" shadow="0">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- TITLE                                                       -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="title" value="Agent Loop — Sequence Diagram (all function calls)"
+      style="text;html=1;strokeColor=none;fillColor=none;align=center;
+             verticalAlign=middle;whiteSpace=wrap;fontSize=14;fontStyle=1;"
+      vertex="1" parent="1">
+      <mxGeometry x="200" y="5" width="1400" height="30" as="geometry"/>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- PARTICIPANT HEADER BOXES                                    -->
+    <!--   cx values: AM=100 Ag=280 AC=460 BE=640 St=820            -->
+    <!--              LC=1000 AL=1180 EB=1360 TP=1540 PC=1720       -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="h_am" value="AgentManager"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="35" y="38" width="130" height="40" as="geometry"/></mxCell>
+    <mxCell id="h_ag" value="Agent"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="215" y="38" width="130" height="40" as="geometry"/></mxCell>
+    <mxCell id="h_ac" value="AgentContext"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="395" y="38" width="130" height="40" as="geometry"/></mxCell>
+    <mxCell id="h_be" value="BatchExecutor"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="575" y="38" width="130" height="40" as="geometry"/></mxCell>
+    <mxCell id="h_st" value="Stage (all types)"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="755" y="38" width="130" height="40" as="geometry"/></mxCell>
+    <mxCell id="h_lc" value="LLMClient"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="935" y="38" width="130" height="40" as="geometry"/></mxCell>
+    <mxCell id="h_al" value="AgentLogger"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="1115" y="38" width="130" height="40" as="geometry"/></mxCell>
+    <mxCell id="h_eb" value="EventBus"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="1295" y="38" width="130" height="40" as="geometry"/></mxCell>
+    <mxCell id="h_tp" value="ThreadPool"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="1475" y="38" width="130" height="40" as="geometry"/></mxCell>
+    <mxCell id="h_pc" value="PlanCache"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="1655" y="38" width="130" height="40" as="geometry"/></mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- LIFELINES                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="l_am" value="" style="endArrow=none;dashed=1;strokeColor=#000000;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="100" y="78" as="sourcePoint"/><mxPoint x="100" y="2100" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="l_ag" value="" style="endArrow=none;dashed=1;strokeColor=#000000;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="78" as="sourcePoint"/><mxPoint x="280" y="2100" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="l_ac" value="" style="endArrow=none;dashed=1;strokeColor=#000000;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="460" y="78" as="sourcePoint"/><mxPoint x="460" y="2100" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="l_be" value="" style="endArrow=none;dashed=1;strokeColor=#000000;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="78" as="sourcePoint"/><mxPoint x="640" y="2100" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="l_st" value="" style="endArrow=none;dashed=1;strokeColor=#000000;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="78" as="sourcePoint"/><mxPoint x="820" y="2100" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="l_lc" value="" style="endArrow=none;dashed=1;strokeColor=#000000;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="1000" y="78" as="sourcePoint"/><mxPoint x="1000" y="2100" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="l_al" value="" style="endArrow=none;dashed=1;strokeColor=#000000;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="1180" y="78" as="sourcePoint"/><mxPoint x="1180" y="2100" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="l_eb" value="" style="endArrow=none;dashed=1;strokeColor=#000000;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="1360" y="78" as="sourcePoint"/><mxPoint x="1360" y="2100" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="l_tp" value="" style="endArrow=none;dashed=1;strokeColor=#000000;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="1540" y="78" as="sourcePoint"/><mxPoint x="1540" y="2100" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="l_pc" value="" style="endArrow=none;dashed=1;strokeColor=#000000;strokeWidth=1;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="1720" y="78" as="sourcePoint"/><mxPoint x="1720" y="2100" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- SECTION: INITIALIZATION                                     -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="s_init" value="Initialization"
+      style="text;html=1;strokeColor=none;fillColor=#ebebeb;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=3;fontSize=9;
+             fontColor=#333333;"
+      vertex="1" parent="1"><mxGeometry x="5" y="90" width="130" height="16" as="geometry"/></mxCell>
+
+    <!-- AgentManager → PlanCache : exists(agent_id) -->
+    <mxCell id="m01" value="exists(agent_id)"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;exitX=1;exitY=0.5;entryX=0;entryY=0.5;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="100" y="112" as="sourcePoint"/><mxPoint x="1720" y="112" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="r01" value="bool"
+      style="endArrow=open;endFill=0;dashed=1;html=1;fontSize=9;strokeColor=#999999;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="1720" y="128" as="sourcePoint"/><mxPoint x="100" y="128" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- AgentManager → AgentContext : push(initial stage) -->
+    <mxCell id="m02" value="push(PlanCacheCheckStage | UnderstandStage)"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="100" y="148" as="sourcePoint"/><mxPoint x="460" y="148" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- AgentManager → Agent : run() -->
+    <mxCell id="m03" value="run()"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="100" y="168" as="sourcePoint"/><mxPoint x="280" y="168" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Agent → AgentLogger : agentStart -->
+    <mxCell id="m04" value="agentStart(agent_id, task)"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="188" as="sourcePoint"/><mxPoint x="1180" y="188" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Agent → EventBus : emit("agent_started") -->
+    <mxCell id="m05" value="emit(&quot;agent_started&quot;, {agent_id})"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="208" as="sourcePoint"/><mxPoint x="1360" y="208" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- LOOP BOX                                                    -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="loop_box" value=""
+      style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;
+             strokeColor=#0066CC;dashed=1;strokeWidth=2;"
+      vertex="1" parent="1">
+      <mxGeometry x="5" y="223" width="1820" height="1710" as="geometry"/></mxCell>
+    <mxCell id="loop_lbl" value="loop  [while queue not empty  ∧  not should_stop  ∧  iteration_count &lt; max_iterations]"
+      style="text;html=1;strokeColor=none;fillColor=#ddeeff;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=9;fontColor=#0066CC;"
+      vertex="1" parent="1">
+      <mxGeometry x="10" y="225" width="700" height="16" as="geometry"/></mxCell>
+
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <!-- SECTION: PRE-ITERATION CHECKS                               -->
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <mxCell id="s_chk" value="① pre-iteration checks"
+      style="text;html=1;strokeColor=none;fillColor=#ffe6cc;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=3;fontSize=9;"
+      vertex="1" parent="1"><mxGeometry x="10" y="244" width="200" height="14" as="geometry"/></mxCell>
+
+    <mxCell id="chk_box" value="check: cancellation_flag · should_stop · iteration_count ≥ max_iterations → exit if true"
+      style="text;html=1;strokeColor=#b85450;fillColor=#f8cecc;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="220" y="242" width="480" height="18" as="geometry"/></mxCell>
+
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <!-- SECTION: BLOCKING POP + FIRST ITEM                         -->
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <mxCell id="s_pop" value="② blocking pop → execute initial stage as 1-item batch"
+      style="text;html=1;strokeColor=none;fillColor=#ebebeb;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=3;fontSize=9;"
+      vertex="1" parent="1"><mxGeometry x="10" y="264" width="420" height="14" as="geometry"/></mxCell>
+
+    <!-- Agent → AgentContext : pop() -->
+    <mxCell id="m10" value="pop()  [blocks until item available]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="283" as="sourcePoint"/><mxPoint x="460" y="283" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="r10" value="WorkItem"
+      style="endArrow=open;endFill=0;dashed=1;html=1;fontSize=9;strokeColor=#999999;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="460" y="299" as="sourcePoint"/><mxPoint x="280" y="299" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Agent → EventBus : emit("batch_started") -->
+    <mxCell id="m11" value="emit(&quot;batch_started&quot;, {size:1, phase:&quot;stage_or_single&quot;})"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="318" as="sourcePoint"/><mxPoint x="1360" y="318" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Agent → BatchExecutor : execute([first_item]) -->
+    <mxCell id="m12" value="execute([first_item])"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="337" as="sourcePoint"/><mxPoint x="640" y="337" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- BatchExecutor : buildDAG (self-call) -->
+    <mxCell id="m13" value="buildDAG(batch, ctx)"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="640" y="354" as="sourcePoint"/><mxPoint x="640" y="370" as="targetPoint"/>
+        <Array as="points"><mxPoint x="685" y="354"/><mxPoint x="685" y="370"/></Array>
+      </mxGeometry></mxCell>
+
+    <!-- BatchExecutor : resolveInBatch (self-call) -->
+    <mxCell id="m14" value="resolveInBatch(inputs, ctx, results)"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="640" y="386" as="sourcePoint"/><mxPoint x="640" y="402" as="targetPoint"/>
+        <Array as="points"><mxPoint x="685" y="386"/><mxPoint x="685" y="402"/></Array>
+      </mxGeometry></mxCell>
+
+    <!-- BatchExecutor → Stage : runItem inline -->
+    <mxCell id="m15" value="runItem(item, parallel=false)  [inline on agent thread]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="421" as="sourcePoint"/><mxPoint x="820" y="421" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <!-- STAGE INTERNALS (common to all stage types)                 -->
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <mxCell id="s_stg" value="Stage.execute(ctx)  — common pattern (all stage types)"
+      style="text;html=1;strokeColor=none;fillColor=#e1d5e7;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=3;fontSize=9;"
+      vertex="1" parent="1"><mxGeometry x="10" y="436" width="440" height="14" as="geometry"/></mxCell>
+
+    <!-- Stage → EventBus : emit("stage_start") -->
+    <mxCell id="m20" value="emit(&quot;stage_start&quot;, {stage, id})"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="455" as="sourcePoint"/><mxPoint x="1360" y="455" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Stage → AgentLogger : stageStart -->
+    <mxCell id="m21" value="stageStart(agent_id, name, id, inputs)"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="473" as="sourcePoint"/><mxPoint x="1180" y="473" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Stage → PromptLoader : render (annotation) -->
+    <mxCell id="m22" value="promptLoader().render(template, vars)"
+      style="text;html=1;strokeColor=#9673a6;fillColor=#f3eaf9;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="830" y="488" width="280" height="16" as="geometry"/></mxCell>
+
+    <!-- ─── LLM call path (via Stage::llmComplete) ─── -->
+    <mxCell id="s_llm" value="Stage::llmComplete(ctx, request)"
+      style="text;html=1;strokeColor=none;fillColor=#ffe6cc;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=3;fontSize=9;"
+      vertex="1" parent="1"><mxGeometry x="10" y="508" width="260" height="14" as="geometry"/></mxCell>
+
+    <!-- Stage → AgentLogger : llmCall -->
+    <mxCell id="m23" value="llmCall(agent_id, name, id, system_prompt, user_msg, json_mode, temp, max_tokens)"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="526" as="sourcePoint"/><mxPoint x="1180" y="526" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Stage → LLMClient : complete(request) -->
+    <mxCell id="m24" value="complete({system_prompt, user_msg, json_mode, temperature, max_tokens})"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="544" as="sourcePoint"/><mxPoint x="1000" y="544" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- LLMClient → Stage : Response -->
+    <mxCell id="r24" value="Response{content, success, error}"
+      style="endArrow=open;endFill=0;dashed=1;html=1;fontSize=9;strokeColor=#999999;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="1000" y="560" as="sourcePoint"/><mxPoint x="820" y="560" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Stage → AgentLogger : llmResponse -->
+    <mxCell id="m25" value="llmResponse(agent_id, name, id, content, success, error)"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="578" as="sourcePoint"/><mxPoint x="1180" y="578" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- ─── Stage-type-specific calls ─── -->
+    <mxCell id="s_spec" value="Stage-type-specific operations"
+      style="text;html=1;strokeColor=none;fillColor=#ebebeb;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=3;fontSize=9;"
+      vertex="1" parent="1"><mxGeometry x="10" y="596" width="280" height="14" as="geometry"/></mxCell>
+
+    <!-- Blackboard write (Understand/Orient/Read/CodeIntel) -->
+    <mxCell id="m30" value="blackboard().write(key, value)  [Understand / Orient / Read / CodeIntel stages]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="614" as="sourcePoint"/><mxPoint x="460" y="614" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="m31" value="blackboardWrite(agent_id, name, key, value)"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="630" as="sourcePoint"/><mxPoint x="1180" y="630" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="note_bb" value="keys: agent:understanding · agent:orientation · agent:read_context · agent:code_intel"
+      style="text;html=1;strokeColor=#d6b656;fillColor=#fffacd;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=8;"
+      vertex="1" parent="1">
+      <mxGeometry x="830" y="643" width="480" height="14" as="geometry"/></mxCell>
+
+    <!-- PlanCacheCheckStage specific -->
+    <mxCell id="m32" value="planCache().load(agent_id)  [PlanCacheCheckStage]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="662" as="sourcePoint"/><mxPoint x="1720" y="662" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="r32" value="CachedPlan | null"
+      style="endArrow=open;endFill=0;dashed=1;html=1;fontSize=9;strokeColor=#999999;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="1720" y="678" as="sourcePoint"/><mxPoint x="820" y="678" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="m33" value="cacheEvent(agent_id, match, data)  [PlanCacheCheckStage]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="696" as="sourcePoint"/><mxPoint x="1180" y="696" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- ReasonStage / ReplayStage / PlanAdaptStage -->
+    <mxCell id="m34" value="factory().toCatalogJson() · historySummaryJson(20) · queueSummaryJson()  [Reason / Orient / Adapt stages]"
+      style="text;html=1;strokeColor=#9673a6;fillColor=#f3eaf9;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="830" y="712" width="580" height="16" as="geometry"/></mxCell>
+    <mxCell id="m35" value="validateAndPushPlan(plan, ctx, err)  →  factory().isRegistered · idExists · create · push  [ReasonStage]"
+      style="text;html=1;strokeColor=#9673a6;fillColor=#f3eaf9;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="830" y="730" width="680" height="16" as="geometry"/></mxCell>
+    <mxCell id="m36" value="remapRefs(json, id_map)  [ReplayStage — rewrites \$refs in inputs]"
+      style="text;html=1;strokeColor=#9673a6;fillColor=#f3eaf9;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="830" y="748" width="540" height="16" as="geometry"/></mxCell>
+    <mxCell id="m37" value="blackboard().write(&quot;agent:last_plan&quot;, plan)  [Reason / Replay / Adapt stages]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="768" as="sourcePoint"/><mxPoint x="460" y="768" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="m38" value="planPushed(agent_id, name, id, plan)  [Reason / Replay / Adapt stages]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="786" as="sourcePoint"/><mxPoint x="1180" y="786" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- ObserveStage -->
+    <mxCell id="m39" value="observeDecision(agent_id, id, done, next_action, observations, failures)  [ObserveStage]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="806" as="sourcePoint"/><mxPoint x="1180" y="806" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="m40" value="planCache().load(agent_id) → existing run_count  [ObserveStage — on done/respond]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="824" as="sourcePoint"/><mxPoint x="1720" y="824" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="m41" value="planCache().save(agent_id, CachedPlan{task, fingerprint, steps, run_count})  [ObserveStage — persists successful plan]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="842" as="sourcePoint"/><mxPoint x="1720" y="842" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="m42" value="push(RespondStage)  [ObserveStage — done=true]  OR  push(new ReasonStage)  [done=false]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="860" as="sourcePoint"/><mxPoint x="460" y="860" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- RespondStage -->
+    <mxCell id="m43" value="historySummaryJson(20) · blackboard().read(&quot;agent:last_plan&quot;)  [RespondStage]"
+      style="text;html=1;strokeColor=#9673a6;fillColor=#f3eaf9;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="830" y="874" width="560" height="16" as="geometry"/></mxCell>
+    <mxCell id="m44" value="ctx.should_stop = true · ctx.final_output = answer  [RespondStage / PlanAdaptStage(final_answer)]"
+      style="text;html=1;strokeColor=#b85450;fillColor=#f8cecc;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="830" y="892" width="660" height="16" as="geometry"/></mxCell>
+    <mxCell id="m45" value="finalAnswer(agent_id, output, iteration_count)  [RespondStage]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="912" as="sourcePoint"/><mxPoint x="1180" y="912" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="m46" value="emit(&quot;agent_final_answer&quot;, {stage, answer})  [RespondStage / PlanAdaptStage]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="930" as="sourcePoint"/><mxPoint x="1360" y="930" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Stage push items (common) -->
+    <mxCell id="m47" value="factory().isRegistered(type) · idExists(id) · factory().create(type, id, inputs) · push(item, Back)"
+      style="text;html=1;strokeColor=#9673a6;fillColor=#f3eaf9;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="830" y="946" width="680" height="16" as="geometry"/></mxCell>
+
+    <!-- ─── Stage common end ─── -->
+    <mxCell id="m48" value="emit(&quot;stage_done&quot;, {stage, id, success})"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="966" as="sourcePoint"/><mxPoint x="1360" y="966" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="m49" value="stageDone(agent_id, name, id, success, output, duration_ms, error)"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="984" as="sourcePoint"/><mxPoint x="1180" y="984" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Stage → BatchExecutor : WorkResult (return) -->
+    <mxCell id="r15" value="WorkResult"
+      style="endArrow=open;endFill=0;dashed=1;html=1;fontSize=9;strokeColor=#999999;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="1002" as="sourcePoint"/><mxPoint x="640" y="1002" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- BatchExecutor → AgentContext : recordResult -->
+    <mxCell id="m50" value="recordResult(result)"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="1018" as="sourcePoint"/><mxPoint x="460" y="1018" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- BatchExecutor → EventBus : emit("batch_finished") -->
+    <mxCell id="m51" value="emit(&quot;batch_finished&quot;, {results_count})"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="1034" as="sourcePoint"/><mxPoint x="1360" y="1034" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- BatchExecutor → Agent : [WorkResult] (return) -->
+    <mxCell id="r12" value="[WorkResult]"
+      style="endArrow=open;endFill=0;dashed=1;html=1;fontSize=9;strokeColor=#999999;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="1050" as="sourcePoint"/><mxPoint x="280" y="1050" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <!-- SECTION: DRAIN QUEUE → PLAN BATCH                          -->
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <mxCell id="s_plan" value="③ drain queue  →  execute plan batch (dependency-aware, parallel)"
+      style="text;html=1;strokeColor=none;fillColor=#ebebeb;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=3;fontSize=9;"
+      vertex="1" parent="1"><mxGeometry x="10" y="1068" width="440" height="14" as="geometry"/></mxCell>
+
+    <!-- Agent → AgentContext : try_pop loop -->
+    <mxCell id="m60" value="try_pop()  [non-blocking drain loop — collects all queued plan items]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="1087" as="sourcePoint"/><mxPoint x="460" y="1087" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="r60" value="[WorkItems]"
+      style="endArrow=open;endFill=0;dashed=1;html=1;fontSize=9;strokeColor=#999999;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="460" y="1103" as="sourcePoint"/><mxPoint x="280" y="1103" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Agent → AgentLogger : batchStart -->
+    <mxCell id="m61" value="batchStart(agent_id, size, &quot;plan&quot;, [name/id, ...])"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="1121" as="sourcePoint"/><mxPoint x="1180" y="1121" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Agent → EventBus : emit("batch_started", plan) -->
+    <mxCell id="m62" value="emit(&quot;batch_started&quot;, {size, phase:&quot;plan&quot;})"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="1139" as="sourcePoint"/><mxPoint x="1360" y="1139" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Agent → BatchExecutor : execute(plan_batch) -->
+    <mxCell id="m63" value="execute(plan_batch)"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="1157" as="sourcePoint"/><mxPoint x="640" y="1157" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- BatchExecutor : buildDAG -->
+    <mxCell id="m64" value="buildDAG(batch, ctx)  [Kahn cycle-detect, pending_deps sets]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="640" y="1174" as="sourcePoint"/><mxPoint x="640" y="1190" as="targetPoint"/>
+        <Array as="points"><mxPoint x="685" y="1174"/><mxPoint x="685" y="1190"/></Array>
+      </mxGeometry></mxCell>
+
+    <!-- BatchExecutor : resolveInBatch for each ready item -->
+    <mxCell id="m65" value="resolveInBatch(inputs, ctx, batch_results, id_to_idx, node_done)  [per ready item before dispatch]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="640" y="1208" as="sourcePoint"/><mxPoint x="640" y="1224" as="targetPoint"/>
+        <Array as="points"><mxPoint x="685" y="1208"/><mxPoint x="685" y="1224"/></Array>
+      </mxGeometry></mxCell>
+
+    <!-- BatchExecutor → ThreadPool : submit (parallel items) -->
+    <mxCell id="m66" value="submit(runItem lambda)  [parallel items — all-but-one dispatched to pool]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="1244" as="sourcePoint"/><mxPoint x="1540" y="1244" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- BatchExecutor → Stage : runItem inline (last ready item) -->
+    <mxCell id="m67" value="runItem(item, parallel)  [last ready item executed inline on agent thread]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="1262" as="sourcePoint"/><mxPoint x="820" y="1262" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- BatchExecutor (action only) : actionStart -->
+    <mxCell id="m68" value="actionStart(agent_id, name, id, inputs)  [if WorkItem::Kind::Action]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="1280" as="sourcePoint"/><mxPoint x="1180" y="1280" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Stage.execute(ctx) same internals — reference back -->
+    <mxCell id="note_rep" value="[ Stage.execute(ctx) calls same pattern as above: stageStart → llmComplete → stage-specific ops → stageDone ]"
+      style="text;html=1;strokeColor=#9673a6;fillColor=#f3eaf9;align=center;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=2;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="440" y="1297" width="760" height="20" as="geometry"/></mxCell>
+
+    <!-- BatchExecutor (action only) : actionDone -->
+    <mxCell id="m69" value="actionDone(agent_id, name, id, success, output, duration_ms, error)  [if Action]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="1323" as="sourcePoint"/><mxPoint x="1180" y="1323" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Stage → BatchExecutor : WorkResult (return from plan stage) -->
+    <mxCell id="r67" value="WorkResult"
+      style="endArrow=open;endFill=0;dashed=1;html=1;fontSize=9;strokeColor=#999999;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="820" y="1341" as="sourcePoint"/><mxPoint x="640" y="1341" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <!-- SECTION: THREADPOOL WORKER COMPLETION                       -->
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <mxCell id="s_tp" value="④ ThreadPool worker completion  [parallel items]"
+      style="text;html=1;strokeColor=none;fillColor=#d5e8d4;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=3;fontSize=9;"
+      vertex="1" parent="1"><mxGeometry x="10" y="1358" width="360" height="14" as="geometry"/></mxCell>
+
+    <!-- ThreadPool worker → BatchExecutor : completion channel notify -->
+    <mxCell id="m70" value="completion.done.push(idx)  +  completion.cv.notify_one()  [worker thread on finish]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="1540" y="1377" as="sourcePoint"/><mxPoint x="640" y="1377" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- BatchExecutor : unblocks, drains done queue -->
+    <mxCell id="m71" value="completion.cv.wait(lk, ...) unblocks → drain done queue → future.get() per completed index"
+      style="text;html=1;strokeColor=#b85450;fillColor=#f8cecc;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="650" y="1393" width="680" height="16" as="geometry"/></mxCell>
+
+    <!-- BatchExecutor → EventBus : emit("work_item_finished") -->
+    <mxCell id="m72" value="emit(&quot;work_item_finished&quot;, {item_id, success, duration_ms, ran_in_parallel})"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="1413" as="sourcePoint"/><mxPoint x="1360" y="1413" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- BatchExecutor propagate skip on failure (annotation) -->
+    <mxCell id="m73" value="[on failure] propagateSkip(dependent_idx, reason)  — cascades to all dependents"
+      style="text;html=1;strokeColor=#b85450;fillColor=#f8cecc;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="650" y="1429" width="600" height="16" as="geometry"/></mxCell>
+
+    <!-- BatchExecutor → AgentContext : recordResult (deterministic order) -->
+    <mxCell id="m74" value="recordResult(result)  [declared order — agent thread only, after all items done]"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="1449" as="sourcePoint"/><mxPoint x="460" y="1449" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- BatchExecutor → EventBus : emit("batch_finished") -->
+    <mxCell id="m75" value="emit(&quot;batch_finished&quot;, {results_count})"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="1467" as="sourcePoint"/><mxPoint x="1360" y="1467" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- BatchExecutor → Agent : [WorkResults] (return) -->
+    <mxCell id="r63" value="[WorkResults]"
+      style="endArrow=open;endFill=0;dashed=1;html=1;fontSize=9;strokeColor=#999999;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="640" y="1485" as="sourcePoint"/><mxPoint x="280" y="1485" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <!-- SECTION: ITERATION COUNT + LOOP-BACK                        -->
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <mxCell id="s_iter" value="⑤ iteration bookkeeping + loop-back"
+      style="text;html=1;strokeColor=none;fillColor=#ebebeb;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=3;fontSize=9;"
+      vertex="1" parent="1"><mxGeometry x="10" y="1503" width="300" height="14" as="geometry"/></mxCell>
+
+    <mxCell id="iter_box" value="++ctx.iteration_count"
+      style="text;html=1;strokeColor=#82b366;fillColor=#d5e8d4;align=center;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontStyle=1;"
+      vertex="1" parent="1">
+      <mxGeometry x="220" y="1521" width="120" height="18" as="geometry"/></mxCell>
+
+    <!-- Loop-back arrow -->
+    <mxCell id="loop_back" value="↑  back to pre-iteration checks"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;strokeColor=#0066CC;
+             fontColor=#0066CC;fontStyle=2;labelBackgroundColor=#ddeeff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="280" y="1549" as="sourcePoint"/>
+        <mxPoint x="280" y="1247" as="targetPoint"/>
+        <Array as="points"><mxPoint x="40" y="1549"/><mxPoint x="40" y="1247"/></Array>
+      </mxGeometry></mxCell>
+
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <!-- EXIT CONDITIONS (inside loop)                               -->
+    <!-- ─────────────────────────────────────────────────────────── -->
+    <mxCell id="s_exit" value="⑥ loop exit conditions (evaluated at top of each iteration)"
+      style="text;html=1;strokeColor=none;fillColor=#ebebeb;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=3;fontSize=9;"
+      vertex="1" parent="1"><mxGeometry x="10" y="1575" width="440" height="14" as="geometry"/></mxCell>
+
+    <mxCell id="exit1" value="ctx.cancellation_flag.load()  →  emit(&quot;agent_cancelled&quot;)  →  return Cancelled"
+      style="text;html=1;strokeColor=#b85450;fillColor=#f8cecc;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="220" y="1592" width="600" height="16" as="geometry"/></mxCell>
+    <mxCell id="exit2" value="ctx.should_stop  →  emit(&quot;agent_finished&quot;, {reason:should_stop})  →  return ShouldStop"
+      style="text;html=1;strokeColor=#b85450;fillColor=#f8cecc;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="220" y="1610" width="620" height="16" as="geometry"/></mxCell>
+    <mxCell id="exit3" value="iteration_count ≥ max_iterations  →  return MaxIterations"
+      style="text;html=1;strokeColor=#b85450;fillColor=#f8cecc;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="220" y="1628" width="480" height="16" as="geometry"/></mxCell>
+    <mxCell id="exit4" value="pop() returns null (queue drained + no more injections)  →  normal queue-empty termination"
+      style="text;html=1;strokeColor=#82b366;fillColor=#d5e8d4;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;"
+      vertex="1" parent="1">
+      <mxGeometry x="220" y="1646" width="660" height="16" as="geometry"/></mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- SECTION: TERMINATION (after loop)                           -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="s_term" value="Termination"
+      style="text;html=1;strokeColor=none;fillColor=#ebebeb;align=left;
+             verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=3;fontSize=9;"
+      vertex="1" parent="1"><mxGeometry x="5" y="1952" width="130" height="14" as="geometry"/></mxCell>
+
+    <!-- Agent → AgentLogger : agentDone -->
+    <mxCell id="m80" value="agentDone(agent_id, reason, final_output, iteration_count)  +  flush JSONL file"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="1971" as="sourcePoint"/><mxPoint x="1180" y="1971" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Agent → EventBus : emit("agent_finished") -->
+    <mxCell id="m81" value="emit(&quot;agent_finished&quot;, {agent_id, reason})"
+      style="endArrow=block;endFill=1;html=1;fontSize=9;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="1991" as="sourcePoint"/><mxPoint x="1360" y="1991" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- Agent → AgentManager : RunResult (return) -->
+    <mxCell id="r03" value="RunResult{reason, final_output, iterations, error}"
+      style="endArrow=open;endFill=0;dashed=1;html=1;fontSize=9;strokeColor=#999999;labelBackgroundColor=#ffffff;"
+      edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="280" y="2011" as="sourcePoint"/><mxPoint x="100" y="2011" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- LEGEND                                                      -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="leg_box" value=""
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;"
+      vertex="1" parent="1">
+      <mxGeometry x="5" y="2050" width="520" height="80" as="geometry"/></mxCell>
+    <mxCell id="leg_title" value="Legend"
+      style="text;html=1;strokeColor=none;fillColor=none;align=left;fontStyle=1;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="10" y="2053" width="60" height="16" as="geometry"/></mxCell>
+
+    <mxCell id="leg1" value="" style="endArrow=block;endFill=1;html=1;fontSize=9;strokeColor=#000000;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="10" y="2080" as="sourcePoint"/><mxPoint x="80" y="2080" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="leg1t" value="synchronous call" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="85" y="2073" width="120" height="14" as="geometry"/></mxCell>
+
+    <mxCell id="leg2" value="" style="endArrow=open;endFill=0;dashed=1;html=1;fontSize=9;strokeColor=#999999;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry"><mxPoint x="10" y="2100" as="sourcePoint"/><mxPoint x="80" y="2100" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="leg2t" value="return value" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="85" y="2093" width="120" height="14" as="geometry"/></mxCell>
+
+    <mxCell id="leg3" value="annotation" style="text;html=1;strokeColor=#9673a6;fillColor=#f3eaf9;align=left;fontSize=9;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="220" y="2073" width="90" height="16" as="geometry"/></mxCell>
+    <mxCell id="leg3t" value="inline note (no arrow)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="318" y="2073" width="160" height="16" as="geometry"/></mxCell>
+
+    <mxCell id="leg4" value="guard / state" style="text;html=1;strokeColor=#b85450;fillColor=#f8cecc;align=left;fontSize=9;verticalAlign=middle;" vertex="1" parent="1">
+      <mxGeometry x="220" y="2093" width="90" height="16" as="geometry"/></mxCell>
+    <mxCell id="leg4t" value="condition or state assignment" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="318" y="2093" width="200" height="16" as="geometry"/></mxCell>
+
+  </root>
+</mxGraphModel>
