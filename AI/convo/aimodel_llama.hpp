@@ -1,27 +1,30 @@
 #pragma once
 #include "aimodel.hpp"
 #include "gguf_planner.hpp"
-#include "layer_streamer.hpp"
 #include <llama.h>
 #include <memory>
 #include <string>
 #include <vector>
 
+// Forward-declare to avoid pulling in managed_buft.hpp / ggml headers here.
+struct ggml_backend_buffer_type;
+using ggml_backend_buffer_type_t = struct ggml_backend_buffer_type *;
+struct llama_model_tensor_buft_override;
+
 class AIModelLlama final : public AIModel {
 public:
-    // context_size  — KV context window (tokens)
-    // thread_count  — CPU threads for non-GPU layers
-    // headroom_bytes — VRAM to keep free; 0 → use default (512 MiB)
+    // context_size   — KV context window in tokens
+    // thread_count   — CPU threads (used only for embedding; all inference is GPU)
+    // headroom_bytes — VRAM to keep free (0 → default 512 MiB)
     AIModelLlama(const std::string& model_path,
-                 int    context_size  = 4096,
-                 int    thread_count  = 4,
+                 int    context_size   = 4096,
+                 int    thread_count   = 4,
                  size_t headroom_bytes = 0);
     ~AIModelLlama() override;
 
     std::string GetModelName()        const override;
     int         GetMaxContextLength() const override;
 
-    // Expose the active VRAM plan (populated after construction).
     const VRAMPlan& GetVRAMPlan() const noexcept { return m_vram_plan; }
 
     llama_model* ModelPtr()    const noexcept { return m_model; }
@@ -41,6 +44,16 @@ private:
     int            m_thread_count  = 0;
     std::string    m_model_name;
 
-    VRAMPlan                      m_vram_plan;
-    std::unique_ptr<LayerStreamer> m_streamer;   // null when all layers fit in VRAM
+    VRAMPlan m_vram_plan;
+
+    // Overflow layer streaming state (populated when model > VRAM)
+    struct OverflowTensor {
+        void*  data_ptr;  // managed-memory pointer from loaded tensor
+        size_t size;
+    };
+    // Per overflow-layer: list of tensors to prefetch before computing that layer
+    std::vector<std::vector<OverflowTensor>> m_overflow_tensors; // [relative_layer][tensor]
+
+    void collect_overflow_tensors(const GGUFModelInfo& info);
+    void prefetch_overflow_layers();
 };

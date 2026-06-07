@@ -40,7 +40,7 @@ TARGET := $(BUILD_DIR)/convo_test
 SRCS   := aimodel.cpp aiconvo.cpp \
            aimodel_llama.cpp aiconvo_llama.cpp \
            aimodel_vllm.cpp  aiconvo_vllm.cpp \
-           gguf_planner.cpp layer_streamer.cpp \
+           gguf_planner.cpp managed_buft.cpp layer_streamer.cpp \
            convo_test1.cpp
 OBJS   := $(SRCS:%.cpp=$(BUILD_DIR)/%.o)
 
