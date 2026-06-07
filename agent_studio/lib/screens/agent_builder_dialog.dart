@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/agent_model.dart';
 import '../providers/agent_provider.dart';
 import '../theme/app_theme.dart';
+import '../models/model_provider.dart';
 
 class AgentBuilderDialog extends StatefulWidget {
   final AgentModel? editing;
@@ -19,6 +20,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
   late final _role   = TextEditingController();
   late final _prompt = TextEditingController();
   late String _model;
+  late final TextEditingController _customModelCtrl;
   late AgentRole _agentRole;
   late double _temp;
   late int _maxIter;
@@ -26,12 +28,6 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
   late List<AgentTool> _tools;
   String? _parentId;
   int _step = 0;
-
-  static const _models = [
-    'claude-opus-4-8',
-    'claude-sonnet-4-6',
-    'claude-haiku-4-5-20251001',
-  ];
 
   @override
   void initState() {
@@ -41,6 +37,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
     _role.text   = e?.role ?? 'worker';
     _prompt.text = e?.systemPrompt ?? '';
     _model       = e?.llmModel ?? 'claude-sonnet-4-6';
+    _customModelCtrl = TextEditingController(text: _model);
     _agentRole   = e?.agentRole ?? AgentRole.worker;
     _temp        = e?.temperature ?? 0.7;
     _maxIter     = e?.maxIterations ?? 20;
@@ -63,6 +60,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
     _name.dispose();
     _role.dispose();
     _prompt.dispose();
+    _customModelCtrl.dispose();
     super.dispose();
   }
 
@@ -299,6 +297,21 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
   }
 
   Widget _stepModel() {
+    final prov  = context.read<AgentProvider>();
+    final all   = prov.availableModels;
+
+    // Group by provider name
+    final byProvider = <String, List<ModelInfo>>{};
+    for (final m in all) {
+      byProvider.putIfAbsent(m.providerName, () => []).add(m);
+    }
+
+    final fallback = <String>[
+      'claude-opus-4-8',
+      'claude-sonnet-4-6',
+      'claude-haiku-4-5-20251001',
+    ];
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
       child: Column(
@@ -306,51 +319,58 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
         children: [
           _label('LLM Model'),
           const SizedBox(height: 8),
-          ..._models.map((m) {
-            final sel = _model == m;
-            return GestureDetector(
-              onTap: () => setState(() => _model = m),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: sel ? AppColors.primary.withOpacity(0.1) : AppColors.surfaceAlt,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: sel ? AppColors.primary : AppColors.border,
-                    width: sel ? 1.5 : 1,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.memory,
-                      size: 18,
-                      color: sel ? AppColors.primary : AppColors.textMuted,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(m, style: TextStyle(
-                            color: sel ? AppColors.primary : AppColors.textPrimary,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          )),
-                          Text(_modelDesc(m),
-                            style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                        ],
-                      ),
-                    ),
-                    if (sel)
-                      const Icon(Icons.check_circle, size: 16, color: AppColors.primary),
-                  ],
-                ),
+
+          if (all.isEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(10),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.warning.withOpacity(0.3)),
               ),
-            );
-          }),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.warning),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'No providers connected. Add one in Settings → Model Providers. '
+                      'Showing built-in Claude models as fallback.',
+                      style: TextStyle(color: AppColors.warning, fontSize: 11, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ...fallback.map((m) => _modelOption(m, m, ProviderType.anthropic)),
+          ] else ...[
+            for (final entry in byProvider.entries) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6, top: 4),
+                child: Text(entry.key,
+                    style: const TextStyle(color: AppColors.textMuted, fontSize: 10,
+                        fontWeight: FontWeight.w600, letterSpacing: 0.8)),
+              ),
+              ...entry.value.map((m) => _modelOption(m.id, m.displayName, m.providerType)),
+            ],
+          ],
+
+          const SizedBox(height: 16),
+          _label('Custom Model ID'),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _customModelCtrl,
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+            decoration: InputDecoration(
+              hintText: 'e.g. llama3:8b, gpt-4o, claude-opus-4-8',
+              prefixIcon: const Icon(Icons.edit_outlined, size: 14, color: AppColors.textMuted),
+              suffixIcon: _model == _customModelCtrl.text
+                  ? const Icon(Icons.check_circle, size: 14, color: AppColors.primary)
+                  : null,
+            ),
+            onChanged: (v) => setState(() => _model = v),
+          ),
 
           const SizedBox(height: 20),
           _label('Temperature: ${_temp.toStringAsFixed(2)}'),
@@ -363,11 +383,11 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
             activeColor: AppColors.primary,
             inactiveColor: AppColors.border,
           ),
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Precise', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-              Text('Creative', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+              const Text('Precise', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+              const Text('Creative', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
             ],
           ),
 
@@ -464,8 +484,12 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
             style: TextStyle(color: AppColors.textMuted, fontSize: 12),
           ),
           const SizedBox(height: 12),
+
+          // No parent option
           _parentOption(null, 'No parent (root agent)', 'Stand-alone or top-level agent'),
+
           const Divider(height: 20, color: AppColors.border),
+
           if (agents.isEmpty)
             const Text('No other agents available',
               style: TextStyle(color: AppColors.textMuted))
@@ -619,6 +643,57 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
     Navigator.pop(context);
   }
 
+  Widget _modelOption(String id, String label, ProviderType type) {
+    final sel = _model == id;
+    IconData icon;
+    switch (type) {
+      case ProviderType.anthropic: icon = Icons.auto_awesome; break;
+      case ProviderType.ollama:    icon = Icons.computer;     break;
+      case ProviderType.openai:    icon = Icons.cloud_outlined; break;
+      case ProviderType.custom:    icon = Icons.settings_ethernet; break;
+    }
+    return GestureDetector(
+      onTap: () => setState(() {
+        _model = id;
+        _customModelCtrl.text = id;
+      }),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: sel ? AppColors.primary.withOpacity(0.1) : AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: sel ? AppColors.primary : AppColors.border,
+            width: sel ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: sel ? AppColors.primary : AppColors.textMuted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: TextStyle(
+                    color: sel ? AppColors.primary : AppColors.textPrimary,
+                    fontWeight: FontWeight.w600, fontSize: 13,
+                  )),
+                  if (label != id)
+                    Text(id, style: const TextStyle(
+                        color: AppColors.textMuted, fontSize: 10)),
+                ],
+              ),
+            ),
+            if (sel) const Icon(Icons.check_circle, size: 16, color: AppColors.primary),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _addCustomTool() async {
     final name = await showDialog<String>(
       context: context,
@@ -649,13 +724,6 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
       case AgentRole.reviewer:     return 'Reviewer';
       case AgentRole.planner:      return 'Planner';
     }
-  }
-
-  String _modelDesc(String m) {
-    if (m.contains('opus'))   return 'Most capable — complex reasoning, highest quality';
-    if (m.contains('sonnet')) return 'Balanced — great capability and speed';
-    if (m.contains('haiku'))  return 'Fastest — lightweight tasks and high throughput';
-    return '';
   }
 
   IconData _toolIcon(String name) {
