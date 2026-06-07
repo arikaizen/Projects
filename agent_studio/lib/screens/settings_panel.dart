@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/agent_provider.dart';
 import '../theme/app_theme.dart';
+
+enum _ConnMode { ffi, http }
 
 class SettingsPanel extends StatefulWidget {
   const SettingsPanel({super.key});
@@ -11,18 +14,28 @@ class SettingsPanel extends StatefulWidget {
 }
 
 class _SettingsPanelState extends State<SettingsPanel> {
-  final _urlCtrl = TextEditingController();
+  final _pathCtrl = TextEditingController();
+  final _urlCtrl  = TextEditingController();
   bool _connecting = false;
+  _ConnMode _mode  = kIsWeb ? _ConnMode.http : _ConnMode.ffi;
 
   @override
   void initState() {
     super.initState();
-    final prov = context.read<AgentProvider>();
-    _urlCtrl.text = prov.backendUrl ?? 'http://localhost:8080';
+    final prov  = context.read<AgentProvider>();
+    final saved = prov.backendUrl ?? '';
+    if (saved.startsWith('http')) {
+      _mode = _ConnMode.http;
+      _urlCtrl.text = saved;
+    } else {
+      _pathCtrl.text = saved.isNotEmpty ? saved : '/path/to/libagent_engine.so';
+      _urlCtrl.text  = 'http://localhost:8080';
+    }
   }
 
   @override
   void dispose() {
+    _pathCtrl.dispose();
     _urlCtrl.dispose();
     super.dispose();
   }
@@ -36,7 +49,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
         side: const BorderSide(color: AppColors.border),
       ),
       child: SizedBox(
-        width: 480,
+        width: 520,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -83,95 +96,226 @@ class _SettingsPanelState extends State<SettingsPanel> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _section('Backend Connection'),
+              _section('Engine Connection'),
               const SizedBox(height: 8),
-              const Text(
-                'Connect to your C++ AgentManager REST API. '
-                'Without a connection, the app uses mock responses.',
-                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _urlCtrl,
-                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
-                      decoration: const InputDecoration(
-                        hintText: 'http://localhost:8080',
-                        prefixIcon: Icon(Icons.link, size: 16, color: AppColors.textMuted),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  _connecting
-                      ? const SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation(AppColors.primary),
-                          ),
-                        )
-                      : ElevatedButton(
-                          onPressed: () => _connect(prov),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          ),
-                          child: const Text('Connect'),
-                        ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: prov.isConnected ? AppColors.statusDone : AppColors.statusIdle,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    prov.isConnected
-                        ? 'Connected to ${prov.backendUrl}'
-                        : 'Not connected — using mock mode',
-                    style: TextStyle(
-                      color: prov.isConnected ? AppColors.statusDone : AppColors.textMuted,
-                      fontSize: 12,
-                    ),
-                  ),
-                  if (prov.isConnected) ...[
-                    const Spacer(),
-                    TextButton(
-                      onPressed: prov.disconnect,
-                      child: const Text('Disconnect',
-                        style: TextStyle(color: AppColors.error, fontSize: 12)),
-                    ),
-                  ],
-                ],
-              ),
 
-              const SizedBox(height: 24),
-              _section('API Configuration'),
-              const SizedBox(height: 8),
-              _infoRow(Icons.info_outline,
-                'The app connects to /api/agents/* and /api/groups/* endpoints. '
-                'Refer to the C++ agent_engine REST API docs for integration details.'),
+              // Status banner
+              _statusBanner(prov),
+              const SizedBox(height: 16),
 
-              const SizedBox(height: 24),
+              // Mode toggle (not on web — FFI unavailable)
+              if (!kIsWeb) ...[
+                _modeToggle(),
+                const SizedBox(height: 16),
+              ],
+
+              // Connection input
+              if (_mode == _ConnMode.ffi && !kIsWeb)
+                _ffiInput()
+              else
+                _httpInput(),
+
+              const SizedBox(height: 20),
               _section('About'),
               const SizedBox(height: 8),
-              _infoRow(Icons.hub,
-                'Agent Studio — Interactive GUI for your AI agent engine.\n'
-                'Supports single agents, hierarchies, and collaborative groups.'),
+              _infoBox(
+                Icons.hub,
+                'Agent Studio connects directly to your compiled '
+                'libagent_engine.so via Dart FFI on desktop, or to a '
+                'REST API server via HTTP. Both expose the full C ABI.',
+              ),
+
+              const SizedBox(height: 16),
+              _section('Expected REST endpoints (HTTP mode)'),
+              const SizedBox(height: 8),
+              _codeBox(
+                'GET  /health\n'
+                'POST /api/agents          → spawn agent\n'
+                'GET  /api/agents/:id/status\n'
+                'POST /api/agents/:id/run  → { "task": "..." }\n'
+                'POST /api/agents/:id/cancel\n'
+                'POST /api/groups/:id/run  → { "task": "..." }',
+              ),
             ],
           ),
         );
       },
     );
+  }
+
+  Widget _statusBanner(AgentProvider prov) {
+    final ok    = prov.isConnected;
+    final color = ok ? AppColors.statusDone : AppColors.textMuted;
+    final label = ok
+        ? 'Connected — ${prov.connectionLabel}'
+        : 'Not connected — running in mock mode';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(label, style: TextStyle(color: color, fontSize: 12)),
+          ),
+          if (ok)
+            TextButton(
+              onPressed: prov.disconnect,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.error,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+              child: const Text('Disconnect', style: TextStyle(fontSize: 11)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _modeToggle() {
+    return Row(
+      children: [
+        _modeBtn(_ConnMode.ffi,  Icons.memory,      'FFI (direct .so)'),
+        const SizedBox(width: 10),
+        _modeBtn(_ConnMode.http, Icons.cloud_outlined, 'HTTP REST API'),
+      ],
+    );
+  }
+
+  Widget _modeBtn(_ConnMode mode, IconData icon, String label) {
+    final sel = _mode == mode;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _mode = mode),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: sel ? AppColors.primary.withOpacity(0.12) : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: sel ? AppColors.primary : AppColors.border,
+              width: sel ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 20, color: sel ? AppColors.primary : AppColors.textMuted),
+              const SizedBox(height: 6),
+              Text(label, style: TextStyle(
+                color: sel ? AppColors.primary : AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: sel ? FontWeight.w600 : FontWeight.normal,
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _ffiInput() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label('Path to libagent_engine.so'),
+        const SizedBox(height: 6),
+        const Text(
+          'Point to the compiled shared library on your machine. '
+          'The app loads it directly via Dart FFI — no server needed.',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _pathCtrl,
+                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                decoration: const InputDecoration(
+                  hintText: '/path/to/libagent_engine.so',
+                  prefixIcon: Icon(Icons.folder_open_outlined, size: 16,
+                    color: AppColors.textMuted),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            _connectBtn(_pathCtrl),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _infoBox(Icons.info_outline,
+          'Build your agent engine with:\n'
+          '  cmake -DBUILD_SHARED_LIBS=ON ..\n'
+          '  make agent_engine\n'
+          'Then point this path to the resulting .so file.'),
+      ],
+    );
+  }
+
+  Widget _httpInput() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label('Backend URL'),
+        const SizedBox(height: 6),
+        const Text(
+          'Connect to a running AgentManager HTTP server. '
+          'Falls back to mock mode if unreachable.',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.4),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _urlCtrl,
+                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                decoration: const InputDecoration(
+                  hintText: 'http://localhost:8080',
+                  prefixIcon: Icon(Icons.link, size: 16, color: AppColors.textMuted),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            _connectBtn(_urlCtrl),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _connectBtn(TextEditingController ctrl) {
+    return _connecting
+        ? const SizedBox(
+            width: 44,
+            height: 44,
+            child: Center(
+              child: SizedBox(
+                width: 20, height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation(AppColors.primary),
+                ),
+              ),
+            ),
+          )
+        : ElevatedButton(
+            onPressed: () => _connect(ctrl.text.trim()),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            ),
+            child: const Text('Connect'),
+          );
   }
 
   Widget _footer() {
@@ -192,17 +336,29 @@ class _SettingsPanelState extends State<SettingsPanel> {
     );
   }
 
-  Widget _section(String title) {
-    return Text(title,
-      style: const TextStyle(
-        color: AppColors.textSecondary,
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 1,
-      ));
+  Future<void> _connect(String target) async {
+    if (target.isEmpty) return;
+    setState(() => _connecting = true);
+    await context.read<AgentProvider>().connect(target);
+    if (mounted) setState(() => _connecting = false);
   }
 
-  Widget _infoRow(IconData icon, String text) {
+  Widget _section(String title) => Text(title,
+    style: const TextStyle(
+      color: AppColors.textSecondary,
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 1,
+    ));
+
+  Widget _label(String text) => Text(text,
+    style: const TextStyle(
+      color: AppColors.textSecondary,
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+    ));
+
+  Widget _infoBox(IconData icon, String text) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -217,16 +373,34 @@ class _SettingsPanelState extends State<SettingsPanel> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(text,
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.5)),
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 11,
+                height: 1.6,
+                fontFamily: 'monospace',
+              )),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _connect(AgentProvider prov) async {
-    setState(() => _connecting = true);
-    await prov.connect(_urlCtrl.text.trim());
-    if (mounted) setState(() => _connecting = false);
+  Widget _codeBox(String code) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Text(code,
+        style: const TextStyle(
+          color: AppColors.accent,
+          fontSize: 11,
+          fontFamily: 'monospace',
+          height: 1.8,
+        )),
+    );
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/agent_model.dart';
@@ -19,12 +20,14 @@ class AgentProvider extends ChangeNotifier {
   final Map<String, AgentModel> _agents = {};
   final Map<String, AgentGroup> _groups = {};
   final List<TaskModel>         _tasks  = [];
-  String? _selectedAgentId;
-  String? _selectedGroupId;
-  String? _activeConversationId; // agentId or groupId currently in chat
-  bool    _activeIsGroup = false;
-  bool    _isConnected = false;
-  String? _backendUrl;
+  String?  _selectedAgentId;
+  String?  _selectedGroupId;
+  String?  _activeConversationId;
+  bool     _activeIsGroup = false;
+  bool     _isConnected   = false;
+  String?  _backendUrl;
+  String   _connectionLabel = 'Mock';
+  StreamSubscription<Map<String, dynamic>>? _eventSub;
   final List<String> _eventLog = [];
 
   // ── Getters ────────────────────────────────────────────────────────────────
@@ -37,9 +40,10 @@ class AgentProvider extends ChangeNotifier {
   String?          get selectedGroupId  => _selectedGroupId;
   String?          get activeConvId     => _activeConversationId;
   bool             get activeConvIsGroup => _activeIsGroup;
-  bool             get isConnected      => _isConnected;
-  String?          get backendUrl       => _backendUrl;
-  List<String>     get eventLog         => List.unmodifiable(_eventLog);
+  bool             get isConnected       => _isConnected;
+  String?          get backendUrl        => _backendUrl;
+  String           get connectionLabel   => _api.connectionLabel;
+  List<String>     get eventLog          => List.unmodifiable(_eventLog);
 
   AgentModel?  get selectedAgent  => _selectedAgentId != null ? _agents[_selectedAgentId] : null;
   AgentGroup?  get selectedGroup  => _selectedGroupId != null ? _groups[_selectedGroupId] : null;
@@ -312,20 +316,77 @@ class AgentProvider extends ChangeNotifier {
   }
 
   // ── Backend connection ─────────────────────────────────────────────────────
-  Future<void> connect(String url) async {
-    _backendUrl = url;
+
+  /// [target] is either:
+  ///   - A path to libagent_engine.so  (FFI, desktop only)
+  ///   - An HTTP URL like http://localhost:8080  (REST)
+  Future<void> connect(String target) async {
+    _backendUrl = target;
+    _eventSub?.cancel();
+
     try {
-      _isConnected = await _api.ping(url);
+      _isConnected = await _api.connect(target);
     } catch (_) {
       _isConnected = false;
     }
-    _log(_isConnected ? 'Connected to $url' : 'Failed to connect to $url');
+
+    if (_isConnected) {
+      // Subscribe to live engine events
+      _eventSub = _api.engineEvents?.listen(_handleEngineEvent);
+    }
+
+    _log(_isConnected
+        ? 'Connected — ${_api.connectionLabel}'
+        : 'Failed to connect to $target (using mock mode)');
     notifyListeners();
   }
 
   void disconnect() {
+    _eventSub?.cancel();
+    _api.disconnect();
     _isConnected = false;
-    _backendUrl = null;
+    _backendUrl  = null;
+    notifyListeners();
+  }
+
+  void _handleEngineEvent(Map<String, dynamic> evt) {
+    final type    = evt['type'] as String? ?? '';
+    final agentId = evt['agent_id'] as String?;
+
+    switch (type) {
+      case 'agent_started':
+        if (agentId != null) _setAgentStatus(agentId, AgentStatus.running);
+        break;
+      case 'agent_finished':
+        if (agentId != null) _setAgentStatus(agentId, AgentStatus.done, task: null);
+        break;
+      case 'agent_failed':
+        if (agentId != null) _setAgentStatus(agentId, AgentStatus.error, task: null);
+        break;
+      case 'agent_cancelled':
+        if (agentId != null) _setAgentStatus(agentId, AgentStatus.cancelled, task: null);
+        break;
+      case 'work_item_started':
+        final name = evt['work_item_name'] as String?;
+        if (agentId != null && name != null) {
+          _setAgentStatus(agentId, AgentStatus.running, task: name);
+        }
+        break;
+      case 'blackboard_updated':
+        _log('[blackboard] ${evt['key']} updated');
+        break;
+      case 'mcp_connected':
+        _log('[MCP] connected: ${evt['server_name']}');
+        break;
+      case 'mcp_disconnected':
+        _log('[MCP] disconnected: ${evt['server_name']}');
+        break;
+      case 'quota_exceeded':
+        _log('[quota] exceeded for user ${evt['user_id']}');
+        break;
+    }
+
+    _log('[engine] $type${agentId != null ? ' agent=$agentId' : ''}');
     notifyListeners();
   }
 

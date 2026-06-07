@@ -293,7 +293,7 @@ class _TopBar extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             Text(
-              connected ? 'Live' : 'Mock',
+              connected ? prov.connectionLabel : 'Mock',
               style: TextStyle(
                 color: connected ? AppColors.accent : AppColors.textMuted,
                 fontSize: 11,
