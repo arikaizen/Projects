@@ -42,7 +42,7 @@ AIModelLlama::AIModelLlama(const std::string& model_path,
     llama_backend_init();
 
     llama_model_params model_params = llama_model_default_params();
-    model_params.n_gpu_layers       = m_vram_plan.n_gpu_layers;
+    model_params.n_gpu_layers       = 9999; // all layers to GPU; OOM if model doesn't fit
 
     m_model = llama_model_load_from_file(model_path.c_str(), model_params);
     if (!m_model)
@@ -71,22 +71,8 @@ AIModelLlama::AIModelLlama(const std::string& model_path,
             "AIModelLlama: failed to create inference context for \"" + model_path + "\"");
     }
 
-    // ── 5. Create LayerStreamer for overflow layers ───────────────────────────
-    if (m_vram_plan.needs_streaming && model_info.n_layers > 0) {
-        try {
-            m_streamer = std::make_unique<LayerStreamer>(
-                model_info, m_vram_plan.n_gpu_layers, model_path);
-
-            // Issue read-ahead for all CPU-resident layers now so they're in
-            // page-cache before the first inference call.
-            m_streamer->prefetch_all();
-
-        } catch (const std::exception& ex) {
-            std::cerr << "[AIModelLlama] LayerStreamer init failed: " << ex.what()
-                      << " — continuing without streaming\n";
-            m_streamer.reset();
-        }
-    }
+    // LayerStreamer is only needed when layers overflow to CPU.
+    // With n_gpu_layers=9999 everything is on GPU, so no streaming required.
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,11 +130,6 @@ std::string AIModelLlama::RawGenerate(const std::string& prompt, float t, int ma
 {
     auto tokens = Tokenize(prompt, /*add_bos=*/true);
 
-    // Prefetch the first CPU-resident layer before starting decode so it lands
-    // in page-cache by the time llama.cpp reaches it.
-    if (m_streamer)
-        m_streamer->prefetch_for_llama(m_vram_plan.n_gpu_layers);
-
     llama_memory_clear(llama_get_memory(m_inference_ctx), /*data=*/true);
 
     llama_batch prompt_batch = llama_batch_get_one(
@@ -178,12 +159,6 @@ std::string AIModelLlama::RawGenerate(const std::string& prompt, float t, int ma
         int piece_len = llama_token_to_piece(vocab, new_id, piece, sizeof piece, 0, false);
         if (piece_len > 0)
             generated.append(piece, static_cast<size_t>(piece_len));
-
-        // While decoding this token, prefetch the next CPU layer so it's ready.
-        if (m_streamer && i % 4 == 0) {
-            int layer_hint = m_vram_plan.n_gpu_layers + (i % m_vram_plan.n_total_layers);
-            m_streamer->prefetch_for_llama(layer_hint);
-        }
 
         llama_batch next_batch = llama_batch_get_one(&new_id, 1);
         if (llama_decode(m_inference_ctx, next_batch) != 0) {
