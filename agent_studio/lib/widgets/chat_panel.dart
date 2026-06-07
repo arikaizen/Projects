@@ -234,14 +234,12 @@ class _ChatPanelState extends State<ChatPanel> {
   }
 
   Widget _renderContent(String content) {
-    // Basic markdown-ish rendering: detect code blocks
     if (content.contains('```')) {
       final parts = content.split('```');
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: List.generate(parts.length, (i) {
           if (i.isOdd) {
-            // code block
             final lines = parts[i].split('\n');
             final lang   = lines.first.trim();
             final code   = lines.skip(1).join('\n');

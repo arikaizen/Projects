@@ -1,19 +1,12 @@
 /// Raw Dart FFI bindings for agent_engine/c_api.h
-///
-/// These are 1-to-1 mirrors of every function in the C ABI.
-/// Use AgentEngineFfi (higher-level) rather than calling these directly.
 library agent_engine_bindings;
 
 import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
 
-// ── Opaque handle types ────────────────────────────────────────────────────
-
 final class AgentManager_ extends Opaque {}
 final class AgentFuture_  extends Opaque {}
-
-// ── Status code constants (matches am_status_t enum) ──────────────────────
 
 const amOk                    = 0;
 const amErrorInvalidArg       = 1;
@@ -29,25 +22,18 @@ const amErrorPromptSubst      = 10;
 const amErrorQuotaExceeded    = 11;
 const amErrorDependencyCycle  = 12;
 
-// ── Native function typedefs ───────────────────────────────────────────────
-
-// am_create
 typedef _AmCreateNative = Pointer<AgentManager_> Function(Pointer<Utf8> configJson);
 typedef _AmCreate       = Pointer<AgentManager_> Function(Pointer<Utf8> configJson);
 
-// am_destroy
 typedef _AmDestroyNative = Void Function(Pointer<AgentManager_> mgr);
 typedef _AmDestroy       = void Function(Pointer<AgentManager_> mgr);
 
-// am_last_error
 typedef _AmLastErrorNative = Pointer<Utf8> Function(Pointer<AgentManager_> mgr);
 typedef _AmLastError       = Pointer<Utf8> Function(Pointer<AgentManager_> mgr);
 
-// am_api_version
 typedef _AmApiVersionNative = Int32 Function();
 typedef _AmApiVersion       = int   Function();
 
-// am_spawn_agent
 typedef _AmSpawnAgentNative = Int32 Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> configJson,
@@ -61,13 +47,11 @@ typedef _AmSpawnAgent = int Function(
     int outSize,
 );
 
-// am_destroy_agent
 typedef _AmDestroyAgentNative = Int32 Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> agentId);
 typedef _AmDestroyAgent = int Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> agentId);
 
-// am_list_agents
 typedef _AmListAgentsNative = Int32 Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> userId,
@@ -81,7 +65,6 @@ typedef _AmListAgents = int Function(
     int outSize,
 );
 
-// am_get_status
 typedef _AmGetStatusNative = Int32 Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> agentId,
@@ -95,13 +78,11 @@ typedef _AmGetStatus = int Function(
     int outSize,
 );
 
-// am_cancel_agent
 typedef _AmCancelAgentNative = Int32 Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> agentId);
 typedef _AmCancelAgent = int Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> agentId);
 
-// am_run_agent
 typedef _AmRunAgentNative = Pointer<AgentFuture_> Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> agentId,
@@ -113,7 +94,6 @@ typedef _AmRunAgent = Pointer<AgentFuture_> Function(
     Pointer<Utf8> taskJson,
 );
 
-// am_future_wait
 typedef _AmFutureWaitNative = Int32 Function(
     Pointer<AgentFuture_> future,
     Int32 timeoutMs,
@@ -127,11 +107,9 @@ typedef _AmFutureWait = int Function(
     int outSize,
 );
 
-// am_future_free
 typedef _AmFutureFreeNative = Void Function(Pointer<AgentFuture_> future);
 typedef _AmFutureFree       = void Function(Pointer<AgentFuture_> future);
 
-// am_pipe
 typedef _AmPipeNative = Int32 Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> fromId,
@@ -145,7 +123,6 @@ typedef _AmPipe = int Function(
     Pointer<Utf8> templateString,
 );
 
-// am_send_message
 typedef _AmSendMessageNative = Int32 Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> from, Pointer<Utf8> to, Pointer<Utf8> msgJson);
@@ -153,13 +130,11 @@ typedef _AmSendMessage = int Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> from, Pointer<Utf8> to, Pointer<Utf8> msgJson);
 
-// am_broadcast
 typedef _AmBroadcastNative = Int32 Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> from, Pointer<Utf8> msgJson);
 typedef _AmBroadcast = int Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> from, Pointer<Utf8> msgJson);
 
-// am_drain_inbox
 typedef _AmDrainInboxNative = Int32 Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> agentId,
@@ -173,13 +148,11 @@ typedef _AmDrainInbox = int Function(
     int outSize,
 );
 
-// am_blackboard_write
 typedef _AmBlackboardWriteNative = Int32 Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> key, Pointer<Utf8> valueJson);
 typedef _AmBlackboardWrite = int Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> key, Pointer<Utf8> valueJson);
 
-// am_blackboard_read
 typedef _AmBlackboardReadNative = Int32 Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> key,
@@ -193,7 +166,6 @@ typedef _AmBlackboardRead = int Function(
     int outSize,
 );
 
-// am_blackboard_keys
 typedef _AmBlackboardKeysNative = Int32 Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> prefix,
@@ -207,7 +179,6 @@ typedef _AmBlackboardKeys = int Function(
     int outSize,
 );
 
-// am_research_from_angles
 typedef _AmResearchFromAnglesNative = Int32 Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> anglesJsonArray,
@@ -223,7 +194,6 @@ typedef _AmResearchFromAngles = int Function(
     int outSize,
 );
 
-// am_inject_work
 typedef _AmInjectWorkNative = Int32 Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> agentId,
@@ -235,7 +205,6 @@ typedef _AmInjectWork = int Function(
     Pointer<Utf8> workItemJson,
 );
 
-// am_subscribe_events  (callback: void(*)(const char*, void*))
 typedef AmEventCbNative = Void Function(Pointer<Utf8> eventJson, Pointer<Void> userData);
 typedef AmEventCb       = void Function(Pointer<Utf8> eventJson, Pointer<Void> userData);
 
@@ -259,17 +228,14 @@ typedef _AmUnsubscribeEvents = int Function(
     Pointer<NativeFunction<AmEventCbNative>> cb,
 );
 
-// am_reload_prompts
 typedef _AmReloadPromptsNative = Int32 Function(Pointer<AgentManager_> mgr);
 typedef _AmReloadPrompts       = int   Function(Pointer<AgentManager_> mgr);
 
-// am_set_prompts_dir
 typedef _AmSetPromptsDirNative = Int32 Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> dirPath);
 typedef _AmSetPromptsDir = int Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> dirPath);
 
-// am_set_user_quota
 typedef _AmSetUserQuotaNative = Int32 Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> userId,
@@ -281,25 +247,21 @@ typedef _AmSetUserQuota = int Function(
     Pointer<Utf8> quotaJson,
 );
 
-// am_connect_mcp
 typedef _AmConnectMcpNative = Int32 Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> serverConfigJson);
 typedef _AmConnectMcp = int Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> serverConfigJson);
 
-// am_disconnect_mcp
 typedef _AmDisconnectMcpNative = Int32 Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> serverName);
 typedef _AmDisconnectMcp = int Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> serverName);
 
-// am_list_mcp_servers
 typedef _AmListMcpServersNative = Int32 Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> outJson, Size outSize);
 typedef _AmListMcpServers = int Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> outJson, int outSize);
 
-// am_fan_out
 typedef _AmFanOutNative = Int32 Function(
     Pointer<AgentManager_> mgr,
     Pointer<Utf8> configsJsonArray,
@@ -320,9 +282,6 @@ typedef _AmFanOutFreeArrayNative = Void Function(
 typedef _AmFanOutFreeArray = void Function(
     Pointer<Pointer<AgentFuture_>> arr);
 
-// ── AgentEngineBindings ────────────────────────────────────────────────────
-
-/// Loads libagent_engine and binds all C ABI functions.
 class AgentEngineBindings {
   late final DynamicLibrary _lib;
 
@@ -397,7 +356,6 @@ class AgentEngineBindings {
     amFanOutFreeArray = _lib.lookupFunction<_AmFanOutFreeArrayNative, _AmFanOutFreeArray>('am_fan_out_free_array');
   }
 
-  /// Resolve the default library path for the current platform.
   static String defaultLibPath() {
     if (Platform.isLinux)   return 'libagent_engine.so';
     if (Platform.isMacOS)   return 'libagent_engine.dylib';

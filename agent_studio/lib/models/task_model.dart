@@ -6,7 +6,7 @@ class TaskModel {
   String prompt;
   TaskStatus status;
   TaskTarget target;
-  String targetId;       // agentId or groupId
+  String targetId;
   String? result;
   String? error;
   DateTime createdAt;

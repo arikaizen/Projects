@@ -6,13 +6,11 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import '../models/task_model.dart';
 
-// FFI import (conditionally — not available on web)
 import 'engine_service_stub.dart'
     if (dart.library.ffi) 'engine_service_ffi.dart';
 
-/// Public interface that both FFI and HTTP backends implement.
 abstract class AgentBackend {
-  Future<bool> connect(String target);  // path to .so OR http URL
+  Future<bool> connect(String target);
   void disconnect();
   bool get isConnected;
   String get connectionLabel;
@@ -26,14 +24,11 @@ abstract class AgentBackend {
   Stream<Map<String, dynamic>>? get engineEvents;
 }
 
-/// Picks the right backend:
-///  - On desktop (linux/macos/windows): try FFI first, fall back to HTTP mock
-///  - On web: HTTP only (FFI not available)
 class AgentApiService {
   late AgentBackend _backend;
 
   AgentApiService() {
-    _backend = createBackend(); // resolved by conditional import
+    _backend = createBackend();
   }
 
   Future<bool> connect(String target) => _backend.connect(target);
@@ -57,8 +52,6 @@ class AgentApiService {
   Future<List<Map<String, dynamic>>> listEngineAgents() =>
       _backend.listEngineAgents();
 }
-
-// ── HTTP/Mock backend (works everywhere) ────────────────────────────────────
 
 class HttpMockBackend implements AgentBackend {
   String? _baseUrl;
@@ -155,8 +148,6 @@ class HttpMockBackend implements AgentBackend {
     final res = await http.get(Uri.parse('$_baseUrl/api/agents'));
     return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
   }
-
-  // ── Mock responses ─────────────────────────────────────────────────────────
 
   Future<String> _mockResponse(String prompt) async {
     await Future.delayed(Duration(milliseconds: 600 + _rng.nextInt(1000)));

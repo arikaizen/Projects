@@ -14,7 +14,8 @@ Interactive Flutter GUI for your AI agent engine. Create and manage single agent
 | **Live Status** | Animated status badges — idle/running/waiting/done/error |
 | **Task History** | Full task log with durations and results |
 | **Event Log** | Internal event stream for debugging |
-| **Backend Connect** | Plug directly into your C++ `AgentManager` REST API or use mock mode |
+| **FFI Backend** | Direct `libagent_engine.so` loading via Dart FFI (no server needed) |
+| **HTTP Fallback** | Connect to REST API or run in mock mode |
 
 ## Quick Start
 
@@ -27,23 +28,34 @@ flutter run -d macos         # macOS desktop
 flutter run -d windows       # Windows desktop
 ```
 
-## Connecting to the C++ Backend
+## Connecting to the Local Agent Engine
 
-In the app, open **Settings** (gear icon) and enter your backend URL:
+Open **Settings** (gear icon) and choose your connection mode:
 
+### FFI (desktop only — recommended)
+Point directly to your compiled shared library:
+```
+/path/to/libagent_engine.so
+```
+The app loads it directly via Dart FFI — no HTTP server needed. Build it with:
+```bash
+cmake -DBUILD_SHARED_LIBS=ON ..
+make agent_engine
+```
+
+### HTTP REST
+Connect to a running `AgentManager` server:
 ```
 http://localhost:8080
 ```
-
-The app expects these REST endpoints from your `AgentManager`:
-
+Expected endpoints:
 ```
-GET  /health                       → 200 OK
-POST /api/agents                   → spawn agent
-GET  /api/agents/:id/status        → get status
-POST /api/agents/:id/run           → run task { "task": "..." }
-POST /api/agents/:id/cancel        → cancel
-POST /api/groups/:id/run           → run task on group
+GET  /health
+POST /api/agents          → spawn agent
+GET  /api/agents/:id/status
+POST /api/agents/:id/run  → { "task": "..." }
+POST /api/agents/:id/cancel
+POST /api/groups/:id/run
 ```
 
 Without a connection the app runs in **mock mode** with simulated responses.
@@ -52,27 +64,30 @@ Without a connection the app runs in **mock mode** with simulated responses.
 
 ```
 lib/
-├── main.dart                  entry point
-├── theme/
-│   └── app_theme.dart         dark design system + colors
+├── main.dart
+├── theme/app_theme.dart
 ├── models/
-│   ├── agent_model.dart       AgentModel, ChatMessage, AgentTool
-│   ├── agent_group.dart       AgentGroup, GroupMode
-│   └── task_model.dart        TaskModel
-├── providers/
-│   └── agent_provider.dart    central state (ChangeNotifier)
+│   ├── agent_model.dart
+│   ├── agent_group.dart
+│   └── task_model.dart
+├── providers/agent_provider.dart
 ├── services/
-│   └── agent_api_service.dart REST client + mock fallback
+│   ├── agent_api_service.dart
+│   ├── engine_service_ffi.dart   (desktop)
+│   └── engine_service_stub.dart  (web)
+├── ffi/
+│   ├── agent_engine_bindings.dart
+│   └── agent_engine_ffi.dart
 ├── screens/
-│   ├── dashboard_screen.dart  main layout + all tabs
-│   ├── agent_builder_dialog.dart  4-step agent creation wizard
-│   ├── group_builder_dialog.dart  group creation with mode picker
-│   └── settings_panel.dart    backend connection settings
+│   ├── dashboard_screen.dart
+│   ├── agent_builder_dialog.dart
+│   ├── group_builder_dialog.dart
+│   └── settings_panel.dart
 └── widgets/
-    ├── agent_card.dart        agent card with status + actions
-    ├── chat_panel.dart        full chat/task interface
-    ├── hierarchy_tree.dart    drag-and-drop tree view
-    └── status_badge.dart      animated status dot
+    ├── agent_card.dart
+    ├── chat_panel.dart
+    ├── hierarchy_tree.dart
+    └── status_badge.dart
 ```
 
 ## Group Modes
@@ -81,4 +96,4 @@ lib/
 - **Sequential** — agent A → agent B → agent C (output chains)
 - **Broadcast** — send to all, pick best result
 - **Consensus** — all agents must agree before output is accepted
-- **Pipeline** — waterfall transformation (stage A transforms → B transforms → C)
+- **Pipeline** — waterfall transformation (stage A → B → C)
