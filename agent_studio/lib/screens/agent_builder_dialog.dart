@@ -363,11 +363,11 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
             activeColor: AppColors.primary,
             inactiveColor: AppColors.border,
           ),
-          Row(
+          const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Precise', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
-              const Text('Creative', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+              Text('Precise', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+              Text('Creative', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
             ],
           ),
 
@@ -464,12 +464,8 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
             style: TextStyle(color: AppColors.textMuted, fontSize: 12),
           ),
           const SizedBox(height: 12),
-
-          // No parent option
           _parentOption(null, 'No parent (root agent)', 'Stand-alone or top-level agent'),
-
           const Divider(height: 20, color: AppColors.border),
-
           if (agents.isEmpty)
             const Text('No other agents available',
               style: TextStyle(color: AppColors.textMuted))
