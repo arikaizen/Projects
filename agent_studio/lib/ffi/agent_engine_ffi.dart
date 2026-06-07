@@ -93,7 +93,7 @@ class AgentEngineFfi {
     });
 
     return using((arena) {
-      final outBuf = arena<Utf8>(256);
+      final outBuf = arena<Char>(256);
       final status = _b.amSpawnAgent(
         _mgr,
         config.toNativeUtf8(allocator: arena),
@@ -101,7 +101,7 @@ class AgentEngineFfi {
         256,
       );
       _checkStatus(status, 'am_spawn_agent');
-      return outBuf.toDartString();
+      return outBuf.cast<Utf8>().toDartString();
     });
   }
 
