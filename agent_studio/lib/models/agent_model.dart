@@ -29,10 +29,10 @@ class AgentTool {
 class AgentModel {
   final String id;
   String name;
-  String role;           // e.g. "planner", "coder", "reviewer"
+  String role;
   AgentRole agentRole;
   String systemPrompt;
-  String llmModel;       // e.g. "claude-sonnet-4-6"
+  String llmModel;
   AgentStatus status;
   String? parentId;
   List<String> childIds;

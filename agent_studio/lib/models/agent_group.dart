@@ -1,11 +1,11 @@
 import 'agent_model.dart';
 
 enum GroupMode {
-  parallel,    // all agents run simultaneously
-  sequential,  // agents run one after another, output feeds next
-  broadcast,   // same task sent to all, best result wins
-  consensus,   // all agents vote/agree before proceeding
-  pipeline,    // waterfall — stage A → B → C
+  parallel,
+  sequential,
+  broadcast,
+  consensus,
+  pipeline,
 }
 
 enum GroupStatus { idle, running, done, error }
@@ -15,7 +15,7 @@ class AgentGroup {
   String name;
   String description;
   GroupMode mode;
-  List<String> agentIds;  // ordered for sequential/pipeline
+  List<String> agentIds;
   GroupStatus status;
   String? currentTask;
   List<ChatMessage> sharedHistory;

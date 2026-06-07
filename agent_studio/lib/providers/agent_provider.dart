@@ -16,7 +16,6 @@ class AgentProvider extends ChangeNotifier {
     _loadDefaults();
   }
 
-  // ── State ──────────────────────────────────────────────────────────────────
   final Map<String, AgentModel> _agents = {};
   final Map<String, AgentGroup> _groups = {};
   final List<TaskModel>         _tasks  = [];
@@ -30,7 +29,6 @@ class AgentProvider extends ChangeNotifier {
   StreamSubscription<Map<String, dynamic>>? _eventSub;
   final List<String> _eventLog = [];
 
-  // ── Getters ────────────────────────────────────────────────────────────────
   List<AgentModel> get agents        => _agents.values.toList();
   List<AgentModel> get rootAgents    => _agents.values.where((a) => a.parentId == null).toList();
   List<AgentGroup> get groups        => _groups.values.toList();
@@ -62,7 +60,6 @@ class AgentProvider extends ChangeNotifier {
   int get totalCount    => _agents.length;
   int get groupCount    => _groups.length;
 
-  // ── Selection ──────────────────────────────────────────────────────────────
   void selectAgent(String? id)  { _selectedAgentId = id; notifyListeners(); }
   void selectGroup(String? id)  { _selectedGroupId = id; notifyListeners(); }
 
@@ -77,7 +74,6 @@ class AgentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Agent CRUD ─────────────────────────────────────────────────────────────
   AgentModel createAgent({
     required String name,
     String role           = 'worker',
@@ -125,24 +121,18 @@ class AgentProvider extends ChangeNotifier {
   void deleteAgent(String id) {
     final agent = _agents[id];
     if (agent == null) return;
-
-    // Detach from parent
     if (agent.parentId != null) {
       _agents[agent.parentId!]?.childIds.remove(id);
     }
-    // Orphan children
     for (final cid in agent.childIds) {
       _agents[cid] = _agents[cid]!.copyWith(parentId: null);
     }
-    // Remove from groups
     for (final g in _groups.values) {
       g.agentIds.remove(id);
     }
-
     _agents.remove(id);
     if (_selectedAgentId == id)     _selectedAgentId = null;
     if (_activeConversationId == id) _activeConversationId = null;
-
     _log('Agent deleted: ${agent.name}');
     notifyListeners();
   }
@@ -160,7 +150,6 @@ class AgentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Group CRUD ─────────────────────────────────────────────────────────────
   AgentGroup createGroup({
     required String name,
     String description    = '',
@@ -215,7 +204,6 @@ class AgentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Task dispatch ──────────────────────────────────────────────────────────
   Future<TaskModel> dispatchTask({
     required String prompt,
     required String targetId,
@@ -236,7 +224,6 @@ class AgentProvider extends ChangeNotifier {
       startedAt: DateTime.now(),
     ));
 
-    // Mark agents as running
     if (target == TaskTarget.agent) {
       _setAgentStatus(targetId, AgentStatus.running, task: prompt);
     } else if (target == TaskTarget.group) {
@@ -297,7 +284,6 @@ class AgentProvider extends ChangeNotifier {
     }
     notifyListeners();
 
-    // Dispatch as task and stream response back
     await dispatchTask(
       prompt: content,
       targetId: targetId,
@@ -315,11 +301,6 @@ class AgentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Backend connection ─────────────────────────────────────────────────────
-
-  /// [target] is either:
-  ///   - A path to libagent_engine.so  (FFI, desktop only)
-  ///   - An HTTP URL like http://localhost:8080  (REST)
   Future<void> connect(String target) async {
     _backendUrl = target;
     _eventSub?.cancel();
@@ -331,7 +312,6 @@ class AgentProvider extends ChangeNotifier {
     }
 
     if (_isConnected) {
-      // Subscribe to live engine events
       _eventSub = _api.engineEvents?.listen(_handleEngineEvent);
     }
 
@@ -390,7 +370,6 @@ class AgentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Private helpers ────────────────────────────────────────────────────────
   void _updateTask(String id, TaskModel updated) {
     final idx = _tasks.indexWhere((t) => t.id == id);
     if (idx >= 0) _tasks[idx] = updated;
@@ -433,7 +412,6 @@ class AgentProvider extends ChangeNotifier {
   }
 
   void _loadDefaults() {
-    // Seed a demo agent so the app isn't empty on first launch
     createAgent(
       name: 'Assistant',
       role: 'assistant',

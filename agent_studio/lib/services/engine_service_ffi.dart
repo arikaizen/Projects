@@ -1,5 +1,4 @@
 // FFI-backed engine service for desktop (Linux/macOS/Windows).
-// Loaded via conditional import when dart:ffi is available.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
@@ -14,7 +13,6 @@ import 'agent_api_service.dart';
 
 AgentBackend createBackend() => _FfiOrHttpBackend();
 
-/// Tries FFI first; falls back to HTTP/mock if the .so can't be loaded.
 class _FfiOrHttpBackend implements AgentBackend {
   AgentBackend? _delegate;
   bool _ffiActive = false;
@@ -28,14 +26,12 @@ class _FfiOrHttpBackend implements AgentBackend {
 
   @override
   Future<bool> connect(String target) async {
-    // Decide: .so path or HTTP URL
     if (target.startsWith('http://') || target.startsWith('https://')) {
       _delegate  = HttpMockBackend();
       _ffiActive = false;
       return _delegate!.connect(target);
     }
 
-    // Attempt FFI load
     try {
       final ffiBackend = FfiBackend(target);
       await ffiBackend.init();
@@ -43,7 +39,6 @@ class _FfiOrHttpBackend implements AgentBackend {
       _ffiActive = true;
       return true;
     } catch (e) {
-      // Fall back to mock
       _delegate  = HttpMockBackend();
       _ffiActive = false;
       return false;
@@ -74,15 +69,12 @@ class _FfiOrHttpBackend implements AgentBackend {
       _delegate?.listEngineAgents() ?? Future.value([]);
 }
 
-// ── Real FFI backend ─────────────────────────────────────────────────────────
-
 class FfiBackend implements AgentBackend {
   final String _libPath;
   late final AgentEngineFfi _engine;
 
-  // engineId → dartId mapping (engine uses its own UUIDs)
-  final _idMap    = <String, String>{}; // dartId → engineId
-  final _idMapRev = <String, String>{}; // engineId → dartId
+  final _idMap    = <String, String>{};
+  final _idMapRev = <String, String>{};
 
   final _eventCtrl = StreamController<Map<String, dynamic>>.broadcast();
 
@@ -98,7 +90,6 @@ class FfiBackend implements AgentBackend {
       'max_agent_depth': 5,
     });
 
-    // Forward engine events to our broadcast stream
     _engine.events.listen((evt) {
       _eventCtrl.add(evt.raw);
     });
@@ -129,9 +120,7 @@ class FfiBackend implements AgentBackend {
     String dartTargetId,
     TaskTarget target,
   ) async {
-    // Ensure the engine knows about this agent
     final engineId = _engineIdFor(dartTargetId) ?? _spawnForId(dartTargetId);
-
     final result = await _engine.runAgent(engineId, prompt);
     final output = result['output'] as String?
         ?? result['result'] as String?
@@ -165,8 +154,6 @@ class FfiBackend implements AgentBackend {
   Future<List<Map<String, dynamic>>> listEngineAgents() async {
     return _engine.listAgents();
   }
-
-  // ── ID mapping ─────────────────────────────────────────────────────────────
 
   String? _engineIdFor(String dartId) => _idMap[dartId];
 
