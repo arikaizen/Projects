@@ -1,10 +1,4 @@
 /// High-level Dart wrapper around the raw FFI bindings.
-///
-/// Handles:
-///  - Buffer-out retry loop (AM_ERROR_BUFFER_TOO_SMALL)
-///  - UTF-8 string marshalling (alloc/free via Arena)
-///  - Event callback routing (native thread → Dart Isolate via SendPort)
-///  - Future<T> wrappers for async agent runs (off-UI thread via Isolate.run)
 library agent_engine_ffi;
 
 import 'dart:async';
@@ -15,7 +9,6 @@ import 'package:ffi/ffi.dart';
 
 import 'agent_engine_bindings.dart';
 
-/// Events emitted by the engine and forwarded to Dart listeners.
 class AgentEvent {
   final String type;
   final String? agentId;
@@ -40,7 +33,6 @@ class AgentEvent {
   );
 }
 
-/// Wraps the C ABI with Dart-friendly async/stream APIs.
 class AgentEngineFfi {
   final AgentEngineBindings _b;
   late final Pointer<AgentManager_> _mgr;
@@ -49,20 +41,10 @@ class AgentEngineFfi {
   final _eventController = StreamController<AgentEvent>.broadcast();
   Stream<AgentEvent> get events => _eventController.stream;
 
-  // Keep a reference so the GC doesn't collect our native callback
   NativeCallable<AmEventCbNative>? _nativeCb;
 
   AgentEngineFfi(AgentEngineBindings bindings) : _b = bindings;
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
-
-  /// Initialise the AgentManager from a JSON config map.
-  ///
-  /// Common keys:
-  ///   "prompts_dir"       — path to your prompt templates
-  ///   "thread_pool_size"  — default 16
-  ///   "max_agent_depth"   — default 3
-  ///   "llm"               — LLM backend config
   void init(Map<String, dynamic> config) {
     if (_initialised) return;
     final configStr = jsonEncode(config);
@@ -94,9 +76,6 @@ class AgentEngineFfi {
 
   int get apiVersion => _b.amApiVersion();
 
-  // ── Agent lifecycle ────────────────────────────────────────────────────────
-
-  /// Spawn an agent; returns its engine-assigned ID.
   String spawnAgent({
     String name          = 'agent',
     String userId        = 'default',
@@ -158,14 +137,10 @@ class AgentEngineFfi {
     return (jsonDecode(json) as List).cast<Map<String, dynamic>>();
   }
 
-  // ── Run / Future ───────────────────────────────────────────────────────────
-
-  /// Run an agent with a task and return the result asynchronously.
-  /// The blocking wait happens on a background Isolate.
   Future<Map<String, dynamic>> runAgent(
     String agentId,
     String task, {
-    int timeoutMs = -1,   // -1 = wait forever
+    int timeoutMs = -1,
   }) async {
     _assertInit();
     final futurePtr = using((arena) =>
@@ -179,8 +154,6 @@ class AgentEngineFfi {
       throw StateError('am_run_agent failed: ${_lastError(_mgr)}');
     }
 
-    // Wait on a background isolate so we don't block the UI thread.
-    // We pass the raw pointer address as an int (safe: same process).
     final futureAddr = futurePtr.address;
     final mgrAddr    = _mgr.address;
 
@@ -212,8 +185,6 @@ class AgentEngineFfi {
     });
   }
 
-  // ── Pattern A — Pipe ───────────────────────────────────────────────────────
-
   void pipe(String fromId, String toId, {String template = '{prev_output}'}) {
     _assertInit();
     using((arena) {
@@ -228,8 +199,6 @@ class AgentEngineFfi {
       );
     });
   }
-
-  // ── Pattern B — Messaging ──────────────────────────────────────────────────
 
   void sendMessage(String from, String to, Map<String, dynamic> message) {
     _assertInit();
@@ -268,8 +237,6 @@ class AgentEngineFfi {
     return (jsonDecode(json) as List).cast<Map<String, dynamic>>();
   }
 
-  // ── Pattern C — Blackboard ─────────────────────────────────────────────────
-
   void blackboardWrite(String key, dynamic value) {
     _assertInit();
     using((arena) {
@@ -300,8 +267,6 @@ class AgentEngineFfi {
     return (jsonDecode(json) as List).cast<String>();
   }
 
-  // ── Fan-out / Research ─────────────────────────────────────────────────────
-
   Future<Map<String, dynamic>> researchFromAngles(
     List<String> angles,
     String topic,
@@ -327,8 +292,6 @@ class AgentEngineFfi {
     });
   }
 
-  // ── Work injection ─────────────────────────────────────────────────────────
-
   void injectWork(String agentId, Map<String, dynamic> workItem) {
     _assertInit();
     using((arena) {
@@ -342,8 +305,6 @@ class AgentEngineFfi {
       );
     });
   }
-
-  // ── MCP management ─────────────────────────────────────────────────────────
 
   void connectMcp({required String name, required String url, Map<String, dynamic>? extra}) {
     _assertInit();
@@ -373,8 +334,6 @@ class AgentEngineFfi {
     );
     return (jsonDecode(json) as List).cast<String>();
   }
-
-  // ── Config ─────────────────────────────────────────────────────────────────
 
   void reloadPrompts() {
     _assertInit();
@@ -414,10 +373,7 @@ class AgentEngineFfi {
     });
   }
 
-  // ── Private helpers ────────────────────────────────────────────────────────
-
   void _subscribeEvents() {
-    // NativeCallable.listener fires on the Dart UI isolate — safe for UI updates.
     _nativeCb = NativeCallable<AmEventCbNative>.listener(_onNativeEvent);
     using((arena) {
       _b.amSubscribeEvents(_mgr, _nativeCb!.nativeFunction, nullptr);
@@ -428,12 +384,9 @@ class AgentEngineFfi {
     try {
       final raw = jsonDecode(eventJson.toDartString()) as Map<String, dynamic>;
       _eventController.add(AgentEvent.fromJson(raw));
-    } catch (_) {
-      // Malformed event — skip
-    }
+    } catch (_) {}
   }
 
-  /// Buffer-out retry loop: starts at initSize and doubles on BUFFER_TOO_SMALL.
   String _bufOut(
     int Function(Pointer<Utf8> buf, int sz) fn, {
     int initSize = 4096,

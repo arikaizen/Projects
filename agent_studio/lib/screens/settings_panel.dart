@@ -98,23 +98,16 @@ class _SettingsPanelState extends State<SettingsPanel> {
             children: [
               _section('Engine Connection'),
               const SizedBox(height: 8),
-
-              // Status banner
               _statusBanner(prov),
               const SizedBox(height: 16),
-
-              // Mode toggle (not on web — FFI unavailable)
               if (!kIsWeb) ...[
                 _modeToggle(),
                 const SizedBox(height: 16),
               ],
-
-              // Connection input
               if (_mode == _ConnMode.ffi && !kIsWeb)
                 _ffiInput()
               else
                 _httpInput(),
-
               const SizedBox(height: 20),
               _section('About'),
               const SizedBox(height: 8),
@@ -124,7 +117,6 @@ class _SettingsPanelState extends State<SettingsPanel> {
                 'libagent_engine.so via Dart FFI on desktop, or to a '
                 'REST API server via HTTP. Both expose the full C ABI.',
               ),
-
               const SizedBox(height: 16),
               _section('Expected REST endpoints (HTTP mode)'),
               const SizedBox(height: 8),

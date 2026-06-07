@@ -61,14 +61,12 @@ class _AgentNodeState extends State<_AgentNode> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Connector line
           if (!isRoot)
             CustomPaint(
               size: const Size(24, 20),
               painter: _ConnectorPainter(widget.agent.color),
             ),
 
-          // Node card
           DragTarget<String>(
             onAcceptWithDetails: (details) {
               if (details.data != widget.agent.id) {
@@ -105,7 +103,6 @@ class _AgentNodeState extends State<_AgentNode> {
             },
           ),
 
-          // Children
           if (children.isNotEmpty) ...[
             if (_expanded)
               ...children.map((child) => _AgentNode(
