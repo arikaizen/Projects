@@ -33,6 +33,7 @@ class AgentModel {
   AgentRole agentRole;
   String systemPrompt;
   String llmModel;
+  String? providerId;
   AgentStatus status;
   String? parentId;
   List<String> childIds;
@@ -53,6 +54,7 @@ class AgentModel {
     this.agentRole = AgentRole.worker,
     this.systemPrompt = '',
     this.llmModel = 'claude-sonnet-4-6',
+    this.providerId,
     this.status = AgentStatus.idle,
     this.parentId,
     List<String>? childIds,
@@ -83,6 +85,7 @@ class AgentModel {
     AgentRole? agentRole,
     String? systemPrompt,
     String? llmModel,
+    String? providerId,
     AgentStatus? status,
     String? parentId,
     List<String>? childIds,
@@ -102,6 +105,7 @@ class AgentModel {
       agentRole: agentRole ?? this.agentRole,
       systemPrompt: systemPrompt ?? this.systemPrompt,
       llmModel: llmModel ?? this.llmModel,
+      providerId: providerId ?? this.providerId,
       status: status ?? this.status,
       parentId: parentId ?? this.parentId,
       childIds: childIds ?? List.from(this.childIds),
@@ -124,6 +128,7 @@ class AgentModel {
     'agentRole': agentRole.name,
     'systemPrompt': systemPrompt,
     'llmModel': llmModel,
+    'providerId': providerId,
     'status': status.name,
     'parentId': parentId,
     'childIds': childIds,

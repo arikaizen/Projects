@@ -20,6 +20,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
   late final _role   = TextEditingController();
   late final _prompt = TextEditingController();
   late String _model;
+  String? _providerId;
   late final TextEditingController _customModelCtrl;
   late AgentRole _agentRole;
   late double _temp;
@@ -37,6 +38,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
     _role.text   = e?.role ?? 'worker';
     _prompt.text = e?.systemPrompt ?? '';
     _model       = e?.llmModel ?? 'claude-sonnet-4-6';
+    _providerId  = e?.providerId;
     _customModelCtrl = TextEditingController(text: _model);
     _agentRole   = e?.agentRole ?? AgentRole.worker;
     _temp        = e?.temperature ?? 0.7;
@@ -352,7 +354,8 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
                     style: const TextStyle(color: AppColors.textMuted, fontSize: 10,
                         fontWeight: FontWeight.w600, letterSpacing: 0.8)),
               ),
-              ...entry.value.map((m) => _modelOption(m.id, m.displayName, m.providerType)),
+              ...entry.value.map((m) => _modelOption(
+                m.id, m.displayName, m.providerType, providerId: m.providerId)),
             ],
           ],
 
@@ -615,6 +618,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
         agentRole: _agentRole,
         systemPrompt: _prompt.text.trim(),
         llmModel: _model,
+        providerId: _providerId,
         tools: _tools,
         maxIterations: _maxIter,
         temperature: _temp,
@@ -632,6 +636,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
         agentRole: _agentRole,
         systemPrompt: _prompt.text.trim(),
         llmModel: _model,
+        providerId: _providerId,
         parentId: _parentId,
         tools: _tools,
         maxIterations: _maxIter,
@@ -643,7 +648,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
     Navigator.pop(context);
   }
 
-  Widget _modelOption(String id, String label, ProviderType type) {
+  Widget _modelOption(String id, String label, ProviderType type, {String? providerId}) {
     final sel = _model == id;
     IconData icon;
     switch (type) {
@@ -655,6 +660,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
     return GestureDetector(
       onTap: () => setState(() {
         _model = id;
+        _providerId = providerId;
         _customModelCtrl.text = id;
       }),
       child: AnimatedContainer(

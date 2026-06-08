@@ -140,14 +140,10 @@ class _ChatPanelState extends State<ChatPanel> {
             icon: const Icon(Icons.delete_sweep_outlined, size: 18),
             tooltip: 'Clear history',
             color: AppColors.textMuted,
-            onPressed: () {
-              if (isGroup) {
-                prov.activeGroup?.sharedHistory.clear();
-              } else {
-                prov.activeAgent?.history.clear();
-              }
-              prov.notifyListeners();
-            },
+            onPressed: () => prov.clearHistory(
+              prov.activeConvId!,
+              isGroup: isGroup,
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.close, size: 18),
