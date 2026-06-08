@@ -4,7 +4,8 @@ import 'providers/agent_provider.dart';
 import 'providers/auth_provider.dart';
 import 'services/agent_api_service.dart';
 import 'screens/login_screen.dart';
-import 'screens/dashboard_screen.dart';
+import 'screens/admin_shell.dart';
+import 'screens/user_shell.dart';
 import 'theme/app_theme.dart';
 
 void main() {
@@ -37,6 +38,7 @@ class _Root extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    return auth.isLoggedIn ? const DashboardScreen() : const LoginScreen();
+    if (!auth.isLoggedIn) return const LoginScreen();
+    return auth.isAdmin ? const AdminShell() : const UserShell();
   }
 }
