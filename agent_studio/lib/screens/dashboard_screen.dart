@@ -5,6 +5,7 @@ import '../models/agent_model.dart';
 import '../models/agent_group.dart';
 import '../models/task_model.dart';
 import '../providers/agent_provider.dart';
+import '../providers/auth_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/agent_card.dart';
 import '../widgets/chat_panel.dart';
@@ -123,6 +124,38 @@ class _Sidebar extends StatelessWidget {
             badge: prov.activeTasks.isNotEmpty ? '${prov.activeTasks.length}' : null),
           _navItem(_Tab.logs,      Icons.receipt_long_outlined,'Logs'),
           const Spacer(),
+          const Divider(color: AppColors.border, height: 1),
+          Consumer<AuthProvider>(
+            builder: (ctx, auth, _) => Tooltip(
+              message: auth.session?.username ?? '',
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
+                  children: [
+                    Text(
+                      (auth.session?.username ?? '').isNotEmpty
+                          ? (auth.session!.username[0].toUpperCase())
+                          : '?',
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    GestureDetector(
+                      onTap: () => ctx.read<AuthProvider>().logout(),
+                      child: const Tooltip(
+                        message: 'Sign out',
+                        child: Icon(Icons.logout, size: 16, color: AppColors.textMuted),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
           const Divider(color: AppColors.border, height: 1),
           _settingsBtn(context),
           const SizedBox(height: 12),
