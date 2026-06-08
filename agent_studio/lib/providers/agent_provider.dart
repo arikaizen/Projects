@@ -51,6 +51,8 @@ class AgentProvider extends ChangeNotifier {
   String           get connectionLabel   => _api.connectionLabel;
   List<String>     get eventLog          => List.unmodifiable(_eventLog);
   List<ModelProvider> get modelProviders => List.unmodifiable(_modelProviders);
+  bool get hasAnyProvider => _modelProviders.any((p) => p.isConnected);
+  bool providerReadyFor(AgentModel agent) => _resolveProvider(agent) != null;
   List<ModelInfo>     get availableModels => _modelProviders
       .where((p) => p.isConnected)
       .expand((p) => p.models)

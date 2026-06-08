@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../models/agent_model.dart';
 import '../providers/agent_provider.dart';
+import '../screens/settings_panel.dart';
 import '../theme/app_theme.dart';
 import 'status_badge.dart';
 
@@ -86,6 +87,8 @@ class _ChatPanelState extends State<ChatPanel> {
                       itemBuilder: (_, i) => _bubble(messages[i], prov),
                     ),
             ),
+            if (!isGroup && agent != null && !prov.providerReadyFor(agent))
+              _noProviderBanner(context),
             _inputBar(),
           ],
         );
@@ -348,6 +351,50 @@ class _ChatPanelState extends State<ChatPanel> {
                     ),
                     child: const Icon(Icons.send_rounded, size: 18),
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _noProviderBanner(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.warning.withOpacity(0.35)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+              size: 16, color: AppColors.warning),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'No LLM provider connected — responses will be mocked.\n'
+              'Add a provider in Settings to use a real model.',
+              style: TextStyle(
+                  color: AppColors.warning, fontSize: 11, height: 1.4),
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.warning,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              side: BorderSide(color: AppColors.warning.withOpacity(0.5)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => showDialog(
+              context: context,
+              builder: (_) => const SettingsPanel(),
+            ),
+            child: const Text('Open Settings',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
