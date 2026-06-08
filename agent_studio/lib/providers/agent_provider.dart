@@ -8,6 +8,7 @@ import '../services/agent_api_service.dart';
 import '../theme/app_theme.dart';
 import '../models/model_provider.dart';
 import '../services/model_service.dart';
+import '../services/llm_service.dart';
 
 const _uuid = Uuid();
 
@@ -33,6 +34,7 @@ class AgentProvider extends ChangeNotifier {
   final List<String> _eventLog = [];
   final List<ModelProvider> _modelProviders = [];
   final _modelService = ModelService();
+  final _llmService   = LlmService();
 
   // ── Getters ────────────────────────────────────────────────────────────────
   List<AgentModel> get agents        => _agents.values.toList();
@@ -86,6 +88,15 @@ class AgentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearHistory(String id, {bool isGroup = false}) {
+    if (isGroup) {
+      _groups[id]?.sharedHistory.clear();
+    } else {
+      _agents[id]?.history.clear();
+    }
+    notifyListeners();
+  }
+
   // ── Agent CRUD ─────────────────────────────────────────────────────────────
   AgentModel createAgent({
     required String name,
@@ -93,6 +104,7 @@ class AgentProvider extends ChangeNotifier {
     AgentRole agentRole   = AgentRole.worker,
     String systemPrompt   = '',
     String llmModel       = 'claude-sonnet-4-6',
+    String? providerId,
     String? parentId,
     List<AgentTool>? tools,
     int maxIterations     = 20,
@@ -107,6 +119,7 @@ class AgentProvider extends ChangeNotifier {
       agentRole: agentRole,
       systemPrompt: systemPrompt,
       llmModel: llmModel,
+      providerId: providerId,
       parentId: parentId,
       tools: tools ?? _defaultTools(),
       maxIterations: maxIterations,
@@ -294,9 +307,8 @@ class AgentProvider extends ChangeNotifier {
   }
 
   Future<void> sendMessage(String targetId, String content, {bool isGroup = false}) async {
-    final msgId = _uuid.v4();
     final userMsg = ChatMessage(
-      id: msgId,
+      id: _uuid.v4(),
       content: content,
       isUser: true,
       timestamp: DateTime.now(),
@@ -310,12 +322,71 @@ class AgentProvider extends ChangeNotifier {
     }
     notifyListeners();
 
-    // Dispatch as task and stream response back
+    if (!isGroup) {
+      final agent = _agents[targetId];
+      if (agent != null) {
+        final provider = _resolveProvider(agent);
+        if (provider != null) {
+          _setAgentStatus(targetId, AgentStatus.running, task: content);
+          try {
+            final reply = await _llmService.chat(
+              provider: provider,
+              modelId: agent.llmModel,
+              systemPrompt: agent.systemPrompt,
+              history: List.from(agent.history),
+              temperature: agent.temperature,
+            );
+            agent.history.add(ChatMessage(
+              id: _uuid.v4(),
+              content: reply,
+              isUser: false,
+              timestamp: DateTime.now(),
+              agentId: targetId,
+            ));
+            _setAgentStatus(targetId, AgentStatus.idle, task: null);
+            notifyListeners();
+            return;
+          } catch (e) {
+            _log('LLM error for ${agent.name}: $e');
+            agent.history.add(ChatMessage(
+              id: _uuid.v4(),
+              content: 'Error: $e',
+              isUser: false,
+              timestamp: DateTime.now(),
+              agentId: targetId,
+            ));
+            _setAgentStatus(targetId, AgentStatus.error, task: null);
+            notifyListeners();
+            return;
+          }
+        }
+      }
+    }
+
+    // Fall back to engine / mock if no direct LLM provider
     await dispatchTask(
       prompt: content,
       targetId: targetId,
       target: isGroup ? TaskTarget.group : TaskTarget.agent,
     );
+  }
+
+  /// Find the connected ModelProvider for the given agent.
+  /// Prefers explicit providerId, then searches by matching model id.
+  ModelProvider? _resolveProvider(AgentModel agent) {
+    if (agent.providerId != null) {
+      final matches = _modelProviders.where((p) => p.id == agent.providerId);
+      if (matches.isNotEmpty) return matches.first;
+    }
+    // Match by model id across all connected providers
+    for (final p in _modelProviders) {
+      if (!p.isConnected) continue;
+      if (p.models.any((m) => m.id == agent.llmModel)) return p;
+    }
+    // If there's exactly one connected provider, use it regardless
+    final connected = _modelProviders.where((p) => p.isConnected).toList();
+    if (connected.length == 1) return connected.first;
+    return null;
   }
 
   void cancelTask(String taskId) {
