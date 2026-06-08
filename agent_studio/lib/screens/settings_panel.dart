@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import '../providers/agent_provider.dart';
 import '../theme/app_theme.dart';
@@ -15,9 +16,13 @@ class SettingsPanel extends StatefulWidget {
 }
 
 class _SettingsPanelState extends State<SettingsPanel> {
-  final _pathCtrl = TextEditingController();
-  final _urlCtrl  = TextEditingController();
-  bool _connecting = false;
+  final _pathCtrl      = TextEditingController();
+  final _urlCtrl       = TextEditingController();
+  final _mcpUrlCtrl    = TextEditingController(text: 'http://localhost:3000');
+  bool _connecting         = false;
+  bool _ollamaDetecting    = false;
+  bool _mcpConnecting      = false;
+  String? _ollamaDetectMsg;
   _ConnMode _mode  = kIsWeb ? _ConnMode.http : _ConnMode.ffi;
 
   @override
@@ -38,6 +43,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
   void dispose() {
     _pathCtrl.dispose();
     _urlCtrl.dispose();
+    _mcpUrlCtrl.dispose();
     super.dispose();
   }
 
@@ -116,7 +122,11 @@ class _SettingsPanelState extends State<SettingsPanel> {
               else
                 _httpInput(),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
+              _localLlmSection(prov),
+              const SizedBox(height: 24),
+              _mcpServerSection(prov),
+              const SizedBox(height: 24),
               _modelProvidersSection(prov),
               const SizedBox(height: 20),
               _section('About'),
@@ -344,6 +354,246 @@ class _SettingsPanelState extends State<SettingsPanel> {
     setState(() => _connecting = true);
     await context.read<AgentProvider>().connect(target);
     if (mounted) setState(() => _connecting = false);
+  }
+
+  // ── Local LLM (Ollama) quick-connect ────────────────────────────────────────
+
+  Widget _localLlmSection(AgentProvider prov) {
+    final ollamaProviders = prov.modelProviders
+        .where((p) => p.type == ProviderType.ollama)
+        .toList();
+    final connected = ollamaProviders.any((p) => p.isConnected);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Icon(Icons.computer, size: 14, color: AppColors.accent),
+          const SizedBox(width: 6),
+          _section('Local LLM (Ollama)'),
+          const Spacer(),
+          if (connected)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.statusDone.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.statusDone.withOpacity(0.4)),
+              ),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.circle, size: 6, color: AppColors.statusDone),
+                SizedBox(width: 5),
+                Text('Connected', style: TextStyle(color: AppColors.statusDone,
+                    fontSize: 10, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+        ]),
+        const SizedBox(height: 8),
+        const Text(
+          'Run AI models locally using Ollama. No API key needed — '
+          'just install Ollama and pull a model.',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.5),
+        ),
+        const SizedBox(height: 10),
+        if (_ollamaDetectMsg != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Text(_ollamaDetectMsg!,
+                style: const TextStyle(color: AppColors.textSecondary,
+                    fontSize: 11, fontFamily: 'monospace')),
+          ),
+          const SizedBox(height: 8),
+        ],
+        Row(children: [
+          Expanded(
+            child: ElevatedButton.icon(
+              icon: _ollamaDetecting
+                  ? const SizedBox(width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 1.5,
+                          valueColor: AlwaysStoppedAnimation(Colors.white)))
+                  : const Icon(Icons.search, size: 16),
+              label: Text(_ollamaDetecting ? 'Detecting…' : 'Auto-detect Ollama'),
+              onPressed: _ollamaDetecting ? null : () => _detectOllama(prov),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent.withOpacity(0.8),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add manually'),
+              onPressed: () => _addOllamaManually(prov),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        _codeBox(
+          '# Install Ollama (Linux/Mac)\n'
+          'curl -fsSL https://ollama.com/install.sh | sh\n\n'
+          '# Pull a model\n'
+          'ollama pull llama3\n'
+          'ollama pull mistral\n'
+          'ollama pull gemma3',
+        ),
+      ],
+    );
+  }
+
+  Future<void> _detectOllama(AgentProvider prov) async {
+    setState(() { _ollamaDetecting = true; _ollamaDetectMsg = null; });
+
+    const candidates = [
+      'http://localhost:11434',
+      'http://127.0.0.1:11434',
+      'http://0.0.0.0:11434',
+    ];
+
+    String? found;
+    for (final url in candidates) {
+      try {
+        final res = await http.get(Uri.parse('$url/api/tags'))
+            .timeout(const Duration(seconds: 3));
+        if (res.statusCode == 200) { found = url; break; }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+
+    if (found == null) {
+      setState(() {
+        _ollamaDetecting = false;
+        _ollamaDetectMsg = 'Ollama not found on localhost:11434.\n'
+            'Make sure Ollama is running: ollama serve';
+      });
+      return;
+    }
+
+    // Already added?
+    final already = prov.modelProviders.any(
+        (p) => p.type == ProviderType.ollama && p.baseUrl == found);
+    if (!already) {
+      await prov.addModelProvider(ModelProvider(
+        name: 'Local Ollama',
+        type: ProviderType.ollama,
+        baseUrl: found!,
+      ));
+    }
+
+    setState(() {
+      _ollamaDetecting = false;
+      _ollamaDetectMsg = 'Found Ollama at $found ✓';
+    });
+  }
+
+  Future<void> _addOllamaManually(AgentProvider prov) async {
+    final provider = await showDialog<ModelProvider>(
+      context: context,
+      builder: (_) => const _AddProviderDialog(),
+    );
+    if (provider != null) await prov.addModelProvider(provider);
+  }
+
+  // ── MCP Server connection ────────────────────────────────────────────────────
+
+  Widget _mcpServerSection(AgentProvider prov) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Icon(Icons.hub_outlined, size: 14, color: AppColors.secondary),
+          const SizedBox(width: 6),
+          _section('MCP Server'),
+        ]),
+        const SizedBox(height: 8),
+        const Text(
+          'Connect to the Agent Studio MCP server (mcp_server/) which '
+          'bridges Claude API and Ollama under the MCP protocol.',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.5),
+        ),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _mcpUrlCtrl,
+              style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+              decoration: const InputDecoration(
+                hintText: 'http://localhost:3000',
+                prefixIcon: Icon(Icons.hub_outlined, size: 16,
+                    color: AppColors.textMuted),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          _mcpConnecting
+              ? const SizedBox(width: 44, height: 44,
+                  child: Center(child: SizedBox(width: 20, height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation(AppColors.secondary)))))
+              : ElevatedButton(
+                  onPressed: () => _connectMcp(prov),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.secondary,
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14)),
+                  child: const Text('Connect'),
+                ),
+        ]),
+        const SizedBox(height: 10),
+        _infoBox(Icons.terminal,
+          'Start the server:\n'
+          '  cd mcp_server\n'
+          '  ANTHROPIC_API_KEY=sk-ant-… dart run bin/server.dart\n\n'
+          'Then click Connect above to link the app to it.'),
+      ],
+    );
+  }
+
+  Future<void> _connectMcp(AgentProvider prov) async {
+    final url = _mcpUrlCtrl.text.trim();
+    if (url.isEmpty) return;
+    setState(() => _mcpConnecting = true);
+
+    try {
+      final res = await http.get(Uri.parse('$url/health'))
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        // Add as a custom model provider so its models are available
+        final already = prov.modelProviders.any(
+            (p) => p.type == ProviderType.custom && p.baseUrl == url);
+        if (!already) {
+          await prov.addModelProvider(ModelProvider(
+            name: 'MCP Server',
+            type: ProviderType.custom,
+            baseUrl: url,
+          ));
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('MCP server connected'),
+            backgroundColor: AppColors.statusDone,
+            duration: Duration(seconds: 2),
+          ));
+        }
+      } else {
+        throw Exception('HTTP ${res.statusCode}');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('MCP server unreachable: $e'),
+          backgroundColor: AppColors.error,
+          duration: const Duration(seconds: 3),
+        ));
+      }
+    }
+
+    if (mounted) setState(() => _mcpConnecting = false);
   }
 
   Widget _modelProvidersSection(AgentProvider prov) {
