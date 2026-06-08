@@ -574,7 +574,7 @@ class _GroupCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                _modeBadge(group.mode),
+                _modeBadge(group.formation),
                 const SizedBox(width: 8),
                 IconButton(
                   icon: const Icon(Icons.chat_bubble_outline, size: 16),
@@ -679,7 +679,7 @@ class _GroupCard extends StatelessWidget {
         border: Border.all(color: AppColors.secondary.withOpacity(0.3)),
       ),
       child: Text(
-        group.modeLabel,
+        AgentGroup.formationLabel(group.formation),
         style: const TextStyle(color: AppColors.secondary, fontSize: 11, fontWeight: FontWeight.w600),
       ),
     );
