@@ -97,7 +97,7 @@ class AgentEngineFfi {
       final status = _b.amSpawnAgent(
         _mgr,
         config.toNativeUtf8(allocator: arena),
-        outBuf,
+        outBuf.cast<Utf8>(),
         256,
       );
       _checkStatus(status, 'am_spawn_agent');
