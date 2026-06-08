@@ -172,20 +172,24 @@ class AgentProvider extends ChangeNotifier {
   // ── Group CRUD ─────────────────────────────────────────────────────────────
   AgentGroup createGroup({
     required String name,
-    String description    = '',
-    GroupMode mode        = GroupMode.parallel,
+    String description             = '',
+    FormationType formation         = FormationType.parallel,
     List<String>? agentIds,
+    String? coordinatorId,
+    Map<String, List<String>>? edges,
   }) {
     final id    = _uuid.v4();
     final group = AgentGroup(
       id: id,
       name: name,
       description: description,
-      mode: mode,
+      formation: formation,
       agentIds: agentIds ?? [],
+      coordinatorId: coordinatorId,
+      edges: edges,
     );
     _groups[id] = group;
-    _log('Group created: $name [$id]');
+    _log('Group created: $name [$id] [${AgentGroup.formationLabel(formation)}]');
     notifyListeners();
     return group;
   }

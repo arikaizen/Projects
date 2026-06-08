@@ -19,6 +19,8 @@ class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
   late FormationType _formation;
   late List<String> _selectedIds;
   String? _coordinatorId;
+  // graph edges: agentId → set of agentIds it connects to
+  late Map<String, List<String>> _edges;
 
   @override
   void initState() {
@@ -29,6 +31,9 @@ class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
     _formation      = e?.formation ?? FormationType.parallel;
     _selectedIds    = e != null ? List.from(e.agentIds) : [];
     _coordinatorId  = e?.coordinatorId;
+    _edges          = e != null
+        ? Map.fromEntries(e.edges.entries.map((en) => MapEntry(en.key, List<String>.from(en.value))))
+        : {};
   }
 
   @override
@@ -225,6 +230,92 @@ class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
               onChanged: (v) => setState(() => _coordinatorId = v),
             ),
           ],
+
+          if (_formation == FormationType.graph && _selectedIds.length >= 2) ...[
+            const SizedBox(height: 20),
+            _label('Graph Connections'),
+            const SizedBox(height: 4),
+            const Text('For each agent, choose which agents it sends its output to.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+            const SizedBox(height: 10),
+            ..._selectedIds.map((srcId) {
+              final src = context.read<AgentProvider>().agentById(srcId);
+              final targets = _edges[srcId] ?? [];
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(width: 8, height: 8,
+                          decoration: BoxDecoration(
+                            color: src?.color ?? AppColors.primary,
+                            shape: BoxShape.circle,
+                          )),
+                        const SizedBox(width: 6),
+                        Text(src?.name ?? srcId,
+                          style: const TextStyle(color: AppColors.textPrimary,
+                              fontSize: 12, fontWeight: FontWeight.w600)),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.arrow_forward, size: 12, color: AppColors.textMuted),
+                        const SizedBox(width: 8),
+                        const Text('connects to:',
+                          style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: _selectedIds
+                          .where((id) => id != srcId)
+                          .map((tgtId) {
+                        final tgt = context.read<AgentProvider>().agentById(tgtId);
+                        final connected = targets.contains(tgtId);
+                        return GestureDetector(
+                          onTap: () => setState(() {
+                            final list = _edges.putIfAbsent(srcId, () => []);
+                            if (connected) list.remove(tgtId);
+                            else list.add(tgtId);
+                          }),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 120),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: connected
+                                  ? (tgt?.color ?? AppColors.primary).withOpacity(0.15)
+                                  : AppColors.background,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: connected
+                                    ? (tgt?.color ?? AppColors.primary)
+                                    : AppColors.border,
+                              ),
+                            ),
+                            child: Text(tgt?.name ?? tgtId,
+                              style: TextStyle(
+                                color: connected
+                                    ? (tgt?.color ?? AppColors.primary)
+                                    : AppColors.textMuted,
+                                fontSize: 11,
+                                fontWeight: connected ? FontWeight.w600 : FontWeight.normal,
+                              )),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
         ],
       ),
     );
@@ -317,6 +408,7 @@ class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
         formation:     _formation,
         agentIds:      _selectedIds,
         coordinatorId: _coordinatorId,
+        edges:         _edges,
       );
       prov.updateGroup(updated.id, updated);
     } else {
@@ -326,6 +418,7 @@ class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
         formation:     _formation,
         agentIds:      _selectedIds,
         coordinatorId: _coordinatorId,
+        edges:         _edges,
       );
     }
     Navigator.pop(context);
