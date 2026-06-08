@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/agent_group.dart';
+import '../models/agent_model.dart';
 import '../providers/agent_provider.dart';
 import '../theme/app_theme.dart';
 
@@ -13,19 +14,21 @@ class GroupBuilderDialog extends StatefulWidget {
 }
 
 class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
-  final _name = TextEditingController();
-  final _desc = TextEditingController();
-  late GroupMode _mode;
-  late List<String> _selected;
+  late final _name = TextEditingController();
+  late final _desc = TextEditingController();
+  late FormationType _formation;
+  late List<String> _selectedIds;
+  String? _coordinatorId;
 
   @override
   void initState() {
     super.initState();
     final e = widget.editing;
-    _name.text = e?.name ?? '';
-    _desc.text = e?.description ?? '';
-    _mode      = e?.mode ?? GroupMode.parallel;
-    _selected  = e != null ? List.from(e.agentIds) : [];
+    _name.text      = e?.name ?? '';
+    _desc.text      = e?.description ?? '';
+    _formation      = e?.formation ?? FormationType.parallel;
+    _selectedIds    = e != null ? List.from(e.agentIds) : [];
+    _coordinatorId  = e?.coordinatorId;
   }
 
   @override
@@ -37,7 +40,10 @@ class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isEditing = widget.editing != null;
+    final prov   = context.read<AgentProvider>();
+    final agents = prov.agents;
+    final isEdit = widget.editing != null;
+
     return Dialog(
       backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(
@@ -45,86 +51,20 @@ class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
         side: const BorderSide(color: AppColors.border),
       ),
       child: SizedBox(
-        width: 560,
-        height: 620,
+        width: 620,
+        height: 700,
         child: Column(
           children: [
-            _header(isEditing),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _label('Group Name'),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _name,
-                      style: const TextStyle(color: AppColors.textPrimary),
-                      decoration: const InputDecoration(
-                        hintText: 'e.g. Research Team, Code Pipeline…',
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _label('Description'),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _desc,
-                      maxLines: 2,
-                      style: const TextStyle(color: AppColors.textPrimary),
-                      decoration: const InputDecoration(
-                        hintText: 'What does this group do?',
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _label('Collaboration Mode'),
-                    const SizedBox(height: 8),
-                    ...GroupMode.values.map((m) => _modeCard(m)),
-                    const SizedBox(height: 20),
-                    _label('Agents in this Group'),
-                    const SizedBox(height: 8),
-                    _agentPicker(),
-                    if (_selected.length > 1 &&
-                        (_mode == GroupMode.sequential || _mode == GroupMode.pipeline)) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.warning.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.warning.withOpacity(0.3)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.info_outline,
-                              size: 14, color: AppColors.warning),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'For ${_mode.name} mode, order matters. '
-                                'Reorder agents in the group detail view after creation.',
-                                style: const TextStyle(
-                                  color: AppColors.warning,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            _actions(isEditing),
+            _header(isEdit),
+            Expanded(child: _body(agents)),
+            _footer(prov, isEdit),
           ],
         ),
       ),
     );
   }
 
-  Widget _header(bool isEditing) {
+  Widget _header(bool isEdit) {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 20, 16, 16),
       decoration: const BoxDecoration(
@@ -138,20 +78,21 @@ class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
               color: AppColors.secondary.withOpacity(0.15),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.group, color: AppColors.secondary, size: 20),
+            child: const Icon(Icons.hub, color: AppColors.secondary, size: 20),
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(isEditing ? 'Edit Group' : 'Create Agent Group',
-                style: Theme.of(context).textTheme.titleLarge),
-              Text(isEditing ? 'Update group configuration'
-                : 'Group agents to work together',
-                style: Theme.of(context).textTheme.bodySmall),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(isEdit ? 'Edit Cluster' : 'Create Agent Cluster',
+                  style: const TextStyle(color: AppColors.textPrimary,
+                      fontSize: 16, fontWeight: FontWeight.w600)),
+                const Text('Configure formation and member agents',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+              ],
+            ),
           ),
-          const Spacer(),
           IconButton(
             icon: const Icon(Icons.close, size: 18, color: AppColors.textMuted),
             onPressed: () => Navigator.pop(context),
@@ -161,119 +102,183 @@ class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
     );
   }
 
-  Widget _modeCard(GroupMode mode) {
-    final sel = _mode == mode;
-    final info = _modeInfo(mode);
-    return GestureDetector(
-      onTap: () => setState(() => _mode = mode),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: sel ? AppColors.secondary.withOpacity(0.1) : AppColors.surfaceAlt,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: sel ? AppColors.secondary : AppColors.border,
-            width: sel ? 1.5 : 1,
+  Widget _body(List<AgentModel> agents) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _label('Cluster Name'),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _name,
+            style: const TextStyle(color: AppColors.textPrimary),
+            decoration: const InputDecoration(hintText: 'e.g. Research Team, Code Pipeline…'),
           ),
-        ),
-        child: Row(
-          children: [
-            Icon(info.$3,
-              size: 20,
-              color: sel ? AppColors.secondary : AppColors.textMuted),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(info.$1, style: TextStyle(
-                    color: sel ? AppColors.secondary : AppColors.textPrimary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  )),
-                  Text(info.$2,
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                ],
-              ),
+          const SizedBox(height: 16),
+          _label('Description (optional)'),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _desc,
+            maxLines: 2,
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+            decoration: const InputDecoration(hintText: 'What does this cluster do?'),
+          ),
+          const SizedBox(height: 24),
+          _label('Formation Type'),
+          const SizedBox(height: 10),
+          _formationGrid(),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.primary.withOpacity(0.2)),
             ),
-            if (sel)
-              const Icon(Icons.check_circle, size: 16, color: AppColors.secondary),
+            child: Row(
+              children: [
+                Icon(AgentGroup.formationIcon(_formation), size: 14, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(AgentGroup.formationDescription(_formation),
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, height: 1.4)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          _label('Member Agents'),
+          const SizedBox(height: 10),
+          if (agents.isEmpty)
+            const Text('No agents available — create agents first.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12))
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: agents.map((a) {
+                final sel = _selectedIds.contains(a.id);
+                return GestureDetector(
+                  onTap: () => setState(() {
+                    if (sel) {
+                      _selectedIds.remove(a.id);
+                      if (_coordinatorId == a.id) _coordinatorId = null;
+                    } else {
+                      _selectedIds.add(a.id);
+                    }
+                  }),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 130),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: sel ? a.color.withOpacity(0.15) : AppColors.surfaceAlt,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: sel ? a.color : AppColors.border,
+                        width: sel ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(width: 8, height: 8,
+                          decoration: BoxDecoration(color: a.color, shape: BoxShape.circle)),
+                        const SizedBox(width: 6),
+                        Text(a.name,
+                          style: TextStyle(
+                            color: sel ? a.color : AppColors.textSecondary,
+                            fontSize: 12, fontWeight: FontWeight.w500,
+                          )),
+                        if (sel) ...[
+                          const SizedBox(width: 4),
+                          Icon(Icons.check, size: 12, color: a.color),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          if (_needsCoordinator && _selectedIds.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            _label('Coordinator Agent'),
+            const SizedBox(height: 6),
+            const Text('Select which agent acts as coordinator/hub.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: _coordinatorId,
+              dropdownColor: AppColors.surfaceAlt,
+              style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.star_outline, size: 16, color: AppColors.textMuted),
+              ),
+              hint: const Text('Select coordinator',
+                style: TextStyle(color: AppColors.textMuted)),
+              items: _selectedIds.map((id) {
+                final a = context.read<AgentProvider>().agentById(id);
+                return DropdownMenuItem(value: id,
+                  child: Text(a?.name ?? id,
+                    style: const TextStyle(color: AppColors.textPrimary)));
+              }).toList(),
+              onChanged: (v) => setState(() => _coordinatorId = v),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
 
-  Widget _agentPicker() {
-    return Consumer<AgentProvider>(
-      builder: (ctx, prov, _) {
-        final agents = prov.agents;
-        if (agents.isEmpty) {
-          return const Text('No agents available — create some first',
-            style: TextStyle(color: AppColors.textMuted));
-        }
-        return Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: agents.map((a) {
-            final sel = _selected.contains(a.id);
-            return GestureDetector(
-              onTap: () {
-                setState(() {
-                  if (sel) {
-                    _selected.remove(a.id);
-                  } else {
-                    _selected.add(a.id);
-                  }
-                });
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: sel ? a.color.withOpacity(0.15) : AppColors.surfaceAlt,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: sel ? a.color : AppColors.border,
-                    width: sel ? 1.5 : 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 20,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: a.color.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: Center(
-                        child: Text(
-                          a.name[0].toUpperCase(),
-                          style: TextStyle(color: a.color, fontSize: 10, fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 7),
-                    Text(a.name, style: TextStyle(
-                      color: sel ? a.color : AppColors.textSecondary,
-                      fontSize: 12,
-                      fontWeight: sel ? FontWeight.w600 : FontWeight.normal,
-                    )),
-                  ],
-                ),
+  bool get _needsCoordinator =>
+    _formation == FormationType.star ||
+    _formation == FormationType.broadcast ||
+    _formation == FormationType.consensus;
+
+  Widget _formationGrid() {
+    return GridView.count(
+      crossAxisCount: 4,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 8,
+      mainAxisSpacing: 8,
+      childAspectRatio: 1.1,
+      children: FormationType.values.map((f) {
+        final sel = _formation == f;
+        return GestureDetector(
+          onTap: () => setState(() => _formation = f),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 130),
+            decoration: BoxDecoration(
+              color: sel ? AppColors.primary.withOpacity(0.12) : AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: sel ? AppColors.primary : AppColors.border,
+                width: sel ? 1.5 : 1,
               ),
-            );
-          }).toList(),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(AgentGroup.formationIcon(f), size: 22,
+                  color: sel ? AppColors.primary : AppColors.textMuted),
+                const SizedBox(height: 6),
+                Text(AgentGroup.formationLabel(f),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: sel ? AppColors.primary : AppColors.textSecondary,
+                    fontSize: 10,
+                    fontWeight: sel ? FontWeight.w600 : FontWeight.normal,
+                  )),
+              ],
+            ),
+          ),
         );
-      },
+      }).toList(),
     );
   }
 
-  Widget _actions(bool isEditing) {
+  Widget _footer(AgentProvider prov, bool isEdit) {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
       decoration: const BoxDecoration(
@@ -281,7 +286,7 @@ class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
       ),
       child: Row(
         children: [
-          Text('${_selected.length} agent${_selected.length == 1 ? '' : 's'} selected',
+          Text('${_selectedIds.length} agent${_selectedIds.length == 1 ? '' : 's'} selected',
             style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
           const Spacer(),
           TextButton(
@@ -290,9 +295,9 @@ class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
           ),
           const SizedBox(width: 8),
           ElevatedButton.icon(
-            icon: const Icon(Icons.check, size: 16),
-            label: Text(isEditing ? 'Save' : 'Create Group'),
-            onPressed: _submit,
+            icon: Icon(isEdit ? Icons.check : Icons.add, size: 16),
+            label: Text(isEdit ? 'Save Changes' : 'Create Cluster'),
+            onPressed: _selectedIds.isEmpty ? null : () => _submit(prov, isEdit),
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.secondary),
           ),
         ],
@@ -300,53 +305,33 @@ class _GroupBuilderDialogState extends State<GroupBuilderDialog> {
     );
   }
 
-  void _submit() {
-    if (_name.text.trim().isEmpty) return;
-    final prov = context.read<AgentProvider>();
-    if (widget.editing != null) {
-      prov.updateGroup(widget.editing!.id,
-        widget.editing!.copyWith(
-          name: _name.text.trim(),
-          description: _desc.text.trim(),
-          mode: _mode,
-          agentIds: _selected,
-        ));
+  void _submit(AgentProvider prov, bool isEdit) {
+    final name = _name.text.trim();
+    if (name.isEmpty) return;
+
+    if (isEdit) {
+      final updated = AgentGroup(
+        id:            widget.editing!.id,
+        name:          name,
+        description:   _desc.text.trim(),
+        formation:     _formation,
+        agentIds:      _selectedIds,
+        coordinatorId: _coordinatorId,
+      );
+      prov.updateGroup(updated.id, updated);
     } else {
       prov.createGroup(
-        name: _name.text.trim(),
-        description: _desc.text.trim(),
-        mode: _mode,
-        agentIds: _selected,
+        name:          name,
+        description:   _desc.text.trim(),
+        formation:     _formation,
+        agentIds:      _selectedIds,
+        coordinatorId: _coordinatorId,
       );
     }
     Navigator.pop(context);
   }
 
   Widget _label(String text) => Text(text,
-    style: const TextStyle(
-      color: AppColors.textSecondary,
-      fontSize: 12,
-      fontWeight: FontWeight.w600,
-      letterSpacing: 0.4,
-    ));
-
-  (String, String, IconData) _modeInfo(GroupMode m) {
-    switch (m) {
-      case GroupMode.parallel:
-        return ('Parallel', 'All agents work simultaneously on the same task',
-          Icons.fork_right);
-      case GroupMode.sequential:
-        return ('Sequential', 'Each agent hands its output to the next in line',
-          Icons.linear_scale);
-      case GroupMode.broadcast:
-        return ('Broadcast', 'Same task to all; best result wins',
-          Icons.cell_tower);
-      case GroupMode.consensus:
-        return ('Consensus', 'All agents must agree before output is accepted',
-          Icons.how_to_vote_outlined);
-      case GroupMode.pipeline:
-        return ('Pipeline', 'Waterfall — each stage transforms the output',
-          Icons.water_outlined);
-    }
-  }
+    style: const TextStyle(color: AppColors.textSecondary,
+        fontSize: 12, fontWeight: FontWeight.w600));
 }

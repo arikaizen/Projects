@@ -1,84 +1,76 @@
+import 'package:flutter/material.dart';
 import 'agent_model.dart';
 
-enum GroupMode {
-  parallel,
-  sequential,
-  broadcast,
-  consensus,
-  pipeline,
+enum FormationType {
+  hierarchy,   // parent-child tree — orchestrator delegates to workers
+  parallel,    // all agents run the same task simultaneously
+  sequential,  // agents run one after another, output passed forward
+  pipeline,    // each agent processes output of previous (transform chain)
+  broadcast,   // one coordinator sends task to all, collects responses
+  consensus,   // all agents vote, majority wins
+  mesh,        // any agent can talk to any other agent
+  star,        // one hub agent routes to specialist spokes
 }
 
-enum GroupStatus { idle, running, done, error }
+// Keep GroupMode as alias for backward compat
+typedef GroupMode = FormationType;
 
 class AgentGroup {
   final String id;
   String name;
   String description;
-  GroupMode mode;
+  FormationType formation;
   List<String> agentIds;
-  GroupStatus status;
-  String? currentTask;
-  List<ChatMessage> sharedHistory;
-  DateTime createdAt;
-  Map<String, dynamic> metadata;
+  String? coordinatorId;
+  final List<ChatMessage> sharedHistory;
 
   AgentGroup({
     required this.id,
     required this.name,
     this.description = '',
-    this.mode = GroupMode.parallel,
+    this.formation   = FormationType.parallel,
     List<String>? agentIds,
-    this.status = GroupStatus.idle,
-    this.currentTask,
+    this.coordinatorId,
     List<ChatMessage>? sharedHistory,
-    DateTime? createdAt,
-    Map<String, dynamic>? metadata,
-  })  : agentIds = agentIds ?? [],
-        sharedHistory = sharedHistory ?? [],
-        createdAt = createdAt ?? DateTime.now(),
-        metadata = metadata ?? {};
+  })  : agentIds       = agentIds ?? [],
+        sharedHistory  = sharedHistory ?? [];
 
-  String get modeLabel {
-    switch (mode) {
-      case GroupMode.parallel:   return 'Parallel';
-      case GroupMode.sequential: return 'Sequential';
-      case GroupMode.broadcast:  return 'Broadcast';
-      case GroupMode.consensus:  return 'Consensus';
-      case GroupMode.pipeline:   return 'Pipeline';
+  static String formationLabel(FormationType f) {
+    switch (f) {
+      case FormationType.hierarchy:  return 'Hierarchy';
+      case FormationType.parallel:   return 'Parallel';
+      case FormationType.sequential: return 'Sequential';
+      case FormationType.pipeline:   return 'Pipeline';
+      case FormationType.broadcast:  return 'Broadcast';
+      case FormationType.consensus:  return 'Consensus';
+      case FormationType.mesh:       return 'Mesh';
+      case FormationType.star:       return 'Star';
     }
   }
 
-  String get modeDescription {
-    switch (mode) {
-      case GroupMode.parallel:   return 'All agents work simultaneously on the same task';
-      case GroupMode.sequential: return 'Each agent hands off results to the next';
-      case GroupMode.broadcast:  return 'Task sent to all; best result selected';
-      case GroupMode.consensus:  return 'All agents must agree before output is accepted';
-      case GroupMode.pipeline:   return 'Waterfall — each stage transforms the output';
+  static String formationDescription(FormationType f) {
+    switch (f) {
+      case FormationType.hierarchy:  return 'Tree of agents — orchestrator delegates subtasks to workers';
+      case FormationType.parallel:   return 'All agents tackle the same task simultaneously';
+      case FormationType.sequential: return 'Agents run one after another, each seeing previous output';
+      case FormationType.pipeline:   return 'Each agent transforms the output of the previous';
+      case FormationType.broadcast:  return 'Coordinator sends to all agents and collects responses';
+      case FormationType.consensus:  return 'All agents propose, majority vote determines result';
+      case FormationType.mesh:       return 'Every agent can communicate directly with every other';
+      case FormationType.star:       return 'Hub agent routes tasks to specialist spokes';
     }
   }
 
-  AgentGroup copyWith({
-    String? name,
-    String? description,
-    GroupMode? mode,
-    List<String>? agentIds,
-    GroupStatus? status,
-    String? currentTask,
-    List<ChatMessage>? sharedHistory,
-    Map<String, dynamic>? metadata,
-  }) {
-    return AgentGroup(
-      id: id,
-      name: name ?? this.name,
-      description: description ?? this.description,
-      mode: mode ?? this.mode,
-      agentIds: agentIds ?? List.from(this.agentIds),
-      status: status ?? this.status,
-      currentTask: currentTask ?? this.currentTask,
-      sharedHistory: sharedHistory ?? List.from(this.sharedHistory),
-      createdAt: createdAt,
-      metadata: metadata ?? Map.from(this.metadata),
-    );
+  static IconData formationIcon(FormationType f) {
+    switch (f) {
+      case FormationType.hierarchy:  return Icons.account_tree;
+      case FormationType.parallel:   return Icons.call_split;
+      case FormationType.sequential: return Icons.linear_scale;
+      case FormationType.pipeline:   return Icons.arrow_forward;
+      case FormationType.broadcast:  return Icons.cell_tower;
+      case FormationType.consensus:  return Icons.how_to_vote;
+      case FormationType.mesh:       return Icons.hub;
+      case FormationType.star:       return Icons.star_outline;
+    }
   }
 }

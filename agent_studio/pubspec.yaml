@@ -19,6 +19,7 @@ dependencies:
   json_annotation: ^4.8.1
   collection: ^1.18.0
   ffi: ^2.1.2
+  crypto: ^3.0.3
 
 dev_dependencies:
   flutter_test:
