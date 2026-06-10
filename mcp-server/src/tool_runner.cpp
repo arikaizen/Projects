@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
+#include <unistd.h>
 
 using json = nlohmann::json;
 

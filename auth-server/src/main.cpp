@@ -30,8 +30,8 @@ static std::string getenv_or(const char* name, const char* def) {
 
 static const std::string ISSUER   = getenv_or("AUTH_SERVER_ISSUER", "http://localhost:8080");
 static const std::string AUDIENCE = getenv_or("MCP_SERVER_AUDIENCE", "http://localhost:8081");
-static const int ACCESS_TTL       = std::atoi(getenv_or("ACCESS_TOKEN_TTL",  "3600"));
-static const int REFRESH_TTL      = std::atoi(getenv_or("REFRESH_TOKEN_TTL", "86400"));
+static const int ACCESS_TTL       = std::atoi(getenv_or("ACCESS_TOKEN_TTL",  "3600").c_str());
+static const int REFRESH_TTL      = std::atoi(getenv_or("REFRESH_TOKEN_TTL", "86400").c_str());
 
 // ── Global state (initialized once at startup) ────────────────────────────────
 
@@ -254,7 +254,7 @@ static void handle_introspect(const httplib::Request& req, httplib::Response& re
 
 int main() {
     std::string host = getenv_or("HOST", "0.0.0.0");
-    int         port = std::atoi(getenv_or("PORT", "8080"));
+    int         port = std::atoi(getenv_or("PORT", "8080").c_str());
 
     std::cout << "[auth-server] Generating RSA-2048 key pair...\n";
     g_private_key = crypto::generate_rsa_key(2048);
