@@ -119,6 +119,8 @@ class _SettingsPanelState extends State<SettingsPanel> {
               const SizedBox(height: 20),
               _modelProvidersSection(prov),
               const SizedBox(height: 20),
+              _mcpServersSection(prov),
+              const SizedBox(height: 20),
               _section('About'),
               const SizedBox(height: 8),
               _infoBox(
@@ -506,6 +508,137 @@ class _SettingsPanelState extends State<SettingsPanel> {
     }
   }
 
+  Widget _mcpServersSection(AgentProvider prov) {
+    final servers = prov.mcpServers;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            _section('MCP Servers'),
+            const Spacer(),
+            GestureDetector(
+              onTap: () => _addMcpServer(prov),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add, size: 12, color: AppColors.primary),
+                    SizedBox(width: 4),
+                    Text('Add', style: TextStyle(color: AppColors.primary,
+                        fontSize: 11, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (servers.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: const Column(
+              children: [
+                Icon(Icons.hub_outlined, size: 28, color: AppColors.textMuted),
+                SizedBox(height: 8),
+                Text('No MCP servers connected',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                SizedBox(height: 2),
+                Text('Add a server to expose tools to the agent',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+              ],
+            ),
+          )
+        else
+          ...servers.map((s) => _mcpServerRow(s, prov)),
+      ],
+    );
+  }
+
+  Widget _mcpServerRow(Map<String, String> server, AgentProvider prov) {
+    final name      = server['name'] ?? '';
+    final url       = server['url'] ?? '';
+    final transport = server['transport'] ?? 'http';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8, height: 8,
+            decoration: const BoxDecoration(
+              color: AppColors.statusDone,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(transport.toUpperCase(),
+                style: const TextStyle(color: AppColors.primary, fontSize: 9,
+                    fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(color: AppColors.textPrimary,
+                    fontSize: 12, fontWeight: FontWeight.w600)),
+                Text(url, style: const TextStyle(color: AppColors.textMuted,
+                    fontSize: 10), overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 14),
+            color: AppColors.textMuted,
+            tooltip: 'Remove',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            onPressed: () => prov.removeMcpServer(name),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _addMcpServer(AgentProvider prov) async {
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => const _AddMcpServerDialog(),
+    );
+    if (result != null) {
+      await prov.addMcpServer(
+        name:        result['name']!,
+        url:         result['url']!,
+        bearerToken: result['bearer_token'] ?? '',
+        transport:   result['transport'] ?? 'http',
+      );
+    }
+  }
+
   Widget _section(String title) => Text(title,
     style: const TextStyle(
       color: AppColors.textSecondary,
@@ -567,6 +700,210 @@ class _SettingsPanelState extends State<SettingsPanel> {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Add MCP Server dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AddMcpServerDialog extends StatefulWidget {
+  const _AddMcpServerDialog();
+
+  @override
+  State<_AddMcpServerDialog> createState() => _AddMcpServerDialogState();
+}
+
+class _AddMcpServerDialogState extends State<_AddMcpServerDialog> {
+  final _nameCtrl    = TextEditingController();
+  final _urlCtrl     = TextEditingController(text: 'http://localhost:8081');
+  final _tokenCtrl   = TextEditingController();
+  String _transport  = 'http';
+  bool _obscureToken = true;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _urlCtrl.dispose();
+    _tokenCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _nameCtrl.text.trim();
+    final url  = _urlCtrl.text.trim();
+    if (name.isEmpty || url.isEmpty) return;
+    Navigator.pop(context, {
+      'name':         name,
+      'url':          url,
+      'bearer_token': _tokenCtrl.text.trim(),
+      'transport':    _transport,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      child: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 20, 16, 16),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.hub, color: AppColors.primary, size: 20),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text('Connect MCP Server',
+                        style: TextStyle(color: AppColors.textPrimary,
+                            fontSize: 16, fontWeight: FontWeight.w600)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18,
+                        color: AppColors.textMuted),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            // Body
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _label('Transport'),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      _transportBtn('http',  Icons.http,       'Streamable HTTP'),
+                      const SizedBox(width: 8),
+                      _transportBtn('stdio', Icons.terminal,   'stdio (local)'),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _label('Server Name'),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: _nameCtrl,
+                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                    decoration: const InputDecoration(hintText: 'my-mcp-server'),
+                  ),
+                  const SizedBox(height: 14),
+                  _label(_transport == 'stdio' ? 'Command / path' : 'Base URL'),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: _urlCtrl,
+                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: _transport == 'stdio'
+                          ? '/usr/local/bin/mcp-server'
+                          : 'http://localhost:8081',
+                    ),
+                  ),
+                  if (_transport == 'http') ...[
+                    const SizedBox(height: 14),
+                    _label('Bearer Token (optional)'),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _tokenCtrl,
+                      obscureText: _obscureToken,
+                      style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'eyJ…',
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureToken
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            size: 16, color: AppColors.textMuted,
+                          ),
+                          onPressed: () => setState(() => _obscureToken = !_obscureToken),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // Footer
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.link, size: 16),
+                    label: const Text('Connect'),
+                    onPressed: _submit,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _transportBtn(String value, IconData icon, String label) {
+    final sel = _transport == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _transport = value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: sel ? AppColors.primary.withOpacity(0.12) : AppColors.surfaceAlt,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: sel ? AppColors.primary : AppColors.border,
+              width: sel ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 18,
+                  color: sel ? AppColors.primary : AppColors.textMuted),
+              const SizedBox(height: 4),
+              Text(label, style: TextStyle(
+                color: sel ? AppColors.primary : AppColors.textSecondary,
+                fontSize: 10,
+                fontWeight: sel ? FontWeight.w600 : FontWeight.normal,
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _label(String text) => Text(text,
+      style: const TextStyle(
+          color: AppColors.textSecondary,
+          fontSize: 12,
+          fontWeight: FontWeight.w600));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _AddProviderDialog extends StatefulWidget {
   const _AddProviderDialog();

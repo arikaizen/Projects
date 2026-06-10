@@ -2,6 +2,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 #include <nlohmann/json.hpp>
 
 namespace agent {
@@ -21,10 +22,18 @@ public:
         float       temperature{0.7f};
         int         max_tokens{2048};
     };
+    // A single native tool-call block returned by the model.
+    struct ToolCall {
+        std::string    id;          // model-assigned call id (may be empty)
+        std::string    name;        // tool/function name
+        nlohmann::json arguments;   // parsed argument object
+    };
+
     struct Response {
-        std::string content;
-        bool        success{false};
-        std::string error;
+        std::string           content;
+        bool                  success{false};
+        std::string           error;
+        std::vector<ToolCall> tool_calls;  // non-empty when model issued tool calls
     };
 
     virtual ~LLMClient() = default;

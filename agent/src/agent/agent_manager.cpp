@@ -1,6 +1,7 @@
 // agent_manager.cpp — AgentManager implementation
 #include "agent/agent_manager.hpp"
 #include "agent/memory_backend.hpp"
+#include "actions/mcp_tool_action.hpp"
 
 #include <chrono>
 #include <ctime>
@@ -8,6 +9,10 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+
+#ifdef AGENT_HAS_MCP_HTTP
+#  include <httplib.h>
+#endif
 
 namespace agent {
 
@@ -58,6 +63,7 @@ void registerTodoWriteAction(WorkFactory&);
 void registerMemoryActions(WorkFactory&);
 void registerMessagingActions(WorkFactory&);
 void registerBlackboardActions(WorkFactory&);
+// MCPToolAction is declared in mcp_tool_action.hpp (already included above)
 
 // ---------------------------------------------------------------------------
 // Constructor
@@ -141,6 +147,7 @@ void AgentManager::registerBuiltinItems()
     registerMemoryActions(*m_factory);
     registerMessagingActions(*m_factory);
     registerBlackboardActions(*m_factory);
+    registerMCPToolAction(*m_factory);
 }
 
 // ---------------------------------------------------------------------------
@@ -697,9 +704,106 @@ void AgentManager::connectMCP(const MCPServerConfig& cfg)
     std::cerr << "[AgentManager] MCP connected: " << cfg.name
               << " @ " << cfg.url << "\n";
 
-    // In a full implementation: connect to the MCP server, enumerate its tools,
-    // and call registerItem() for each MCPToolAction wrapper.
-    // For now: configuration is stored; tool registration is a TODO.
+#ifdef AGENT_HAS_MCP_HTTP
+    if (cfg.transport != "stdio" && !cfg.url.empty()) {
+        try {
+            // Parse URL → scheme, host, port, path_prefix
+            auto scheme_end = cfg.url.find("://");
+            if (scheme_end == std::string::npos)
+                throw std::runtime_error("malformed URL: " + cfg.url);
+
+            std::string scheme = cfg.url.substr(0, scheme_end);
+            std::string rest   = cfg.url.substr(scheme_end + 3);
+            auto slash_pos     = rest.find('/');
+            std::string host_port   = (slash_pos == std::string::npos) ? rest : rest.substr(0, slash_pos);
+            std::string path_prefix = (slash_pos == std::string::npos) ? "" : rest.substr(slash_pos);
+
+            std::string host;
+            int port = (scheme == "https") ? 443 : 80;
+            auto colon_pos = host_port.rfind(':');
+            if (colon_pos != std::string::npos) {
+                host = host_port.substr(0, colon_pos);
+                port = std::stoi(host_port.substr(colon_pos + 1));
+            } else {
+                host = host_port;
+            }
+
+            // Build JSON-RPC 2.0 tools/list request
+            nlohmann::json rpc_req = {
+                {"jsonrpc", "2.0"},
+                {"id",      "list-1"},
+                {"method",  "tools/list"},
+                {"params",  nlohmann::json::object()}
+            };
+
+            httplib::Headers headers;
+            if (!cfg.bearer_token.empty())
+                headers.emplace("Authorization", "Bearer " + cfg.bearer_token);
+            headers.emplace("Content-Type", "application/json");
+
+            std::unique_ptr<httplib::Client> cli;
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+            if (scheme == "https")
+                cli = std::make_unique<httplib::SSLClient>(host, port);
+            else
+#endif
+                cli = std::make_unique<httplib::Client>(host, port);
+            cli->set_connection_timeout(5);
+            cli->set_read_timeout(10);
+
+            std::string endpoint = path_prefix + "/mcp/v1";
+            auto res = cli->Post(endpoint.c_str(), headers, rpc_req.dump(), "application/json");
+            if (!res) {
+                std::cerr << "[AgentManager] MCP tools/list failed for '" << cfg.name
+                          << "': " << httplib::to_string(res.error()) << "\n";
+                return;
+            }
+            if (res->status < 200 || res->status >= 300) {
+                std::cerr << "[AgentManager] MCP tools/list HTTP " << res->status
+                          << " for '" << cfg.name << "'\n";
+                return;
+            }
+
+            auto resp = nlohmann::json::parse(res->body);
+
+            // Accept both {"result": [...]} and {"result": {"tools": [...]}}
+            nlohmann::json tools_array = nlohmann::json::array();
+            if (resp.contains("result")) {
+                auto& r = resp["result"];
+                if (r.is_array())
+                    tools_array = r;
+                else if (r.is_object() && r.contains("tools") && r["tools"].is_array())
+                    tools_array = r["tools"];
+            }
+
+            int registered = 0;
+            for (const auto& tool : tools_array) {
+                if (!tool.contains("name") || !tool["name"].is_string()) continue;
+
+                std::string tool_name = tool["name"].get<std::string>();
+                std::string desc      = tool.value("description", "MCP tool: " + tool_name);
+                nlohmann::json schema = tool.value("inputSchema", nlohmann::json::object());
+
+                WorkItemSpec spec{ tool_name, desc, WorkItem::Kind::Action, schema };
+                std::string server_name = cfg.name;
+
+                m_factory->registerItem(std::move(spec),
+                    [tool_name, server_name](std::string id, nlohmann::json inputs) {
+                        return std::make_unique<MCPToolAction>(
+                            std::move(id), tool_name, server_name, std::move(inputs));
+                    });
+                ++registered;
+            }
+
+            std::cerr << "[AgentManager] '" << cfg.name << "': registered "
+                      << registered << " MCP tools\n";
+
+        } catch (const std::exception& ex) {
+            std::cerr << "[AgentManager] connectMCP tool enumeration error: "
+                      << ex.what() << "\n";
+        }
+    }
+#endif
 }
 
 void AgentManager::disconnectMCP(const std::string& server_name)

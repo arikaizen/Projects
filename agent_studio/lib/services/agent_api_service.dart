@@ -22,6 +22,18 @@ abstract class AgentBackend {
   Future<List<Map<String, dynamic>>> listEngineAgents();
 
   Stream<Map<String, dynamic>>? get engineEvents;
+
+  // MCP server management — optional; default implementations are no-ops.
+  Future<void> connectMcp({
+    required String name,
+    required String url,
+    String bearerToken,
+    String transport,
+  }) async {}
+
+  Future<void> disconnectMcp(String serverName) async {}
+
+  Future<Map<String, dynamic>> listMcpServers() async => {};
 }
 
 class AgentApiService {
@@ -51,6 +63,17 @@ class AgentApiService {
 
   Future<List<Map<String, dynamic>>> listEngineAgents() =>
       _backend.listEngineAgents();
+
+  Future<void> connectMcp({
+    required String name,
+    required String url,
+    String bearerToken = '',
+    String transport   = 'http',
+  }) => _backend.connectMcp(name: name, url: url, bearerToken: bearerToken, transport: transport);
+
+  Future<void> disconnectMcp(String serverName) => _backend.disconnectMcp(serverName);
+
+  Future<Map<String, dynamic>> listMcpServers() => _backend.listMcpServers();
 }
 
 class HttpMockBackend implements AgentBackend {

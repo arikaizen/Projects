@@ -36,6 +36,9 @@ class AgentProvider extends ChangeNotifier {
   final _modelService = ModelService();
   final _llmService   = LlmService();
 
+  // MCP server configs managed by the UI (name → config map)
+  final Map<String, Map<String, String>> _mcpServers = {};
+
   // ── Getters ────────────────────────────────────────────────────────────────
   List<AgentModel> get agents        => _agents.values.toList();
   List<AgentModel> get rootAgents    => _agents.values.where((a) => a.parentId == null).toList();
@@ -52,6 +55,9 @@ class AgentProvider extends ChangeNotifier {
   List<String>     get eventLog          => List.unmodifiable(_eventLog);
   List<ModelProvider> get modelProviders => List.unmodifiable(_modelProviders);
   bool get hasAnyProvider => _modelProviders.any((p) => p.isConnected);
+
+  List<Map<String, String>> get mcpServers =>
+      _mcpServers.values.toList();
   bool providerReadyFor(AgentModel agent) => _resolveProvider(agent) != null;
   List<ModelInfo>     get availableModels => _modelProviders
       .where((p) => p.isConnected)
@@ -485,6 +491,42 @@ class AgentProvider extends ChangeNotifier {
 
   void removeModelProvider(String id) {
     _modelProviders.removeWhere((p) => p.id == id);
+    notifyListeners();
+  }
+
+  // ── MCP servers ───────────────────────────────────────────────────────────
+  Future<void> addMcpServer({
+    required String name,
+    required String url,
+    String bearerToken = '',
+    String transport   = 'http',
+  }) async {
+    _mcpServers[name] = {
+      'name':         name,
+      'url':          url,
+      'bearer_token': bearerToken,
+      'transport':    transport,
+    };
+    try {
+      await _api.connectMcp(
+        name:        name,
+        url:         url,
+        bearerToken: bearerToken,
+        transport:   transport,
+      );
+      _log('MCP server "$name" connected at $url');
+    } catch (e) {
+      _log('MCP server "$name" connection error: $e');
+    }
+    notifyListeners();
+  }
+
+  Future<void> removeMcpServer(String name) async {
+    _mcpServers.remove(name);
+    try {
+      await _api.disconnectMcp(name);
+    } catch (_) {}
+    _log('MCP server "$name" removed');
     notifyListeners();
   }
 

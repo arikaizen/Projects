@@ -306,9 +306,21 @@ class AgentEngineFfi {
     });
   }
 
-  void connectMcp({required String name, required String url, Map<String, dynamic>? extra}) {
+  void connectMcp({
+    required String name,
+    required String url,
+    String bearerToken = '',
+    String transport = 'http',
+    Map<String, dynamic>? extra,
+  }) {
     _assertInit();
-    final config = jsonEncode({'name': name, 'url': url, 'extra': extra ?? {}});
+    final config = jsonEncode({
+      'name': name,
+      'url': url,
+      'bearer_token': bearerToken,
+      'transport': transport,
+      'extra': extra ?? {},
+    });
     using((arena) {
       _checkStatus(
         _b.amConnectMcp(_mgr, config.toNativeUtf8(allocator: arena)),
@@ -327,12 +339,18 @@ class AgentEngineFfi {
     });
   }
 
-  List<String> listMcpServers() {
+  Map<String, dynamic> listMcpServers() {
     _assertInit();
     final json = _bufOut((buf, sz) =>
       _b.amListMcpServers(_mgr, buf, sz)
     );
-    return (jsonDecode(json) as List).cast<String>();
+    final decoded = jsonDecode(json);
+    if (decoded is Map) return decoded.cast<String, dynamic>();
+    // Fallback: handle old array format gracefully
+    if (decoded is List) {
+      return {for (final s in decoded) s.toString(): {'name': s, 'url': ''}};
+    }
+    return {};
   }
 
   void reloadPrompts() {

@@ -904,9 +904,11 @@ am_status_t am_connect_mcp(AgentManager* mgr, const char* server_config_json) {
         if (!parseJson(server_config_json, j, "am_connect_mcp")) return AM_ERROR_INVALID_ARG;
 
         agent::MCPServerConfig cfg;
-        if (j.contains("name") && j["name"].is_string()) cfg.name  = j["name"].get<std::string>();
-        if (j.contains("url")  && j["url"].is_string())  cfg.url   = j["url"].get<std::string>();
-        if (j.contains("extra"))                          cfg.extra = j["extra"];
+        if (j.contains("name")         && j["name"].is_string())          cfg.name          = j["name"].get<std::string>();
+        if (j.contains("url")          && j["url"].is_string())           cfg.url           = j["url"].get<std::string>();
+        if (j.contains("bearer_token") && j["bearer_token"].is_string())  cfg.bearer_token  = j["bearer_token"].get<std::string>();
+        if (j.contains("transport")    && j["transport"].is_string())     cfg.transport     = j["transport"].get<std::string>();
+        if (j.contains("extra"))                                           cfg.extra         = j["extra"];
 
         if (cfg.name.empty()) {
             setError("am_connect_mcp: server_config_json must contain 'name'");
