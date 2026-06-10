@@ -44,8 +44,9 @@ set(AGENT_INCLUDE_DIRS
 # therefore opt-in:
 #   -DAGENT_ENABLE_VLLM=ON   requires cpp-httplib (httplib.h) + nlohmann/json
 #   -DAGENT_ENABLE_LLAMA=ON  requires llama.cpp (llama.h) + its libraries
-option(AGENT_ENABLE_VLLM  "Build the vLLM / OpenAI-compatible AIModel backend" OFF)
-option(AGENT_ENABLE_LLAMA "Build the llama.cpp AIModel backend"                OFF)
+option(AGENT_ENABLE_VLLM     "Build the vLLM / OpenAI-compatible AIModel backend" OFF)
+option(AGENT_ENABLE_LLAMA    "Build the llama.cpp AIModel backend"                OFF)
+option(AGENT_ENABLE_MCP_HTTP "Build MCPToolAction with real Streamable HTTP transport (requires cpp-httplib)" OFF)
 
 # ── agent_core static library ─────────────────────────────────────────────────
 
@@ -140,6 +141,23 @@ if(AGENT_ENABLE_VLLM)
                         "set -DHTTPLIB_INCLUDE_DIR=/path/to/httplib")
     endif()
     target_compile_definitions(agent_core PUBLIC AGENT_HAS_VLLM)
+endif()
+
+if(AGENT_ENABLE_MCP_HTTP)
+    # cpp-httplib is header-only; shares HTTPLIB_INCLUDE_DIR with vLLM backend.
+    find_path(HTTPLIB_INCLUDE_DIR httplib.h)
+    if(HTTPLIB_INCLUDE_DIR)
+        target_include_directories(agent_core PUBLIC ${HTTPLIB_INCLUDE_DIR})
+    else()
+        message(WARNING "AGENT_ENABLE_MCP_HTTP=ON but httplib.h was not found; "
+                        "set -DHTTPLIB_INCLUDE_DIR=/path/to/httplib")
+    endif()
+    target_compile_definitions(agent_core PUBLIC AGENT_HAS_MCP_HTTP)
+    # cpp-httplib SSL support requires OpenSSL
+    find_package(OpenSSL QUIET)
+    if(OpenSSL_FOUND)
+        target_link_libraries(agent_core PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    endif()
 endif()
 
 if(AGENT_ENABLE_LLAMA)

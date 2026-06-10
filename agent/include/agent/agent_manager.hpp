@@ -24,7 +24,9 @@ namespace agent {
 
 struct MCPServerConfig {
     std::string    name;
-    std::string    url;
+    std::string    url;           // Base URL for HTTP transport, e.g. "http://localhost:8081"
+    std::string    bearer_token;  // Access token attached to every JSON-RPC request (step ③)
+    std::string    transport{"http"}; // "http" | "stdio"
     nlohmann::json extra;
 };
 

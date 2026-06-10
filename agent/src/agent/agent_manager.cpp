@@ -716,15 +716,18 @@ void AgentManager::disconnectMCP(const std::string& server_name)
 nlohmann::json AgentManager::listMCPServers() const
 {
     std::unique_lock<std::mutex> lock(m_mcp_mutex);
-    nlohmann::json arr = nlohmann::json::array();
+    // Returns an object keyed by server name so callers can do servers[name].
+    nlohmann::json obj = nlohmann::json::object();
     for (const auto& [name, cfg] : m_mcp_servers) {
-        arr.push_back({
-            {"name",  cfg.name},
-            {"url",   cfg.url},
-            {"extra", cfg.extra}
-        });
+        obj[name] = {
+            {"name",          cfg.name},
+            {"url",           cfg.url},
+            {"bearer_token",  cfg.bearer_token},
+            {"transport",     cfg.transport},
+            {"extra",         cfg.extra},
+        };
     }
-    return arr;
+    return obj;
 }
 
 } // namespace agent
