@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import os
 import shutil
+import site
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 # ── Paths ────────────────────────────────────────────────────────────────────
@@ -55,10 +57,23 @@ def run(cmd: list[str], cwd: Path | None = None, env: dict | None = None) -> Non
 
 # ── Toolchain bootstrap ────────────────────────────────────────────────────--
 def ensure_compiler() -> None:
-    """Make sure a C++ compiler is on PATH (cmake needs one)."""
-    for cc in ("g++", "clang++", "c++"):
+    """Make sure a C++ compiler is available (cmake needs one)."""
+    for cc in ("g++", "clang++", "c++", "cl"):
         if shutil.which(cc):
             return
+    if os.name == "nt":
+        # MSVC's cl.exe is normally only on PATH inside a Developer prompt, but
+        # CMake's Visual Studio generator finds it on its own. Don't hard-fail —
+        # warn and let CMake's configure step surface a precise error if VS is
+        # genuinely missing.
+        warn(
+            "no C++ compiler found on PATH. If CMake configure fails below, "
+            "install one of:\n"
+            "    - Visual Studio Build Tools (C++ workload): "
+            "https://visualstudio.microsoft.com/downloads/\n"
+            "    - or run this from a 'Developer Command Prompt for VS'."
+        )
+        return
     fail(
         "no C++ compiler found (looked for g++, clang++, c++). "
         "Install build tools, e.g.\n"
@@ -66,6 +81,60 @@ def ensure_compiler() -> None:
         "    Fedora:         sudo dnf install gcc-c++ make\n"
         "    macOS:          xcode-select --install"
     )
+
+
+def _find_pip_cmake() -> str | None:
+    """Locate a cmake executable installed by `pip install cmake`.
+
+    The pip package puts the real binary in <site-packages>/cmake/data/bin/ and
+    a launcher in the interpreter's scripts dir — neither is guaranteed to be on
+    PATH (a common Windows gotcha). We search both, plus the imported package's
+    own location, and return the first hit.
+    """
+    exe = "cmake.exe" if os.name == "nt" else "cmake"
+    candidate_dirs: list[str] = []
+
+    # 1. The cmake package's bundled binary: <site-packages>/cmake/data/bin/.
+    site_dirs: list[str] = []
+    try:
+        user_site = site.getusersitepackages()
+        if isinstance(user_site, str):
+            site_dirs.append(user_site)
+    except Exception:
+        pass
+    try:
+        site_dirs.extend(site.getsitepackages())
+    except Exception:
+        pass
+    for sp in site_dirs:
+        candidate_dirs.append(os.path.join(sp, "cmake", "data", "bin"))
+
+    # 2. The imported package's location (most reliable after a fresh install).
+    try:
+        import importlib
+        import cmake as _cmake_pkg  # type: ignore
+        importlib.reload(_cmake_pkg)
+        pkg_dir = os.path.dirname(_cmake_pkg.__file__)
+        candidate_dirs.append(os.path.join(pkg_dir, "data", "bin"))
+    except Exception:
+        pass
+
+    # 3. Every scripts dir Python knows about (where the launcher lands).
+    for scheme in sysconfig.get_scheme_names():
+        try:
+            sdir = sysconfig.get_path("scripts", scheme)
+            if sdir:
+                candidate_dirs.append(sdir)
+        except Exception:
+            pass
+
+    for d in candidate_dirs:
+        path = os.path.join(d, exe)
+        if os.path.isfile(path):
+            # Make sibling tools (ctest/cpack) reachable for this process too.
+            os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+            return path
+    return None
 
 
 def ensure_cmake() -> str:
@@ -78,23 +147,17 @@ def ensure_cmake() -> str:
     info("cmake not found — installing it from PyPI (no sudo needed)...")
     run([sys.executable, "-m", "pip", "install", "--user", "cmake"])
 
-    # pip may install into a user scripts dir that isn't on PATH yet; find it.
-    cmake = shutil.which("cmake")
+    cmake = shutil.which("cmake") or _find_pip_cmake()
     if cmake:
+        info(f"using pip-installed cmake: {cmake}")
         return cmake
-    try:
-        import cmake as _cmake_pkg  # type: ignore
 
-        candidate = Path(_cmake_pkg.CMAKE_BIN_DIR) / "cmake"
-        if candidate.exists():
-            info(f"using pip-installed cmake: {candidate}")
-            return str(candidate)
-    except Exception:
-        pass
     fail(
-        "installed cmake via pip but can't locate the binary. "
-        "Add Python's user-scripts dir to PATH and re-run, or "
-        "`python -m pip install --user cmake` then restart your shell."
+        "installed cmake via pip but can't locate the binary.\n"
+        "    On Windows, add this directory to your PATH and re-run:\n"
+        "        %APPDATA%\\Python\\Python3XX\\Scripts\n"
+        "    (XX = your Python version, e.g. Python314). Then restart the shell.\n"
+        "    Or install a system cmake from https://cmake.org/download/ and re-run."
     )
 
 
