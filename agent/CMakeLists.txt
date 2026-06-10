@@ -290,6 +290,43 @@ target_compile_options(agent_core_tsan PRIVATE
 )
 target_link_options(agent_core_tsan PUBLIC -fsanitize=thread)
 
+# Mirror optional-backend includes/defines onto the TSan variant so it
+# compiles correctly when e.g. AGENT_ENABLE_API_LLM=ON is set.
+if(AGENT_ENABLE_VLLM)
+    if(HTTPLIB_INCLUDE_DIR)
+        target_include_directories(agent_core_tsan PUBLIC ${HTTPLIB_INCLUDE_DIR})
+    endif()
+    target_compile_definitions(agent_core_tsan PUBLIC AGENT_HAS_VLLM)
+endif()
+if(AGENT_ENABLE_MCP_HTTP)
+    if(HTTPLIB_INCLUDE_DIR)
+        target_include_directories(agent_core_tsan PUBLIC ${HTTPLIB_INCLUDE_DIR})
+    endif()
+    target_compile_definitions(agent_core_tsan PUBLIC AGENT_HAS_MCP_HTTP)
+    if(OpenSSL_FOUND)
+        target_link_libraries(agent_core_tsan PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    endif()
+endif()
+if(AGENT_ENABLE_API_LLM)
+    if(HTTPLIB_INCLUDE_DIR)
+        target_include_directories(agent_core_tsan PUBLIC ${HTTPLIB_INCLUDE_DIR})
+    endif()
+    target_compile_definitions(agent_core_tsan PUBLIC AGENT_HAS_API_LLM)
+    if(OpenSSL_FOUND)
+        target_compile_definitions(agent_core_tsan PUBLIC CPPHTTPLIB_OPENSSL_SUPPORT)
+        target_link_libraries(agent_core_tsan PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    endif()
+endif()
+if(AGENT_ENABLE_LLAMA)
+    if(DEFINED LLAMA_DIR)
+        target_include_directories(agent_core_tsan PUBLIC
+            ${LLAMA_DIR}/include ${LLAMA_DIR}/ggml/include)
+        target_link_directories(agent_core_tsan PUBLIC ${LLAMA_DIR}/build/bin)
+    endif()
+    target_link_libraries(agent_core_tsan PUBLIC llama ggml ggml-base)
+    target_compile_definitions(agent_core_tsan PUBLIC AGENT_HAS_LLAMA)
+endif()
+
 # Convenience target: rebuild the TSan library (used as a dependency check).
 add_custom_target(check-tsan
     COMMAND ${CMAKE_COMMAND} -E echo

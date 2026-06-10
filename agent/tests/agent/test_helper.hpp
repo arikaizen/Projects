@@ -141,7 +141,7 @@ inline std::shared_ptr<agent::AgentManager> makeTestManager(
 
     if (!llm_handler) {
         llm_handler = [](const agent::LLMClient::Request&) -> agent::LLMClient::Response {
-            return {"[]", true, ""};  // empty plan by default
+            return {"[]", true, "", {}};  // empty plan by default
         };
     }
 
@@ -168,7 +168,7 @@ inline std::unique_ptr<agent::AgentContext> makeTestContext(
 {
     if (!llm_handler) {
         llm_handler = [](const agent::LLMClient::Request&) -> agent::LLMClient::Response {
-            return {"[]", true, ""};
+            return {"[]", true, "", {}};
         };
     }
     if (!bus) bus = std::make_shared<agent::EventBus>();

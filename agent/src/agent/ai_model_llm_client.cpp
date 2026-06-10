@@ -91,9 +91,9 @@ LLMClient::Response AIModelLLMClient::complete(const Request& req) {
         resp.tool_calls = parseToolCalls(out);
         return resp;
     } catch (const std::exception& e) {
-        return Response{ /*content=*/"", /*success=*/false, /*error=*/e.what() };
+        return Response{ /*content=*/"", /*success=*/false, /*error=*/e.what(), /*tool_calls=*/{} };
     } catch (...) {
-        return Response{ "", false, "AIModelLLMClient::complete: unknown error" };
+        return Response{ "", false, "AIModelLLMClient::complete: unknown error", {} };
     }
 }
 
