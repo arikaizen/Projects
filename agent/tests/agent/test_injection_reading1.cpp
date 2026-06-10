@@ -82,7 +82,7 @@ int main() {
             {{"name","EchoAction"},{"id","ea1"},{"inputs",{{"msg","step1"}}}},
             {{"name","EchoAction"},{"id","ea2"},{"inputs",{{"msg","step2"}}}}
         });
-        return {plan.dump(), true, ""};
+        return {plan.dump(), true, "", {}};
     };
 
     auto mgr = makeTestManager(handler, PDIR);

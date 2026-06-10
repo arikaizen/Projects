@@ -1,6 +1,8 @@
 // agent_manager.cpp — AgentManager implementation
 #include "agent/agent_manager.hpp"
+#include "agent/llm_factory.hpp"
 #include "agent/memory_backend.hpp"
+#include "actions/mcp_tool_action.hpp"
 
 #include <chrono>
 #include <ctime>
@@ -8,6 +10,10 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+
+#ifdef AGENT_HAS_MCP_HTTP
+#  include <httplib.h>
+#endif
 
 namespace agent {
 
@@ -58,6 +64,7 @@ void registerTodoWriteAction(WorkFactory&);
 void registerMemoryActions(WorkFactory&);
 void registerMessagingActions(WorkFactory&);
 void registerBlackboardActions(WorkFactory&);
+// MCPToolAction is declared in mcp_tool_action.hpp (already included above)
 
 // ---------------------------------------------------------------------------
 // Constructor
@@ -141,6 +148,7 @@ void AgentManager::registerBuiltinItems()
     registerMemoryActions(*m_factory);
     registerMessagingActions(*m_factory);
     registerBlackboardActions(*m_factory);
+    registerMCPToolAction(*m_factory);
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +158,7 @@ std::unique_ptr<AgentContext> AgentManager::makeContext(const AgentEntry& entry)
 {
     return std::make_unique<AgentContext>(
         entry.config,
-        m_llm,
+        entry.llm ? entry.llm : defaultLLM(),
         m_factory,
         m_prompt_loader,
         m_memory,
@@ -212,6 +220,20 @@ std::string AgentManager::spawnAgent(const AgentConfig& cfg)
         entry.inbox   = std::make_unique<MessageInbox>();
         entry.status  = "idle";
         entry.user_id = user_id;
+
+        // Per-agent LLM override: extra["llm"] selects a provider/model for
+        // this agent only (mixed-provider agent groups). Falls back to the
+        // manager default when absent or when the backend isn't compiled in.
+        if (resolved_cfg.extra.is_object() && resolved_cfg.extra.contains("llm") &&
+            resolved_cfg.extra["llm"].is_object()) {
+            std::string llm_err;
+            entry.llm = makeLLMClientFromConfig(resolved_cfg.extra["llm"], &llm_err);
+            if (!entry.llm) {
+                std::cerr << "[AgentManager] " << agent_id
+                          << ": per-agent llm config rejected (" << llm_err
+                          << ") — using manager default\n";
+            }
+        }
 
         // Build context and agent
         entry.agent = std::make_unique<Agent>(makeContext(entry), *m_pool);
@@ -684,6 +706,27 @@ void AgentManager::setUserQuota(const std::string& user_id, const UserQuota& quo
 }
 
 // ---------------------------------------------------------------------------
+// LLM management
+// ---------------------------------------------------------------------------
+void AgentManager::setDefaultLLM(std::shared_ptr<LLMClient> llm)
+{
+    if (!llm) throw std::invalid_argument("AgentManager::setDefaultLLM: null client");
+    std::string model_name = llm->modelName();
+    {
+        std::unique_lock<std::mutex> lock(m_llm_mutex);
+        m_llm = std::move(llm);
+    }
+    m_event_bus->emit(EventBus::makeEvent("llm_changed", {{"model", model_name}}));
+    std::cerr << "[AgentManager] default LLM -> " << model_name << "\n";
+}
+
+std::shared_ptr<LLMClient> AgentManager::defaultLLM() const
+{
+    std::unique_lock<std::mutex> lock(m_llm_mutex);
+    return m_llm;
+}
+
+// ---------------------------------------------------------------------------
 // MCP management
 // ---------------------------------------------------------------------------
 void AgentManager::connectMCP(const MCPServerConfig& cfg)
@@ -697,9 +740,96 @@ void AgentManager::connectMCP(const MCPServerConfig& cfg)
     std::cerr << "[AgentManager] MCP connected: " << cfg.name
               << " @ " << cfg.url << "\n";
 
-    // In a full implementation: connect to the MCP server, enumerate its tools,
-    // and call registerItem() for each MCPToolAction wrapper.
-    // For now: configuration is stored; tool registration is a TODO.
+#ifdef AGENT_HAS_MCP_HTTP
+    if (cfg.transport != "stdio" && !cfg.url.empty()) {
+        try {
+            // Split "scheme://host[:port][/prefix]" into the origin httplib's
+            // URL-based Client constructor wants (it selects http vs https from
+            // the scheme, handling SSL internally when compiled with OpenSSL)
+            // and the path prefix.
+            auto scheme_end = cfg.url.find("://");
+            if (scheme_end == std::string::npos)
+                throw std::runtime_error("malformed URL: " + cfg.url);
+
+            auto path_start = cfg.url.find('/', scheme_end + 3);
+            std::string origin =
+                (path_start == std::string::npos) ? cfg.url : cfg.url.substr(0, path_start);
+            std::string path_prefix =
+                (path_start == std::string::npos) ? "" : cfg.url.substr(path_start);
+            while (!path_prefix.empty() && path_prefix.back() == '/')
+                path_prefix.pop_back();
+
+            // Build JSON-RPC 2.0 tools/list request
+            nlohmann::json rpc_req = {
+                {"jsonrpc", "2.0"},
+                {"id",      "list-1"},
+                {"method",  "tools/list"},
+                {"params",  nlohmann::json::object()}
+            };
+
+            httplib::Headers headers;
+            if (!cfg.bearer_token.empty())
+                headers.emplace("Authorization", "Bearer " + cfg.bearer_token);
+            headers.emplace("Content-Type", "application/json");
+
+            httplib::Client cli(origin);
+            cli.set_connection_timeout(5);
+            cli.set_read_timeout(10);
+            cli.set_follow_location(true);
+
+            std::string endpoint = path_prefix + "/mcp/v1";
+            auto res = cli.Post(endpoint.c_str(), headers, rpc_req.dump(), "application/json");
+            if (!res) {
+                std::cerr << "[AgentManager] MCP tools/list failed for '" << cfg.name
+                          << "': " << httplib::to_string(res.error()) << "\n";
+                return;
+            }
+            if (res->status < 200 || res->status >= 300) {
+                std::cerr << "[AgentManager] MCP tools/list HTTP " << res->status
+                          << " for '" << cfg.name << "'\n";
+                return;
+            }
+
+            auto resp = nlohmann::json::parse(res->body);
+
+            // Accept both {"result": [...]} and {"result": {"tools": [...]}}
+            nlohmann::json tools_array = nlohmann::json::array();
+            if (resp.contains("result")) {
+                auto& r = resp["result"];
+                if (r.is_array())
+                    tools_array = r;
+                else if (r.is_object() && r.contains("tools") && r["tools"].is_array())
+                    tools_array = r["tools"];
+            }
+
+            int registered = 0;
+            for (const auto& tool : tools_array) {
+                if (!tool.contains("name") || !tool["name"].is_string()) continue;
+
+                std::string tool_name = tool["name"].get<std::string>();
+                std::string desc      = tool.value("description", "MCP tool: " + tool_name);
+                nlohmann::json schema = tool.value("inputSchema", nlohmann::json::object());
+
+                WorkItemSpec spec{ tool_name, desc, WorkItem::Kind::Action, schema };
+                std::string server_name = cfg.name;
+
+                m_factory->registerItem(std::move(spec),
+                    [tool_name, server_name](std::string id, nlohmann::json inputs) {
+                        return std::make_unique<MCPToolAction>(
+                            std::move(id), tool_name, server_name, std::move(inputs));
+                    });
+                ++registered;
+            }
+
+            std::cerr << "[AgentManager] '" << cfg.name << "': registered "
+                      << registered << " MCP tools\n";
+
+        } catch (const std::exception& ex) {
+            std::cerr << "[AgentManager] connectMCP tool enumeration error: "
+                      << ex.what() << "\n";
+        }
+    }
+#endif
 }
 
 void AgentManager::disconnectMCP(const std::string& server_name)
@@ -716,15 +846,18 @@ void AgentManager::disconnectMCP(const std::string& server_name)
 nlohmann::json AgentManager::listMCPServers() const
 {
     std::unique_lock<std::mutex> lock(m_mcp_mutex);
-    nlohmann::json arr = nlohmann::json::array();
+    // Returns an object keyed by server name so callers can do servers[name].
+    nlohmann::json obj = nlohmann::json::object();
     for (const auto& [name, cfg] : m_mcp_servers) {
-        arr.push_back({
-            {"name",  cfg.name},
-            {"url",   cfg.url},
-            {"extra", cfg.extra}
-        });
+        obj[name] = {
+            {"name",          cfg.name},
+            {"url",           cfg.url},
+            {"bearer_token",  cfg.bearer_token},
+            {"transport",     cfg.transport},
+            {"extra",         cfg.extra},
+        };
     }
-    return arr;
+    return obj;
 }
 
 } // namespace agent

@@ -29,7 +29,7 @@ int main() {
         // LLM returns empty plan → no items pushed → queue drains immediately
         auto mgr = makeLoopManager(
             [](const agent::LLMClient::Request&) {
-                return agent::LLMClient::Response{"[]", true, ""};
+                return agent::LLMClient::Response{"[]", true, "", {}};
             },
             "/tmp/agent_loop_empty");
 
@@ -107,7 +107,7 @@ int main() {
             nlohmann::json plan = nlohmann::json::array({
                 {{"name","EchoAction"},{"id",id},{"inputs",{{"data","loop"}}}}
             });
-            return {plan.dump(), true, ""};
+            return {plan.dump(), true, "", {}};
         };
 
         auto mgr = makeLoopManager(handler, "/tmp/agent_loop_maxiter");

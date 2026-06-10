@@ -15,7 +15,7 @@ static std::unique_ptr<agent::AgentContext> makeCtxWithHistory() {
     auto bus     = std::make_shared<agent::EventBus>();
     auto bb      = std::make_shared<agent::Blackboard>(bus.get());
     auto llm     = std::make_shared<agent::MockLLMClient>(
-        [](const agent::LLMClient::Request&) { return agent::LLMClient::Response{"[]",true,""}; });
+        [](const agent::LLMClient::Request&) { return agent::LLMClient::Response{"[]",true,"",{}}; });
     auto factory = std::make_shared<agent::WorkFactory>();
     auto loader  = std::make_shared<agent::PromptLoader>("/tmp");
     auto mem     = std::make_shared<agent::NoOpMemoryBackend>();

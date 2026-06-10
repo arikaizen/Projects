@@ -179,6 +179,19 @@ am_status_t am_set_user_quota(AgentManager* mgr, const char* user_id,
 
 `quota_json`: `{"max_concurrent_agents":N, "max_llm_inflight":N, "max_tool_inflight":N}`.
 
+## LLM Management
+
+```c
+am_status_t am_configure_llm(AgentManager* mgr, const char* llm_config_json);
+```
+
+Swaps the default LLM backend at runtime. `llm_config_json` selects a provider
+(OpenAI/ChatGPT, Anthropic/Claude, Google Gemini, Ollama, Groq, Mistral,
+DeepSeek, Grok, OpenRouter, Together, LM Studio, llama.cpp, vLLM, in-process
+`llama`, `custom`, or `mock`). A per-agent override may be passed as the `llm`
+key in `am_spawn_agent`. See [LLM_PROVIDERS.md](../../LLM_PROVIDERS.md) for the
+config shape and build flags.
+
 ## MCP Management
 
 ```c

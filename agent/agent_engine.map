@@ -28,6 +28,7 @@
     am_reload_prompts;
     am_set_prompts_dir;
     am_set_user_quota;
+    am_configure_llm;
     am_connect_mcp;
     am_disconnect_mcp;
     am_list_mcp_servers;

@@ -22,6 +22,23 @@ abstract class AgentBackend {
   Future<List<Map<String, dynamic>>> listEngineAgents();
 
   Stream<Map<String, dynamic>>? get engineEvents;
+
+  // LLM backend selection — optional; default is a no-op (e.g. HTTP/mock).
+  // [config] matches the engine llm_factory shape:
+  //   {'provider':'openai','model':'gpt-4o','api_key':'...'}
+  Future<void> configureLlm(Map<String, dynamic> config) async {}
+
+  // MCP server management — optional; default implementations are no-ops.
+  Future<void> connectMcp({
+    required String name,
+    required String url,
+    String bearerToken,
+    String transport,
+  }) async {}
+
+  Future<void> disconnectMcp(String serverName) async {}
+
+  Future<Map<String, dynamic>> listMcpServers() async => {};
 }
 
 class AgentApiService {
@@ -51,6 +68,20 @@ class AgentApiService {
 
   Future<List<Map<String, dynamic>>> listEngineAgents() =>
       _backend.listEngineAgents();
+
+  Future<void> configureLlm(Map<String, dynamic> config) =>
+      _backend.configureLlm(config);
+
+  Future<void> connectMcp({
+    required String name,
+    required String url,
+    String bearerToken = '',
+    String transport   = 'http',
+  }) => _backend.connectMcp(name: name, url: url, bearerToken: bearerToken, transport: transport);
+
+  Future<void> disconnectMcp(String serverName) => _backend.disconnectMcp(serverName);
+
+  Future<Map<String, dynamic>> listMcpServers() => _backend.listMcpServers();
 }
 
 class HttpMockBackend implements AgentBackend {
@@ -127,6 +158,16 @@ class HttpMockBackend implements AgentBackend {
       body: jsonEncode(config),
     ).timeout(const Duration(seconds: 10));
     return (jsonDecode(res.body) as Map)['agent_id'] as String;
+  }
+
+  @override
+  Future<void> configureLlm(Map<String, dynamic> config) async {
+    if (_isMock) return;
+    await http.post(
+      Uri.parse('$_baseUrl/api/llm'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(config),
+    ).timeout(const Duration(seconds: 10));
   }
 
   @override

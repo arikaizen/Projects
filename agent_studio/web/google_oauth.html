@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Google sign-in</title>
+  <style>
+    body{font-family:system-ui,sans-serif;background:#0d1117;color:#e6edf3;
+      display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+    .card{text-align:center;padding:40px;border:1px solid #30363d;border-radius:12px;background:#161b22}
+    h1{font-size:18px;margin:0 0 8px}p{color:#8b949e;font-size:14px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Completing sign-in…</h1>
+    <p>You can close this window if it doesn't close automatically.</p>
+  </div>
+  <script>
+    // The OAuth redirect lands here with ?code=...&state=... (or ?error=...).
+    // Relay the result to the opener window, then close.
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var msg = {
+        type: 'google_oauth',
+        code: params.get('code'),
+        state: params.get('state'),
+        error: params.get('error')
+      };
+      try {
+        if (window.opener) {
+          window.opener.postMessage(msg, window.location.origin);
+        }
+      } catch (e) {}
+      setTimeout(function () { window.close(); }, 300);
+    })();
+  </script>
+</body>
+</html>

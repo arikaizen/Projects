@@ -247,6 +247,11 @@ typedef _AmSetUserQuota = int Function(
     Pointer<Utf8> quotaJson,
 );
 
+typedef _AmConfigureLlmNative = Int32 Function(
+    Pointer<AgentManager_> mgr, Pointer<Utf8> llmConfigJson);
+typedef _AmConfigureLlm = int Function(
+    Pointer<AgentManager_> mgr, Pointer<Utf8> llmConfigJson);
+
 typedef _AmConnectMcpNative = Int32 Function(
     Pointer<AgentManager_> mgr, Pointer<Utf8> serverConfigJson);
 typedef _AmConnectMcp = int Function(
@@ -311,6 +316,7 @@ class AgentEngineBindings {
   late final _AmReloadPrompts     amReloadPrompts;
   late final _AmSetPromptsDir     amSetPromptsDir;
   late final _AmSetUserQuota      amSetUserQuota;
+  late final _AmConfigureLlm      amConfigureLlm;
   late final _AmConnectMcp        amConnectMcp;
   late final _AmDisconnectMcp     amDisconnectMcp;
   late final _AmListMcpServers    amListMcpServers;
@@ -349,6 +355,7 @@ class AgentEngineBindings {
     amReloadPrompts  = _lib.lookupFunction<_AmReloadPromptsNative,  _AmReloadPrompts >('am_reload_prompts');
     amSetPromptsDir  = _lib.lookupFunction<_AmSetPromptsDirNative,  _AmSetPromptsDir >('am_set_prompts_dir');
     amSetUserQuota   = _lib.lookupFunction<_AmSetUserQuotaNative,   _AmSetUserQuota  >('am_set_user_quota');
+    amConfigureLlm   = _lib.lookupFunction<_AmConfigureLlmNative,   _AmConfigureLlm  >('am_configure_llm');
     amConnectMcp     = _lib.lookupFunction<_AmConnectMcpNative,     _AmConnectMcp    >('am_connect_mcp');
     amDisconnectMcp  = _lib.lookupFunction<_AmDisconnectMcpNative,  _AmDisconnectMcp >('am_disconnect_mcp');
     amListMcpServers = _lib.lookupFunction<_AmListMcpServersNative, _AmListMcpServers>('am_list_mcp_servers');
