@@ -1,0 +1,17 @@
+# Flutter build output
+build/
+
+# Flutter tool cache (auto-generated, not for VCS)
+.dart_tool/
+
+# Flutter plugin registry (auto-generated)
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Generated Dart/Flutter files
+*.g.dart
+*.freezed.dart
+
+# Android / iOS build artifacts
+android/
+ios/
