@@ -47,6 +47,7 @@ set(AGENT_INCLUDE_DIRS
 option(AGENT_ENABLE_VLLM     "Build the vLLM / OpenAI-compatible AIModel backend" OFF)
 option(AGENT_ENABLE_LLAMA    "Build the llama.cpp AIModel backend"                OFF)
 option(AGENT_ENABLE_MCP_HTTP "Build MCPToolAction with real Streamable HTTP transport (requires cpp-httplib)" OFF)
+option(AGENT_ENABLE_API_LLM  "Build the hosted-API AIModel backends: OpenAI/ChatGPT, Anthropic/Claude, Google Gemini, Ollama, and any OpenAI-compatible server (requires cpp-httplib; OpenSSL for https)" OFF)
 
 # ── agent_core static library ─────────────────────────────────────────────────
 
@@ -92,6 +93,8 @@ set(AGENT_CORE_SOURCES
     third_party/ai_model/aimodel.cpp
     src/agent/ai_model_llm_client.cpp
     src/agent/ai_model_memory_backend.cpp
+    # Provider factory (always built; backend availability handled via #ifdef)
+    src/agent/llm_factory.cpp
 )
 
 # Concrete AIModel backends are appended only when explicitly enabled, so the
@@ -101,6 +104,9 @@ if(AGENT_ENABLE_VLLM)
 endif()
 if(AGENT_ENABLE_LLAMA)
     list(APPEND AGENT_CORE_SOURCES third_party/ai_model/aimodel_llama.cpp)
+endif()
+if(AGENT_ENABLE_API_LLM)
+    list(APPEND AGENT_CORE_SOURCES third_party/ai_model/aimodel_api.cpp)
 endif()
 
 add_library(agent_core STATIC ${AGENT_CORE_SOURCES})
@@ -169,6 +175,31 @@ if(AGENT_ENABLE_LLAMA)
     endif()
     target_link_libraries(agent_core PUBLIC llama ggml ggml-base)
     target_compile_definitions(agent_core PUBLIC AGENT_HAS_LLAMA)
+endif()
+
+if(AGENT_ENABLE_API_LLM)
+    # cpp-httplib is header-only; shares HTTPLIB_INCLUDE_DIR with the other
+    # HTTP-based options.
+    find_path(HTTPLIB_INCLUDE_DIR httplib.h)
+    if(HTTPLIB_INCLUDE_DIR)
+        target_include_directories(agent_core PUBLIC ${HTTPLIB_INCLUDE_DIR})
+    else()
+        message(WARNING "AGENT_ENABLE_API_LLM=ON but httplib.h was not found; "
+                        "set -DHTTPLIB_INCLUDE_DIR=/path/to/httplib")
+    endif()
+    target_compile_definitions(agent_core PUBLIC AGENT_HAS_API_LLM)
+    # https endpoints (api.openai.com, api.anthropic.com, ...) require
+    # cpp-httplib's OpenSSL support.
+    find_package(OpenSSL QUIET)
+    if(OpenSSL_FOUND)
+        target_compile_definitions(agent_core PUBLIC CPPHTTPLIB_OPENSSL_SUPPORT)
+        target_link_libraries(agent_core PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    else()
+        message(WARNING "AGENT_ENABLE_API_LLM=ON but OpenSSL was not found; "
+                        "https providers (OpenAI, Anthropic, Google) will be "
+                        "unreachable — only http:// servers (Ollama, LM Studio) "
+                        "will work")
+    endif()
 endif()
 
 # ── agent_engine shared library (C ABI) ───────────────────────────────────────

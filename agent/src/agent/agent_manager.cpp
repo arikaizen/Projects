@@ -1,5 +1,6 @@
 // agent_manager.cpp — AgentManager implementation
 #include "agent/agent_manager.hpp"
+#include "agent/llm_factory.hpp"
 #include "agent/memory_backend.hpp"
 #include "actions/mcp_tool_action.hpp"
 
@@ -157,7 +158,7 @@ std::unique_ptr<AgentContext> AgentManager::makeContext(const AgentEntry& entry)
 {
     return std::make_unique<AgentContext>(
         entry.config,
-        m_llm,
+        entry.llm ? entry.llm : defaultLLM(),
         m_factory,
         m_prompt_loader,
         m_memory,
@@ -219,6 +220,20 @@ std::string AgentManager::spawnAgent(const AgentConfig& cfg)
         entry.inbox   = std::make_unique<MessageInbox>();
         entry.status  = "idle";
         entry.user_id = user_id;
+
+        // Per-agent LLM override: extra["llm"] selects a provider/model for
+        // this agent only (mixed-provider agent groups). Falls back to the
+        // manager default when absent or when the backend isn't compiled in.
+        if (resolved_cfg.extra.is_object() && resolved_cfg.extra.contains("llm") &&
+            resolved_cfg.extra["llm"].is_object()) {
+            std::string llm_err;
+            entry.llm = makeLLMClientFromConfig(resolved_cfg.extra["llm"], &llm_err);
+            if (!entry.llm) {
+                std::cerr << "[AgentManager] " << agent_id
+                          << ": per-agent llm config rejected (" << llm_err
+                          << ") — using manager default\n";
+            }
+        }
 
         // Build context and agent
         entry.agent = std::make_unique<Agent>(makeContext(entry), *m_pool);
@@ -691,6 +706,27 @@ void AgentManager::setUserQuota(const std::string& user_id, const UserQuota& quo
 }
 
 // ---------------------------------------------------------------------------
+// LLM management
+// ---------------------------------------------------------------------------
+void AgentManager::setDefaultLLM(std::shared_ptr<LLMClient> llm)
+{
+    if (!llm) throw std::invalid_argument("AgentManager::setDefaultLLM: null client");
+    std::string model_name = llm->modelName();
+    {
+        std::unique_lock<std::mutex> lock(m_llm_mutex);
+        m_llm = std::move(llm);
+    }
+    m_event_bus->emit(EventBus::makeEvent("llm_changed", {{"model", model_name}}));
+    std::cerr << "[AgentManager] default LLM -> " << model_name << "\n";
+}
+
+std::shared_ptr<LLMClient> AgentManager::defaultLLM() const
+{
+    std::unique_lock<std::mutex> lock(m_llm_mutex);
+    return m_llm;
+}
+
+// ---------------------------------------------------------------------------
 // MCP management
 // ---------------------------------------------------------------------------
 void AgentManager::connectMCP(const MCPServerConfig& cfg)
@@ -707,26 +743,21 @@ void AgentManager::connectMCP(const MCPServerConfig& cfg)
 #ifdef AGENT_HAS_MCP_HTTP
     if (cfg.transport != "stdio" && !cfg.url.empty()) {
         try {
-            // Parse URL → scheme, host, port, path_prefix
+            // Split "scheme://host[:port][/prefix]" into the origin httplib's
+            // URL-based Client constructor wants (it selects http vs https from
+            // the scheme, handling SSL internally when compiled with OpenSSL)
+            // and the path prefix.
             auto scheme_end = cfg.url.find("://");
             if (scheme_end == std::string::npos)
                 throw std::runtime_error("malformed URL: " + cfg.url);
 
-            std::string scheme = cfg.url.substr(0, scheme_end);
-            std::string rest   = cfg.url.substr(scheme_end + 3);
-            auto slash_pos     = rest.find('/');
-            std::string host_port   = (slash_pos == std::string::npos) ? rest : rest.substr(0, slash_pos);
-            std::string path_prefix = (slash_pos == std::string::npos) ? "" : rest.substr(slash_pos);
-
-            std::string host;
-            int port = (scheme == "https") ? 443 : 80;
-            auto colon_pos = host_port.rfind(':');
-            if (colon_pos != std::string::npos) {
-                host = host_port.substr(0, colon_pos);
-                port = std::stoi(host_port.substr(colon_pos + 1));
-            } else {
-                host = host_port;
-            }
+            auto path_start = cfg.url.find('/', scheme_end + 3);
+            std::string origin =
+                (path_start == std::string::npos) ? cfg.url : cfg.url.substr(0, path_start);
+            std::string path_prefix =
+                (path_start == std::string::npos) ? "" : cfg.url.substr(path_start);
+            while (!path_prefix.empty() && path_prefix.back() == '/')
+                path_prefix.pop_back();
 
             // Build JSON-RPC 2.0 tools/list request
             nlohmann::json rpc_req = {
@@ -741,18 +772,13 @@ void AgentManager::connectMCP(const MCPServerConfig& cfg)
                 headers.emplace("Authorization", "Bearer " + cfg.bearer_token);
             headers.emplace("Content-Type", "application/json");
 
-            std::unique_ptr<httplib::Client> cli;
-#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-            if (scheme == "https")
-                cli = std::make_unique<httplib::SSLClient>(host, port);
-            else
-#endif
-                cli = std::make_unique<httplib::Client>(host, port);
-            cli->set_connection_timeout(5);
-            cli->set_read_timeout(10);
+            httplib::Client cli(origin);
+            cli.set_connection_timeout(5);
+            cli.set_read_timeout(10);
+            cli.set_follow_location(true);
 
             std::string endpoint = path_prefix + "/mcp/v1";
-            auto res = cli->Post(endpoint.c_str(), headers, rpc_req.dump(), "application/json");
+            auto res = cli.Post(endpoint.c_str(), headers, rpc_req.dump(), "application/json");
             if (!res) {
                 std::cerr << "[AgentManager] MCP tools/list failed for '" << cfg.name
                           << "': " << httplib::to_string(res.error()) << "\n";

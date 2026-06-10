@@ -113,29 +113,21 @@ nlohmann::json MCPToolAction::callHttp(const std::string& url,
         }},
     };
 
-    // Parse the base URL to extract host, port, and path prefix
-    // Expected format: http[s]://host[:port][/prefix]
-    std::string scheme, host, path_prefix;
-    int port = 80;
-
+    // Split "scheme://host[:port][/prefix]" into the origin (passed to
+    // httplib's URL-based Client constructor, which selects http vs https from
+    // the scheme and handles SSL internally when built with OpenSSL) and the
+    // path prefix.
     auto scheme_end = url.find("://");
     if (scheme_end == std::string::npos)
         throw std::runtime_error("MCPToolAction: malformed URL: " + url);
 
-    scheme = url.substr(0, scheme_end);
-    std::string rest = url.substr(scheme_end + 3);
-    auto slash_pos = rest.find('/');
-    std::string host_port = (slash_pos == std::string::npos) ? rest : rest.substr(0, slash_pos);
-    path_prefix = (slash_pos == std::string::npos) ? "" : rest.substr(slash_pos);
-
-    auto colon_pos = host_port.rfind(':');
-    if (colon_pos != std::string::npos) {
-        host = host_port.substr(0, colon_pos);
-        port = std::stoi(host_port.substr(colon_pos + 1));
-    } else {
-        host = host_port;
-        port = (scheme == "https") ? 443 : 80;
-    }
+    auto path_start = url.find('/', scheme_end + 3);
+    std::string origin =
+        (path_start == std::string::npos) ? url : url.substr(0, path_start);
+    std::string path_prefix =
+        (path_start == std::string::npos) ? "" : url.substr(path_start);
+    while (!path_prefix.empty() && path_prefix.back() == '/')
+        path_prefix.pop_back();
 
     std::string endpoint = path_prefix + "/mcp/v1";
     std::string body = rpc_request.dump();
@@ -145,16 +137,12 @@ nlohmann::json MCPToolAction::callHttp(const std::string& url,
         headers.emplace("Authorization", "Bearer " + bearer_token);
     headers.emplace("Content-Type", "application/json");
 
-    std::unique_ptr<httplib::Client> cli;
-    if (scheme == "https") {
-        cli = std::make_unique<httplib::SSLClient>(host, port);
-    } else {
-        cli = std::make_unique<httplib::Client>(host, port);
-    }
-    cli->set_connection_timeout(5);
-    cli->set_read_timeout(30);
+    httplib::Client cli(origin);
+    cli.set_connection_timeout(5);
+    cli.set_read_timeout(30);
+    cli.set_follow_location(true);
 
-    auto res = cli->Post(endpoint.c_str(), headers, body, "application/json");
+    auto res = cli.Post(endpoint.c_str(), headers, body, "application/json");
     if (!res) {
         auto err = res.error();
         throw std::runtime_error("MCPToolAction: HTTP request failed: " +

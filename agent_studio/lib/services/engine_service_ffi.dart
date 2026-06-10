@@ -69,6 +69,10 @@ class _FfiOrHttpBackend implements AgentBackend {
       _delegate?.listEngineAgents() ?? Future.value([]);
 
   @override
+  Future<void> configureLlm(Map<String, dynamic> config) =>
+      _delegate?.configureLlm(config) ?? Future.value();
+
+  @override
   Future<void> connectMcp({
     required String name,
     required String url,
@@ -152,7 +156,13 @@ class FfiBackend implements AgentBackend {
       name:          config['name'] as String? ?? 'agent',
       userId:        config['user_id'] as String? ?? 'default',
       maxIterations: config['max_iterations'] as int? ?? 20,
+      llm:           config['llm'] as Map<String, dynamic>?,
     );
+  }
+
+  @override
+  Future<void> configureLlm(Map<String, dynamic> config) async {
+    _engine.configureLlm(config);
   }
 
   @override

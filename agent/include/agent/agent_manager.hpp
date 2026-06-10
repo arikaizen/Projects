@@ -124,6 +124,14 @@ public:
     // ── Multi-tenancy ────────────────────────────────────────────────────────
     void setUserQuota(const std::string& user_id, const UserQuota& quota);
 
+    // ── LLM management ───────────────────────────────────────────────────────
+    // Swap the default LLM backend at runtime (e.g. after the user signs in to
+    // a provider from the GUI). Agents spawned after the call use the new
+    // client; already-running agents keep the client they started with.
+    // Per-agent overrides (AgentConfig.extra["llm"]) take precedence.
+    void                       setDefaultLLM(std::shared_ptr<LLMClient> llm);
+    std::shared_ptr<LLMClient> defaultLLM() const;
+
     // ── MCP management ───────────────────────────────────────────────────────
     void           connectMCP(const MCPServerConfig& cfg);
     void           disconnectMCP(const std::string& server_name);
@@ -132,6 +140,7 @@ public:
 private:
     Config m_config;
 
+    mutable std::mutex             m_llm_mutex; // guards m_llm swap/read
     std::shared_ptr<LLMClient>     m_llm;
     std::shared_ptr<MemoryBackend> m_memory;
     std::shared_ptr<WorkFactory>   m_factory;
@@ -149,6 +158,11 @@ private:
         std::string                  status; // "idle"|"running"|"done"|"failed"
         nlohmann::json               result;
         std::string                  user_id;
+        // Per-agent LLM override (from AgentConfig.extra["llm"]); null means
+        // the manager default applies. Lets agents on different providers
+        // (Claude / ChatGPT / Gemini / local) run side by side and talk to
+        // each other through pipes, messages, and the blackboard.
+        std::shared_ptr<LLMClient>   llm;
         // Each agent loop runs on its own dedicated thread (Level 1/2
         // concurrency).  The shared ThreadPool is reserved for intra-batch
         // (Level 3) parallelism, so agent loops never contend with — or

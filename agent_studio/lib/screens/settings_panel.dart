@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/agent_provider.dart';
 import '../theme/app_theme.dart';
 import '../models/model_provider.dart';
+import '../services/google_auth/google_auth_service.dart';
 
 enum _ConnMode { ffi, http }
 
@@ -451,8 +452,29 @@ class _SettingsPanelState extends State<SettingsPanel> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(p.name, style: const TextStyle(color: AppColors.textPrimary,
-                    fontSize: 12, fontWeight: FontWeight.w600)),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(p.name,
+                          style: const TextStyle(color: AppColors.textPrimary,
+                              fontSize: 12, fontWeight: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    if (prov.engineDefaultProviderId == p.id) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.statusDone.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: const Text('ENGINE',
+                            style: TextStyle(color: AppColors.statusDone, fontSize: 8,
+                                fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                      ),
+                    ],
+                  ],
+                ),
                 Text(
                   p.isLoading ? 'Connecting…'
                       : p.error != null ? p.error!
@@ -467,6 +489,18 @@ class _SettingsPanelState extends State<SettingsPanel> {
               ],
             ),
           ),
+          // Set as engine default
+          if (p.isConnected && p.models.isNotEmpty &&
+              prov.engineDefaultProviderId != p.id)
+            IconButton(
+              icon: const Icon(Icons.bolt_outlined, size: 14),
+              color: AppColors.textMuted,
+              tooltip: 'Use for engine agents',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              onPressed: () =>
+                  prov.setEngineDefaultProvider(p.id, p.models.first.id),
+            ),
           // Loading or refresh button
           if (p.isLoading)
             const SizedBox(
@@ -913,19 +947,36 @@ class _AddProviderDialog extends StatefulWidget {
 }
 
 class _AddProviderDialogState extends State<_AddProviderDialog> {
-  ProviderType _type = ProviderType.ollama;
+  // Hosted providers first, then local ones.
+  static const _hosted = [
+    ProviderType.anthropic, ProviderType.openai, ProviderType.google,
+    ProviderType.groq, ProviderType.mistral, ProviderType.deepseek,
+    ProviderType.xai, ProviderType.openrouter, ProviderType.together,
+  ];
+  static const _local = [
+    ProviderType.ollama, ProviderType.lmstudio, ProviderType.llamacpp,
+    ProviderType.vllm, ProviderType.custom,
+  ];
+
+  ProviderType _type = ProviderType.anthropic;
   late final _nameCtrl = TextEditingController(
-      text: ModelProvider.defaultName(ProviderType.ollama));
+      text: ModelProvider.defaultName(ProviderType.anthropic));
   late final _urlCtrl = TextEditingController(
-      text: ModelProvider.defaultUrl(ProviderType.ollama));
-  final _keyCtrl  = TextEditingController();
+      text: ModelProvider.defaultUrl(ProviderType.anthropic));
+  final _keyCtrl      = TextEditingController();
+  final _clientIdCtrl = TextEditingController();
   bool _obscureKey = true;
+  bool _googleSignedIn = false;
+  bool _signingIn = false;
+  String? _googleAccessToken;
+  String? _googleError;
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _urlCtrl.dispose();
     _keyCtrl.dispose();
+    _clientIdCtrl.dispose();
     super.dispose();
   }
 
@@ -934,7 +985,36 @@ class _AddProviderDialogState extends State<_AddProviderDialog> {
       _type = t;
       _nameCtrl.text = ModelProvider.defaultName(t);
       _urlCtrl.text  = ModelProvider.defaultUrl(t);
+      _googleSignedIn = false;
+      _googleAccessToken = null;
+      _googleError = null;
     });
+  }
+
+  bool get _isLocal  => ModelProvider.isLocalType(_type);
+  bool get _isGoogle => _type == ProviderType.google;
+
+  Future<void> _doGoogleSignIn() async {
+    final clientId = _clientIdCtrl.text.trim();
+    if (clientId.isEmpty) {
+      setState(() => _googleError = 'Enter your Google OAuth client ID first');
+      return;
+    }
+    setState(() { _signingIn = true; _googleError = null; });
+    try {
+      final tokens = await googleAuthService.signIn(clientId: clientId);
+      setState(() {
+        _googleAccessToken = tokens.accessToken;
+        _googleSignedIn = true;
+        _signingIn = false;
+      });
+    } catch (e) {
+      setState(() {
+        _googleError = e.toString();
+        _signingIn = false;
+        _googleSignedIn = false;
+      });
+    }
   }
 
   @override
@@ -946,7 +1026,7 @@ class _AddProviderDialogState extends State<_AddProviderDialog> {
         side: const BorderSide(color: AppColors.border),
       ),
       child: SizedBox(
-        width: 480,
+        width: 520,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -974,101 +1054,56 @@ class _AddProviderDialogState extends State<_AddProviderDialog> {
               ),
             ),
             // Body
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _label('Provider Type'),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: ProviderType.values.map((t) {
-                      final sel = _type == t;
-                      return Expanded(
-                        child: GestureDetector(
-                          onTap: () => _selectType(t),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 120),
-                            margin: const EdgeInsets.only(right: 6),
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(
-                              color: sel
-                                  ? AppColors.primary.withOpacity(0.12)
-                                  : AppColors.surfaceAlt,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: sel ? AppColors.primary : AppColors.border,
-                                width: sel ? 1.5 : 1,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Icon(_typeIcon(t), size: 18,
-                                    color: sel ? AppColors.primary
-                                        : AppColors.textMuted),
-                                const SizedBox(height: 4),
-                                Text(ModelProvider.typeLabel(t),
-                                    style: TextStyle(
-                                      color: sel ? AppColors.primary
-                                          : AppColors.textSecondary,
-                                      fontSize: 10,
-                                      fontWeight: sel
-                                          ? FontWeight.w600
-                                          : FontWeight.normal,
-                                    )),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 16),
-                  _label('Name'),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: _nameCtrl,
-                    style: const TextStyle(
-                        color: AppColors.textPrimary, fontSize: 13),
-                    decoration:
-                        const InputDecoration(hintText: 'Provider name'),
-                  ),
-                  const SizedBox(height: 14),
-                  _label('Base URL'),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: _urlCtrl,
-                    style: const TextStyle(
-                        color: AppColors.textPrimary, fontSize: 13),
-                    decoration: const InputDecoration(
-                        hintText: 'http://localhost:11434'),
-                  ),
-                  if (_type != ProviderType.ollama) ...[
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _label('Hosted'),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8, runSpacing: 8,
+                      children: _hosted.map(_typeChip).toList(),
+                    ),
                     const SizedBox(height: 14),
-                    _label('API Key'),
+                    _label('Local'),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8, runSpacing: 8,
+                      children: _local.map(_typeChip).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    _label('Name'),
                     const SizedBox(height: 6),
                     TextField(
-                      controller: _keyCtrl,
-                      obscureText: _obscureKey,
+                      controller: _nameCtrl,
                       style: const TextStyle(
                           color: AppColors.textPrimary, fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: 'sk-…',
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscureKey
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            size: 16,
-                            color: AppColors.textMuted,
-                          ),
-                          onPressed: () =>
-                              setState(() => _obscureKey = !_obscureKey),
-                        ),
-                      ),
+                      decoration:
+                          const InputDecoration(hintText: 'Provider name'),
                     ),
+                    const SizedBox(height: 14),
+                    _label('Base URL'),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _urlCtrl,
+                      style: const TextStyle(
+                          color: AppColors.textPrimary, fontSize: 13),
+                      decoration: const InputDecoration(
+                          hintText: 'http://localhost:11434'),
+                    ),
+                    if (_isLocal)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: _infoBox(Icons.computer,
+                          'Local provider — no API key needed. Make sure the '
+                          'server is running and reachable at the URL above.'),
+                      ),
+                    if (_isGoogle) ..._googleAuthFields(),
+                    if (!_isLocal && !_isGoogle) ..._apiKeyField(),
                   ],
-                ],
+                ),
               ),
             ),
             // Footer
@@ -1099,17 +1134,159 @@ class _AddProviderDialogState extends State<_AddProviderDialog> {
     );
   }
 
+  Widget _typeChip(ProviderType t) {
+    final sel = _type == t;
+    return GestureDetector(
+      onTap: () => _selectType(t),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: sel ? AppColors.primary.withOpacity(0.12) : AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: sel ? AppColors.primary : AppColors.border,
+            width: sel ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_typeIcon(t), size: 15,
+                color: sel ? AppColors.primary : AppColors.textMuted),
+            const SizedBox(width: 6),
+            Text(ModelProvider.typeLabel(t),
+                style: TextStyle(
+                  color: sel ? AppColors.primary : AppColors.textSecondary,
+                  fontSize: 12,
+                  fontWeight: sel ? FontWeight.w600 : FontWeight.normal,
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _apiKeyField() => [
+        const SizedBox(height: 14),
+        _label('API Key'),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _keyCtrl,
+          obscureText: _obscureKey,
+          style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+          decoration: InputDecoration(
+            hintText: 'sk-…',
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscureKey ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                size: 16, color: AppColors.textMuted,
+              ),
+              onPressed: () => setState(() => _obscureKey = !_obscureKey),
+            ),
+          ),
+        ),
+      ];
+
+  List<Widget> _googleAuthFields() => [
+        const SizedBox(height: 14),
+        _label('Authentication'),
+        const SizedBox(height: 6),
+        const Text(
+          'Use an API key from Google AI Studio, or sign in with your Google '
+          'account (OAuth). Sign-in needs a Google Cloud OAuth client ID.',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.4),
+        ),
+        const SizedBox(height: 10),
+        // API key option
+        _label('API Key'),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _keyCtrl,
+          obscureText: _obscureKey,
+          style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+          decoration: InputDecoration(
+            hintText: 'AIza… (leave blank to sign in instead)',
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscureKey ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                size: 16, color: AppColors.textMuted,
+              ),
+              onPressed: () => setState(() => _obscureKey = !_obscureKey),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(children: const [
+          Expanded(child: Divider(color: AppColors.border)),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: Text('or', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+          ),
+          Expanded(child: Divider(color: AppColors.border)),
+        ]),
+        const SizedBox(height: 14),
+        _label('Google OAuth Client ID'),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _clientIdCtrl,
+          style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+          decoration: const InputDecoration(
+              hintText: '…apps.googleusercontent.com'),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            ElevatedButton.icon(
+              onPressed: _signingIn ? null : _doGoogleSignIn,
+              icon: _signingIn
+                  ? const SizedBox(width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : Icon(_googleSignedIn ? Icons.check_circle : Icons.login, size: 16),
+              label: Text(_googleSignedIn ? 'Signed in' : 'Sign in with Google'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _googleSignedIn
+                    ? AppColors.statusDone.withOpacity(0.2)
+                    : null,
+              ),
+            ),
+          ],
+        ),
+        if (_googleError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(_googleError!,
+                style: const TextStyle(color: AppColors.error, fontSize: 11)),
+          ),
+      ];
+
   void _submit() {
     final name = _nameCtrl.text.trim();
     final url  = _urlCtrl.text.trim();
     if (name.isEmpty || url.isEmpty) return;
+
+    AuthMethod auth;
+    String key;
+    if (_isLocal) {
+      auth = AuthMethod.none;
+      key  = '';
+    } else if (_isGoogle && _googleSignedIn && _googleAccessToken != null) {
+      auth = AuthMethod.googleOAuth;
+      key  = _googleAccessToken!;
+    } else {
+      auth = AuthMethod.apiKey;
+      key  = _keyCtrl.text.trim();
+    }
+
     Navigator.pop(
       context,
       ModelProvider(
-        name:   name,
-        type:   _type,
+        name:    name,
+        type:    _type,
         baseUrl: url,
-        apiKey: _keyCtrl.text.trim(),
+        apiKey:  key,
+        authMethod: auth,
+        oauthClientId: _clientIdCtrl.text.trim(),
       ),
     );
   }
@@ -1120,12 +1297,43 @@ class _AddProviderDialogState extends State<_AddProviderDialog> {
           fontSize: 12,
           fontWeight: FontWeight.w600));
 
+  Widget _infoBox(IconData icon, String text) => Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 14, color: AppColors.textMuted),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(text,
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 11, height: 1.5)),
+            ),
+          ],
+        ),
+      );
+
   IconData _typeIcon(ProviderType t) {
     switch (t) {
-      case ProviderType.anthropic: return Icons.auto_awesome;
-      case ProviderType.ollama:    return Icons.computer;
-      case ProviderType.openai:    return Icons.cloud_outlined;
-      case ProviderType.custom:    return Icons.settings_ethernet;
+      case ProviderType.anthropic:  return Icons.auto_awesome;
+      case ProviderType.openai:     return Icons.cloud_outlined;
+      case ProviderType.google:     return Icons.travel_explore;
+      case ProviderType.groq:       return Icons.bolt;
+      case ProviderType.mistral:    return Icons.air;
+      case ProviderType.deepseek:   return Icons.travel_explore;
+      case ProviderType.xai:        return Icons.close;
+      case ProviderType.openrouter: return Icons.alt_route;
+      case ProviderType.together:   return Icons.group_work;
+      case ProviderType.ollama:     return Icons.computer;
+      case ProviderType.lmstudio:   return Icons.science_outlined;
+      case ProviderType.llamacpp:   return Icons.terminal;
+      case ProviderType.vllm:       return Icons.memory;
+      case ProviderType.custom:     return Icons.settings_ethernet;
     }
   }
 }

@@ -76,12 +76,26 @@ class AgentEngineFfi {
 
   int get apiVersion => _b.amApiVersion();
 
+  /// Swap the engine's default LLM backend at runtime. [config] matches the
+  /// C++ llm_factory shape, e.g.
+  ///   {'provider':'openai','model':'gpt-4o','api_key':'...'}
+  void configureLlm(Map<String, dynamic> config) {
+    _assertInit();
+    using((arena) {
+      _checkStatus(
+        _b.amConfigureLlm(_mgr, jsonEncode(config).toNativeUtf8(allocator: arena)),
+        'am_configure_llm',
+      );
+    });
+  }
+
   String spawnAgent({
     String name          = 'agent',
     String userId        = 'default',
     int    maxIterations = 20,
     int    maxDepth      = 3,
     Map<String, dynamic> extra = const {},
+    Map<String, dynamic>? llm,
   }) {
     _assertInit();
     final config = jsonEncode({
@@ -89,6 +103,7 @@ class AgentEngineFfi {
       'user_id': userId,
       'max_iterations': maxIterations,
       'max_depth': maxDepth,
+      if (llm != null) 'llm': llm,
       'extra': extra,
     });
 

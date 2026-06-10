@@ -282,6 +282,19 @@ class AgentProvider extends ChangeNotifier {
       }
     }
 
+    // Point the engine at the target agent's provider/model before running so
+    // engine-backed agents use the model the user picked for them.
+    if (_isConnected && target == TaskTarget.agent) {
+      final agent = _agents[targetId];
+      if (agent != null) {
+        final llm = engineLlmConfigFor(agent);
+        if (llm != null && agent.providerId != _engineDefaultProviderId) {
+          await setEngineDefaultProvider(
+              agent.providerId ?? _resolveProvider(agent)!.id, agent.llmModel);
+        }
+      }
+    }
+
     try {
       final result = await _api.runTask(prompt, targetId, target);
       final completed = task.copyWith(
@@ -545,6 +558,48 @@ class AgentProvider extends ChangeNotifier {
     _log(connected
         ? 'Model provider "${p.name}": ${models.length} models'
         : 'Model provider "${p.name}" failed: $error');
+
+    // When the engine is connected and this is the first provider to come
+    // online, make it the engine's default LLM so engine-backed agents have a
+    // real model to run on out of the box.
+    if (connected && _isConnected && _engineDefaultProviderId == null &&
+        models.isNotEmpty) {
+      await setEngineDefaultProvider(p.id, models.first.id);
+    }
+    notifyListeners();
+  }
+
+  // ── Engine LLM wiring ──────────────────────────────────────────────────────
+  String? _engineDefaultProviderId;
+  String? _engineDefaultModelId;
+
+  String?  get engineDefaultProviderId => _engineDefaultProviderId;
+  String?  get engineDefaultModelId    => _engineDefaultModelId;
+
+  /// Build the engine llm_factory config for [agent], resolving its provider.
+  /// Returns null when no connected provider backs the agent.
+  Map<String, dynamic>? engineLlmConfigFor(AgentModel agent) {
+    final p = _resolveProvider(agent);
+    if (p == null) return null;
+    final modelId = agent.llmModel.isNotEmpty ? agent.llmModel
+        : (p.models.isNotEmpty ? p.models.first.id : '');
+    if (modelId.isEmpty) return null;
+    return p.toEngineLlmConfig(modelId);
+  }
+
+  /// Push a provider+model to the engine as its default backend.
+  Future<void> setEngineDefaultProvider(String providerId, String modelId) async {
+    final matches = _modelProviders.where((p) => p.id == providerId);
+    if (matches.isEmpty) return;
+    final p = matches.first;
+    try {
+      await _api.configureLlm(p.toEngineLlmConfig(modelId));
+      _engineDefaultProviderId = providerId;
+      _engineDefaultModelId    = modelId;
+      _log('Engine LLM set to ${p.name} / $modelId');
+    } catch (e) {
+      _log('Engine LLM config failed: $e');
+    }
     notifyListeners();
   }
 

@@ -22,13 +22,10 @@
 #include "agent/agent_context.hpp"
 #include "agent/work_factory.hpp"
 #include "agent/llm_client.hpp"
+#include "agent/llm_factory.hpp"
 #include "agent/memory_backend.hpp"
 #include "agent/quota.hpp"
 #include "agent/ai_model_llm_client.hpp"
-
-#ifdef AGENT_HAS_VLLM
-#include "ai_model/aimodel_vllm.hpp"
-#endif
 
 #include <nlohmann/json.hpp>
 
@@ -160,38 +157,28 @@ AgentManager* am_create(const char* config_json) {
             }
         }
 
-        // Select the LLM backend from config.  A real backend (e.g. vLLM) is
-        // used when requested AND compiled in; otherwise we fall back to a stub
-        // MockLLMClient that returns an empty JSON array plan.
+        // Select the LLM backend from config via the provider factory
+        // (OpenAI/ChatGPT, Anthropic/Claude, Google Gemini, Ollama, any
+        // OpenAI-compatible server, in-process llama.cpp, ...). When no "llm"
+        // key is supplied we fall back to a stub MockLLMClient; the GUI can
+        // swap in a real backend later via am_configure_llm.
         std::shared_ptr<agent::LLMClient> llm;
 
-        const bool want_vllm =
-            j.contains("llm") && j["llm"].is_object() &&
-            j["llm"].value("backend", std::string{}) == "vllm";
-
-        if (want_vllm) {
-#ifdef AGENT_HAS_VLLM
-            const auto& lj = j["llm"];
-            auto model = std::make_unique<AIModelVLLM>(
-                lj.value("base_url", std::string{"http://localhost:8000"}),
-                lj.value("model",       std::string{}),
-                lj.value("api_key",     std::string{}),
-                lj.value("embed_model", std::string{}),
-                lj.value("timeout_seconds", 120),
-                lj.value("max_context", 8192));
-            llm = std::make_shared<agent::AIModelLLMClient>(std::move(model));
-#else
-            setError("am_create: llm.backend=\"vllm\" requested but the engine "
-                     "was built without -DAGENT_ENABLE_VLLM=ON");
-            return nullptr;
-#endif
+        if (j.contains("llm") && j["llm"].is_object()) {
+            std::string llm_err;
+            llm = agent::makeLLMClientFromConfig(j["llm"], &llm_err);
+            if (!llm) {
+                setError("am_create: " + llm_err);
+                return nullptr;
+            }
         } else {
             llm = std::make_shared<agent::MockLLMClient>(
                 [](const agent::LLMClient::Request&) -> agent::LLMClient::Response {
                     return {
                         /*content=*/ "[]",
                         /*success=*/ true,
-                        /*error=*/   ""
+                        /*error=*/   "",
+                        /*tool_calls=*/ {}
                     };
                 }
             );
@@ -257,6 +244,13 @@ am_status_t am_spawn_agent(AgentManager* mgr, const char* config_json,
         if (j.contains("user_id") && j["user_id"].is_string()) {
             if (!cfg.extra.is_object()) cfg.extra = nlohmann::json::object();
             cfg.extra["user_id"] = j["user_id"].get<std::string>();
+        }
+
+        // Per-agent LLM override: spawnAgent reads cfg.extra["llm"] and builds
+        // a dedicated client, so agents on different providers can coexist.
+        if (j.contains("llm") && j["llm"].is_object()) {
+            if (!cfg.extra.is_object()) cfg.extra = nlohmann::json::object();
+            cfg.extra["llm"] = j["llm"];
         }
 
         std::string agent_id = toMgr(mgr)->spawnAgent(cfg);
@@ -938,6 +932,36 @@ am_status_t am_disconnect_mcp(AgentManager* mgr, const char* server_name) {
         return AM_ERROR_INTERNAL;
     } catch (...) {
         setError("am_disconnect_mcp: unknown exception");
+        return AM_ERROR_INTERNAL;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LLM management
+// ═══════════════════════════════════════════════════════════════════════════════
+
+am_status_t am_configure_llm(AgentManager* mgr, const char* llm_config_json) {
+    if (!requireMgr(mgr))    return AM_ERROR_INVALID_ARG;
+    if (!llm_config_json)    { setError("am_configure_llm: llm_config_json is null"); return AM_ERROR_INVALID_ARG; }
+
+    try {
+        nlohmann::json j;
+        if (!parseJson(llm_config_json, j, "am_configure_llm")) return AM_ERROR_INVALID_ARG;
+
+        std::string llm_err;
+        auto llm = agent::makeLLMClientFromConfig(j, &llm_err);
+        if (!llm) {
+            setError("am_configure_llm: " + llm_err);
+            return AM_ERROR_INVALID_ARG;
+        }
+
+        toMgr(mgr)->setDefaultLLM(std::move(llm));
+        return AM_OK;
+    } catch (const std::exception& e) {
+        setError(std::string("am_configure_llm: ") + e.what());
+        return AM_ERROR_INTERNAL;
+    } catch (...) {
+        setError("am_configure_llm: unknown exception");
         return AM_ERROR_INTERNAL;
     }
 }
