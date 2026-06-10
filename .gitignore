@@ -1,6 +1,16 @@
 __pycache__/
 *.pyc
 *.pyo
+
+# C++ build directories (out-of-source cmake builds)
+build/
+auth-server/build/
+mcp-server/build/
+agent/build/
+
+# Local secrets — seeded from .env.example, holds API keys
+.env
+mcp-server/.env
 ./AI/models
 *.gguf
 AI/models/

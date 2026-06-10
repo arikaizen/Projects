@@ -20,8 +20,8 @@
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
-static std::string getenv_or(const char* k, const char* d) {
-    const char* v = std::getenv(k); return v ? v : d;
+static std::string getenv_or(const char* k, const std::string& d) {
+    const char* v = std::getenv(k); return v ? std::string(v) : d;
 }
 
 // ── Global state ──────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ int main() {
 
     // HTTP mode
     std::string host = getenv_or("HOST", "0.0.0.0");
-    int port = std::atoi(getenv_or("PORT", "8081"));
+    int port = std::atoi(getenv_or("PORT", "8081").c_str());
 
     httplib::Server svr;
     svr.set_pre_routing_handler([](const httplib::Request&, httplib::Response& res) {

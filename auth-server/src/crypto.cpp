@@ -120,8 +120,8 @@ EvpKeyPtr generate_rsa_key(int bits) {
     if (EVP_PKEY_keygen_init(ctx) <= 0) {
         EVP_PKEY_CTX_free(ctx); throw std::runtime_error("EVP_PKEY_keygen_init failed");
     }
-    if (EVP_PKEY_CTX_set_rsa_keybits(ctx, bits) <= 0) {
-        EVP_PKEY_CTX_free(ctx); throw std::runtime_error("EVP_PKEY_CTX_set_rsa_keybits failed");
+    if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, bits) <= 0) {
+        EVP_PKEY_CTX_free(ctx); throw std::runtime_error("EVP_PKEY_CTX_set_rsa_keygen_bits failed");
     }
     EVP_PKEY* pkey = nullptr;
     if (EVP_PKEY_keygen(ctx, &pkey) <= 0) {
