@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/agent_provider.dart';
 import 'providers/auth_provider.dart';
+import 'providers/cloud_provider.dart';
 import 'services/agent_api_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/admin_shell.dart';
@@ -21,6 +22,7 @@ class AgentStudioApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => AgentProvider(AgentApiService())),
+        ChangeNotifierProvider(create: (_) => CloudProvider()),
       ],
       child: MaterialApp(
         title: 'Agent Studio',
