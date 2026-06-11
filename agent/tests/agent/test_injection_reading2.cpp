@@ -104,7 +104,7 @@ int main() {
             {{"name","EchoAction"},{"id","inj2"},{"inputs",{{"data","error2"}}}},
             {{"name","EchoAction"},{"id","inj3"},{"inputs",{{"data","error3"}}}}
         });
-        return {plan.dump(), true, ""};
+        return {plan.dump(), true, "", {}};
     };
 
     // Build components directly to access history

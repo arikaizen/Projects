@@ -115,7 +115,7 @@ int main() {
 
         auto llm = std::make_shared<agent::MockLLMClient>(
             [](const agent::LLMClient::Request&) {
-                return agent::LLMClient::Response{"[]", true, ""};
+                return agent::LLMClient::Response{"[]", true, "", {}};
             });
         auto mem = std::make_shared<agent::NoOpMemoryBackend>();
         auto mgr = std::make_shared<agent::AgentManager>(mgr_cfg, llm, mem);
@@ -195,7 +195,7 @@ int main() {
 
         auto llm = std::make_shared<agent::MockLLMClient>(
             [](const agent::LLMClient::Request&) {
-                return agent::LLMClient::Response{"[]", true, ""};
+                return agent::LLMClient::Response{"[]", true, "", {}};
             });
         auto mem = std::make_shared<agent::NoOpMemoryBackend>();
         auto mgr = std::make_shared<agent::AgentManager>(mgr_cfg, llm, mem);

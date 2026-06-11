@@ -36,6 +36,9 @@ class AgentProvider extends ChangeNotifier {
   final _modelService = ModelService();
   final _llmService   = LlmService();
 
+  // MCP server configs managed by the UI (name → config map)
+  final Map<String, Map<String, String>> _mcpServers = {};
+
   // ── Getters ────────────────────────────────────────────────────────────────
   List<AgentModel> get agents        => _agents.values.toList();
   List<AgentModel> get rootAgents    => _agents.values.where((a) => a.parentId == null).toList();
@@ -52,6 +55,9 @@ class AgentProvider extends ChangeNotifier {
   List<String>     get eventLog          => List.unmodifiable(_eventLog);
   List<ModelProvider> get modelProviders => List.unmodifiable(_modelProviders);
   bool get hasAnyProvider => _modelProviders.any((p) => p.isConnected);
+
+  List<Map<String, String>> get mcpServers =>
+      _mcpServers.values.toList();
   bool providerReadyFor(AgentModel agent) => _resolveProvider(agent) != null;
   List<ModelInfo>     get availableModels => _modelProviders
       .where((p) => p.isConnected)
@@ -272,6 +278,19 @@ class AgentProvider extends ChangeNotifier {
       if (g != null) {
         for (final aid in g.agentIds) {
           _setAgentStatus(aid, AgentStatus.running, task: prompt);
+        }
+      }
+    }
+
+    // Point the engine at the target agent's provider/model before running so
+    // engine-backed agents use the model the user picked for them.
+    if (_isConnected && target == TaskTarget.agent) {
+      final agent = _agents[targetId];
+      if (agent != null) {
+        final llm = engineLlmConfigFor(agent);
+        if (llm != null && agent.providerId != _engineDefaultProviderId) {
+          await setEngineDefaultProvider(
+              agent.providerId ?? _resolveProvider(agent)!.id, agent.llmModel);
         }
       }
     }
@@ -508,6 +527,42 @@ class AgentProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── MCP servers ───────────────────────────────────────────────────────────
+  Future<void> addMcpServer({
+    required String name,
+    required String url,
+    String bearerToken = '',
+    String transport   = 'http',
+  }) async {
+    _mcpServers[name] = {
+      'name':         name,
+      'url':          url,
+      'bearer_token': bearerToken,
+      'transport':    transport,
+    };
+    try {
+      await _api.connectMcp(
+        name:        name,
+        url:         url,
+        bearerToken: bearerToken,
+        transport:   transport,
+      );
+      _log('MCP server "$name" connected at $url');
+    } catch (e) {
+      _log('MCP server "$name" connection error: $e');
+    }
+    notifyListeners();
+  }
+
+  Future<void> removeMcpServer(String name) async {
+    _mcpServers.remove(name);
+    try {
+      await _api.disconnectMcp(name);
+    } catch (_) {}
+    _log('MCP server "$name" removed');
+    notifyListeners();
+  }
+
   Future<void> refreshModelProvider(String id) async {
     final p = _modelProviders.firstWhere((p) => p.id == id,
         orElse: () => throw StateError('not found'));
@@ -523,6 +578,48 @@ class AgentProvider extends ChangeNotifier {
     _log(connected
         ? 'Model provider "${p.name}": ${models.length} models'
         : 'Model provider "${p.name}" failed: $error');
+
+    // When the engine is connected and this is the first provider to come
+    // online, make it the engine's default LLM so engine-backed agents have a
+    // real model to run on out of the box.
+    if (connected && _isConnected && _engineDefaultProviderId == null &&
+        models.isNotEmpty) {
+      await setEngineDefaultProvider(p.id, models.first.id);
+    }
+    notifyListeners();
+  }
+
+  // ── Engine LLM wiring ──────────────────────────────────────────────────────
+  String? _engineDefaultProviderId;
+  String? _engineDefaultModelId;
+
+  String?  get engineDefaultProviderId => _engineDefaultProviderId;
+  String?  get engineDefaultModelId    => _engineDefaultModelId;
+
+  /// Build the engine llm_factory config for [agent], resolving its provider.
+  /// Returns null when no connected provider backs the agent.
+  Map<String, dynamic>? engineLlmConfigFor(AgentModel agent) {
+    final p = _resolveProvider(agent);
+    if (p == null) return null;
+    final modelId = agent.llmModel.isNotEmpty ? agent.llmModel
+        : (p.models.isNotEmpty ? p.models.first.id : '');
+    if (modelId.isEmpty) return null;
+    return p.toEngineLlmConfig(modelId);
+  }
+
+  /// Push a provider+model to the engine as its default backend.
+  Future<void> setEngineDefaultProvider(String providerId, String modelId) async {
+    final matches = _modelProviders.where((p) => p.id == providerId);
+    if (matches.isEmpty) return;
+    final p = matches.first;
+    try {
+      await _api.configureLlm(p.toEngineLlmConfig(modelId));
+      _engineDefaultProviderId = providerId;
+      _engineDefaultModelId    = modelId;
+      _log('Engine LLM set to ${p.name} / $modelId');
+    } catch (e) {
+      _log('Engine LLM config failed: $e');
+    }
     notifyListeners();
   }
 

@@ -96,6 +96,9 @@ int am_api_version(void);
  *   "name"           : string  — human-readable name
  *   "max_iterations" : int     — loop iteration cap (default 100)
  *   "max_depth"      : int     — sub-agent depth cap (default 3)
+ *   "llm"            : object  — per-agent LLM override (same shape as
+ *                                am_configure_llm); lets agents on different
+ *                                providers run side by side
  *   "extra"          : object  — passed to the agent unchanged
  *
  * out_id_buf receives the new agent id (UTF-8, null-terminated).
@@ -270,6 +273,27 @@ am_status_t am_set_prompts_dir(AgentManager* mgr, const char* dir_path);
  */
 am_status_t am_set_user_quota(AgentManager* mgr, const char* user_id,
                                const char* quota_json);
+
+/* ── LLM management ─────────────────────────────────────────────────────── */
+
+/**
+ * am_configure_llm — swap the default LLM backend at runtime.
+ *
+ * llm_config_json:
+ *   {"provider":"openai"|"anthropic"|"google"|"ollama"|"groq"|"mistral"|
+ *               "deepseek"|"xai"|"openrouter"|"together"|"lmstudio"|
+ *               "llamacpp"|"vllm"|"llama"|"custom"|"mock",
+ *    "model":"...", "api_key":"...", "base_url":"...",
+ *    "auth_method":"api_key"|"bearer"}        // google only
+ *
+ * Agents spawned after this call use the new backend. A per-agent override
+ * can be supplied instead via the "llm" key in am_spawn_agent's config, which
+ * takes precedence and enables mixed-provider agent groups.
+ *
+ * Returns AM_ERROR_INVALID_ARG when the provider is unknown, the config is
+ * malformed, or the backend was not compiled in (-DAGENT_ENABLE_API_LLM=ON).
+ */
+am_status_t am_configure_llm(AgentManager* mgr, const char* llm_config_json);
 
 /* ── MCP management ─────────────────────────────────────────────────────── */
 

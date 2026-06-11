@@ -115,7 +115,7 @@ int main() {
         auto bb      = std::make_shared<agent::Blackboard>(bus.get());
         auto llm     = std::make_shared<agent::MockLLMClient>(
             [](const agent::LLMClient::Request&) {
-                return agent::LLMClient::Response{"[]", true, ""};
+                return agent::LLMClient::Response{"[]", true, "", {}};
             });
         auto factory = std::make_shared<agent::WorkFactory>();
         auto loader  = std::make_shared<agent::PromptLoader>("/tmp");
