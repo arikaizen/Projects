@@ -401,6 +401,8 @@ class _AgentsTab extends StatelessWidget {
         return AgentCard(
           agent: a,
           selected: prov.selectedAgentId == a.id,
+          availableModels: prov.availableModels,
+          onModelChanged: (m) => prov.changeAgentModel(a.id, m),
           onTap: () => prov.selectAgent(a.id),
           onChat: () => prov.openConversation(a.id),
           onEdit: () => showDialog(
