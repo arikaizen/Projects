@@ -1,0 +1,31 @@
+version: "3.9"
+
+# Agent Studio — two containers: web frontend + API server
+# Usage:
+#   docker compose up --build
+# Then open http://YOUR_SERVER_IP:8080
+
+services:
+
+  # Flutter web build served by nginx
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # Dart agent_server
+  api:
+    build:
+      context: ./agent_server
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3001
+    restart: unless-stopped
