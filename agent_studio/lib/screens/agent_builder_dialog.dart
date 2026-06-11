@@ -4,6 +4,7 @@ import '../models/agent_model.dart';
 import '../providers/agent_provider.dart';
 import '../theme/app_theme.dart';
 import '../models/model_provider.dart';
+import '../widgets/path_autocomplete_field.dart';
 
 class AgentBuilderDialog extends StatefulWidget {
   final AgentModel? editing;
@@ -19,6 +20,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
   late final _name   = TextEditingController();
   late final _role   = TextEditingController();
   late final _prompt = TextEditingController();
+  late final _workdir = TextEditingController();
   late String _model;
   String? _providerId;
   late final TextEditingController _customModelCtrl;
@@ -38,6 +40,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
     _name.text   = e?.name ?? '';
     _role.text   = e?.role ?? 'worker';
     _prompt.text = e?.systemPrompt ?? '';
+    _workdir.text = (e?.metadata['workingDir'] as String?) ?? '';
     _model       = e?.llmModel ?? 'claude-sonnet-4-6';
     _providerId  = e?.providerId;
     _customModelCtrl = TextEditingController(text: _model);
@@ -64,6 +67,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
     _name.dispose();
     _role.dispose();
     _prompt.dispose();
+    _workdir.dispose();
     _customModelCtrl.dispose();
     super.dispose();
   }
@@ -439,7 +443,19 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 4),
+          child: _label('Working Folder — where file tools read/write'),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          child: PathAutocompleteField(
+            controller: _workdir,
+            dirsOnly: true,
+            hintText: 'Start typing a folder path… (autocompletes)',
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
           child: _label('Available Tools — toggle what this agent can use'),
         ),
         Expanded(
@@ -681,6 +697,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
         parentId: _parentId,
         chainToId: _chainToId,
       );
+      _applyWorkdir(updated);
       prov.updateAgent(updated.id, updated);
       if (_parentId != widget.editing!.parentId) {
         prov.reparentAgent(updated.id, _parentId);
@@ -700,9 +717,20 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
         color: _color,
       );
       if (_chainToId != null) prov.setAgentChain(created.id, _chainToId);
+      _applyWorkdir(created);
     }
 
     Navigator.pop(context);
+  }
+
+  /// Store the chosen working folder in the agent's metadata (or remove it).
+  void _applyWorkdir(AgentModel agent) {
+    final dir = _workdir.text.trim();
+    if (dir.isEmpty) {
+      agent.metadata.remove('workingDir');
+    } else {
+      agent.metadata['workingDir'] = dir;
+    }
   }
 
   Widget _modelOption(String id, String label, ProviderType type, {String? providerId}) {
