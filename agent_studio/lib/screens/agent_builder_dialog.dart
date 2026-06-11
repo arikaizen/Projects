@@ -652,20 +652,17 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
     final sel = _model == id;
     IconData icon;
     switch (type) {
-      case ProviderType.anthropic:  icon = Icons.auto_awesome;     break;
-      case ProviderType.openai:     icon = Icons.cloud_outlined;   break;
-      case ProviderType.google:     icon = Icons.travel_explore;   break;
-      case ProviderType.groq:       icon = Icons.bolt;             break;
-      case ProviderType.mistral:    icon = Icons.air;              break;
-      case ProviderType.deepseek:   icon = Icons.travel_explore;   break;
-      case ProviderType.xai:        icon = Icons.close;            break;
-      case ProviderType.openrouter: icon = Icons.alt_route;        break;
-      case ProviderType.together:   icon = Icons.group_work;       break;
-      case ProviderType.ollama:     icon = Icons.computer;         break;
-      case ProviderType.lmstudio:   icon = Icons.science_outlined; break;
-      case ProviderType.llamacpp:   icon = Icons.terminal;         break;
-      case ProviderType.vllm:       icon = Icons.memory;           break;
-      case ProviderType.custom:     icon = Icons.settings_ethernet; break;
+      case ProviderType.anthropic:  icon = Icons.auto_awesome;        break;
+      case ProviderType.openai:     icon = Icons.cloud_outlined;      break;
+      case ProviderType.gemini:     icon = Icons.travel_explore;      break;
+      case ProviderType.groq:       icon = Icons.bolt;                break;
+      case ProviderType.mistral:    icon = Icons.air;                 break;
+      case ProviderType.xai:        icon = Icons.close;               break;
+      case ProviderType.together:   icon = Icons.group_work;          break;
+      case ProviderType.ollama:     icon = Icons.computer;            break;
+      case ProviderType.cohere:     icon = Icons.waves;               break;
+      case ProviderType.perplexity: icon = Icons.manage_search;       break;
+      case ProviderType.custom:     icon = Icons.settings_ethernet;   break;
     }
     return GestureDetector(
       onTap: () => setState(() {

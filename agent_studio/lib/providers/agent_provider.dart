@@ -604,7 +604,12 @@ class AgentProvider extends ChangeNotifier {
     final modelId = agent.llmModel.isNotEmpty ? agent.llmModel
         : (p.models.isNotEmpty ? p.models.first.id : '');
     if (modelId.isEmpty) return null;
-    return p.toEngineLlmConfig(modelId);
+    return {
+      'provider': p.type.name,
+      'model': modelId,
+      'api_key': p.apiKey,
+      'base_url': p.baseUrl,
+    };
   }
 
   /// Push a provider+model to the engine as its default backend.
@@ -613,7 +618,12 @@ class AgentProvider extends ChangeNotifier {
     if (matches.isEmpty) return;
     final p = matches.first;
     try {
-      await _api.configureLlm(p.toEngineLlmConfig(modelId));
+      await _api.configureLlm({
+        'provider': p.type.name,
+        'model': modelId,
+        'api_key': p.apiKey,
+        'base_url': p.baseUrl,
+      });
       _engineDefaultProviderId = providerId;
       _engineDefaultModelId    = modelId;
       _log('Engine LLM set to ${p.name} / $modelId');
