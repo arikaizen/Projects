@@ -43,6 +43,30 @@ class ModelProvider {
   })  : id = id ?? _pid.v4(),
         models = models ?? [];
 
+  /// Serialize for persistence (SharedPreferences). Includes the API key so the
+  /// user doesn't have to re-enter it every launch. Transient runtime state
+  /// (isConnected, isLoading, models, error) is NOT persisted.
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'type': type.name,
+        'baseUrl': baseUrl,
+        'apiKey': apiKey,
+        'googleAuth': googleAuth,
+      };
+
+  factory ModelProvider.fromJson(Map<String, dynamic> j) => ModelProvider(
+        id: j['id'] as String?,
+        name: j['name'] as String? ?? 'Provider',
+        type: ProviderType.values.firstWhere(
+          (t) => t.name == j['type'],
+          orElse: () => ProviderType.custom,
+        ),
+        baseUrl: j['baseUrl'] as String? ?? '',
+        apiKey: j['apiKey'] as String? ?? '',
+        googleAuth: j['googleAuth'] as bool? ?? false,
+      );
+
   static String defaultUrl(ProviderType t) {
     switch (t) {
       case ProviderType.anthropic:  return 'https://api.anthropic.com';

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/agent_model.dart';
+import '../models/model_provider.dart';
 import '../theme/app_theme.dart';
 import 'status_badge.dart';
 
@@ -10,6 +11,8 @@ class AgentCard extends StatelessWidget {
   final VoidCallback? onChat;
   final VoidCallback? onDelete;
   final VoidCallback? onEdit;
+  final List<ModelInfo> availableModels;
+  final ValueChanged<ModelInfo>? onModelChanged;
 
   const AgentCard({
     super.key,
@@ -19,6 +22,8 @@ class AgentCard extends StatelessWidget {
     this.onChat,
     this.onDelete,
     this.onEdit,
+    this.availableModels = const [],
+    this.onModelChanged,
   });
 
   @override
@@ -143,17 +148,91 @@ class AgentCard extends StatelessWidget {
   }
 
   Widget _modelChip() {
-    return Container(
+    final label = agent.llmModel.replaceAll('claude-', '').replaceAll('-latest', '');
+    final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: AppColors.surfaceAlt,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: AppColors.border),
       ),
-      child: Text(
-        agent.llmModel.replaceAll('claude-', '').replaceAll('-latest', ''),
-        style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (availableModels.isNotEmpty && onModelChanged != null)
+            const Icon(Icons.arrow_drop_down, size: 14, color: AppColors.textMuted),
+        ],
       ),
+    );
+
+    // Static chip when there are no models to switch between.
+    if (availableModels.isEmpty || onModelChanged == null) return chip;
+
+    // Group models by provider for a tidy menu.
+    return PopupMenuButton<ModelInfo>(
+      tooltip: 'Switch model',
+      color: AppColors.surface,
+      constraints: const BoxConstraints(maxHeight: 420, minWidth: 240),
+      onSelected: onModelChanged,
+      itemBuilder: (context) {
+        final items = <PopupMenuEntry<ModelInfo>>[];
+        String? lastProvider;
+        for (final m in availableModels) {
+          if (m.providerName != lastProvider) {
+            if (lastProvider != null) items.add(const PopupMenuDivider());
+            items.add(PopupMenuItem<ModelInfo>(
+              enabled: false,
+              height: 28,
+              child: Row(
+                children: [
+                  Icon(ModelProvider.typeIcon(m.providerType),
+                      size: 13, color: ModelProvider.typeColor(m.providerType)),
+                  const SizedBox(width: 6),
+                  Text(m.providerName.toUpperCase(),
+                      style: const TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700)),
+                ],
+              ),
+            ));
+            lastProvider = m.providerName;
+          }
+          final isCurrent = m.id == agent.llmModel;
+          items.add(PopupMenuItem<ModelInfo>(
+            value: m,
+            height: 36,
+            child: Row(
+              children: [
+                Icon(isCurrent ? Icons.check : Icons.circle_outlined,
+                    size: 13,
+                    color: isCurrent ? agent.color : AppColors.textMuted),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(m.displayName,
+                      style: TextStyle(
+                          color: isCurrent
+                              ? AppColors.textPrimary
+                              : AppColors.textSecondary,
+                          fontSize: 12,
+                          fontWeight:
+                              isCurrent ? FontWeight.w600 : FontWeight.w400),
+                      overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
+          ));
+        }
+        return items;
+      },
+      child: chip,
     );
   }
 

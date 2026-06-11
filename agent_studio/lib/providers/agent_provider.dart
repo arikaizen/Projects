@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/agent_model.dart';
 import '../models/agent_group.dart';
@@ -17,7 +19,10 @@ class AgentProvider extends ChangeNotifier {
 
   AgentProvider(this._api) {
     _loadDefaults();
+    _loadPersistedProviders();
   }
+
+  static const _prefsKey = 'agent_studio.model_providers';
 
   // ── State ──────────────────────────────────────────────────────────────────
   final Map<String, AgentModel> _agents = {};
@@ -517,13 +522,66 @@ class AgentProvider extends ChangeNotifier {
 
   // ── Model providers ────────────────────────────────────────────────────────
   Future<void> addModelProvider(ModelProvider provider) async {
+    // Replace existing provider with same id (edit) instead of duplicating
+    _modelProviders.removeWhere((p) => p.id == provider.id);
     _modelProviders.add(provider);
     notifyListeners();
+    await _persistProviders();
     await refreshModelProvider(provider.id);
   }
 
   void removeModelProvider(String id) {
     _modelProviders.removeWhere((p) => p.id == id);
+    notifyListeners();
+    _persistProviders();
+  }
+
+  /// Persist all model providers (including API keys) to local storage.
+  Future<void> _persistProviders() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(_modelProviders.map((p) => p.toJson()).toList());
+      await prefs.setString(_prefsKey, json);
+    } catch (e) {
+      _log('Failed to save providers: $e');
+    }
+  }
+
+  /// Load providers saved in a previous session and reconnect them so the user
+  /// never has to re-enter API keys.
+  Future<void> _loadPersistedProviders() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_prefsKey);
+      if (raw == null || raw.isEmpty) return;
+      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+      for (final m in list) {
+        final p = ModelProvider.fromJson(m);
+        if (_modelProviders.any((e) => e.id == p.id)) continue;
+        _modelProviders.add(p);
+      }
+      notifyListeners();
+      // Reconnect each in the background to repopulate model lists.
+      for (final p in _modelProviders) {
+        unawaited(refreshModelProvider(p.id));
+      }
+      _log('Restored ${list.length} saved model provider(s)');
+    } catch (e) {
+      _log('Failed to load saved providers: $e');
+    }
+  }
+
+  /// Change which model (and provider) a given agent uses. Accepts any model
+  /// from any connected provider — lets the user re-point an agent at Claude,
+  /// GPT-4o, Gemini, a local Ollama model, etc. without rebuilding the agent.
+  void changeAgentModel(String agentId, ModelInfo model) {
+    final a = _agents[agentId];
+    if (a == null) return;
+    _agents[agentId] = a.copyWith(
+      llmModel: model.id,
+      providerId: model.providerId,
+    );
+    _log('Agent "${a.name}" model → ${model.displayName} (${model.providerName})');
     notifyListeners();
   }
 
