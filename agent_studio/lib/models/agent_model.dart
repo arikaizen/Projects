@@ -4,6 +4,56 @@ enum AgentStatus { idle, running, waiting, done, error, cancelled }
 
 enum AgentRole { orchestrator, worker, specialist, reviewer, planner }
 
+extension AgentRoleInfo on AgentRole {
+  String get label {
+    switch (this) {
+      case AgentRole.orchestrator: return 'Orchestrator';
+      case AgentRole.worker:       return 'Worker';
+      case AgentRole.specialist:   return 'Specialist';
+      case AgentRole.reviewer:     return 'Reviewer';
+      case AgentRole.planner:      return 'Planner';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case AgentRole.orchestrator:
+        return 'Coordinates other agents, breaks goals into subtasks and delegates.';
+      case AgentRole.worker:
+        return 'General-purpose agent that executes tasks directly.';
+      case AgentRole.specialist:
+        return 'Focused expert for a narrow domain (e.g. SQL, security, math).';
+      case AgentRole.reviewer:
+        return 'Critiques and verifies output from other agents for quality.';
+      case AgentRole.planner:
+        return 'Produces step-by-step plans before any execution happens.';
+    }
+  }
+
+  /// A sensible default system prompt for this role, used to pre-fill the
+  /// builder so the user has to configure less.
+  String get defaultPrompt {
+    switch (this) {
+      case AgentRole.orchestrator:
+        return 'You are an orchestrator. Break the user\'s goal into clear '
+            'subtasks, decide which agent or tool handles each, and combine '
+            'their results into a final answer.';
+      case AgentRole.worker:
+        return 'You are a helpful, capable assistant. Complete the task '
+            'accurately and concisely.';
+      case AgentRole.specialist:
+        return 'You are a domain specialist. Give precise, expert-level answers '
+            'within your area and say when something is outside it.';
+      case AgentRole.reviewer:
+        return 'You are a critical reviewer. Inspect the provided work, point '
+            'out errors and risks, and suggest concrete improvements.';
+      case AgentRole.planner:
+        return 'You are a planner. Produce a numbered, step-by-step plan to '
+            'achieve the goal before any execution. Do not execute, just plan.';
+    }
+  }
+}
+
 enum AgentPattern { solo, hierarchy, group }
 
 class AgentTool {
@@ -26,6 +76,8 @@ class AgentTool {
   );
 }
 
+const Object _noChange = Object();
+
 class AgentModel {
   final String id;
   String name;
@@ -34,6 +86,7 @@ class AgentModel {
   String systemPrompt;
   String llmModel;
   String? providerId;
+  String? chainToId; // pipe this agent's output into another agent's input
   AgentStatus status;
   String? parentId;
   List<String> childIds;
@@ -55,6 +108,7 @@ class AgentModel {
     this.systemPrompt = '',
     this.llmModel = 'claude-sonnet-4-6',
     this.providerId,
+    this.chainToId,
     this.status = AgentStatus.idle,
     this.parentId,
     List<String>? childIds,
@@ -86,6 +140,7 @@ class AgentModel {
     String? systemPrompt,
     String? llmModel,
     String? providerId,
+    Object? chainToId = _noChange,
     AgentStatus? status,
     String? parentId,
     List<String>? childIds,
@@ -106,6 +161,7 @@ class AgentModel {
       systemPrompt: systemPrompt ?? this.systemPrompt,
       llmModel: llmModel ?? this.llmModel,
       providerId: providerId ?? this.providerId,
+      chainToId: chainToId == _noChange ? this.chainToId : chainToId as String?,
       status: status ?? this.status,
       parentId: parentId ?? this.parentId,
       childIds: childIds ?? List.from(this.childIds),
@@ -129,6 +185,7 @@ class AgentModel {
     'systemPrompt': systemPrompt,
     'llmModel': llmModel,
     'providerId': providerId,
+    'chainToId': chainToId,
     'status': status.name,
     'parentId': parentId,
     'childIds': childIds,

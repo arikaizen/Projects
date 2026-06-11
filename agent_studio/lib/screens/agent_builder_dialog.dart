@@ -28,6 +28,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
   late Color _color;
   late List<AgentTool> _tools;
   String? _parentId;
+  String? _chainToId;
   int _step = 0;
 
   @override
@@ -45,6 +46,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
     _maxIter     = e?.maxIterations ?? 20;
     _color       = e?.color ?? AppColors.agentColors.first;
     _parentId    = e?.parentId;
+    _chainToId   = e?.chainToId;
     _tools       = e != null
         ? List.from(e.tools)
         : [
@@ -233,25 +235,48 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
           const SizedBox(height: 16),
           _label('Agent Type'),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: AgentRole.values.map((r) {
-              final selected = _agentRole == r;
-              return ChoiceChip(
-                label: Text(_roleLabel(r)),
-                selected: selected,
-                onSelected: (_) => setState(() => _agentRole = r),
-                selectedColor: AppColors.primary.withOpacity(0.3),
-                labelStyle: TextStyle(
-                  color: selected ? AppColors.primary : AppColors.textSecondary,
-                  fontSize: 12,
-                ),
-                side: BorderSide(
-                  color: selected ? AppColors.primary : AppColors.border,
-                ),
+          DropdownButtonFormField<AgentRole>(
+            value: _agentRole,
+            isExpanded: true,
+            dropdownColor: AppColors.surface,
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.badge_outlined, size: 16, color: AppColors.textMuted),
+            ),
+            items: AgentRole.values.map((r) {
+              return DropdownMenuItem<AgentRole>(
+                value: r,
+                child: Text(r.label),
               );
             }).toList(),
+            onChanged: (r) {
+              if (r == null) return;
+              setState(() {
+                _agentRole = r;
+                _role.text = r.label.toLowerCase();
+                // Pre-fill a sensible system prompt if the user hasn't typed one.
+                if (_prompt.text.trim().isEmpty) _prompt.text = r.defaultPrompt;
+              });
+            },
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceAlt,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, size: 14, color: AppColors.textMuted),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(_agentRole.description,
+                      style: const TextStyle(
+                          color: AppColors.textSecondary, fontSize: 11, height: 1.4)),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           _label('Agent Color'),
@@ -503,6 +528,36 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
               a.role,
               color: a.color,
             )),
+
+          const SizedBox(height: 20),
+          _label('Pipe Output To (optional)'),
+          const SizedBox(height: 6),
+          const Text(
+            'When this agent answers, its output is automatically sent as the '
+            'input to another agent — chain agents into a pipeline.',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String?>(
+            value: _chainToId,
+            isExpanded: true,
+            dropdownColor: AppColors.surface,
+            style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.alt_route, size: 16, color: AppColors.textMuted),
+            ),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('Don\'t chain — final output'),
+              ),
+              ...agents.map((a) => DropdownMenuItem<String?>(
+                    value: a.id,
+                    child: Text('→ ${a.name}'),
+                  )),
+            ],
+            onChanged: (v) => setState(() => _chainToId = v),
+          ),
         ],
       ),
     );
@@ -624,13 +679,14 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
         temperature: _temp,
         color: _color,
         parentId: _parentId,
+        chainToId: _chainToId,
       );
       prov.updateAgent(updated.id, updated);
       if (_parentId != widget.editing!.parentId) {
         prov.reparentAgent(updated.id, _parentId);
       }
     } else {
-      prov.createAgent(
+      final created = prov.createAgent(
         name: _name.text.trim(),
         role: _role.text.trim(),
         agentRole: _agentRole,
@@ -643,6 +699,7 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
         temperature: _temp,
         color: _color,
       );
+      if (_chainToId != null) prov.setAgentChain(created.id, _chainToId);
     }
 
     Navigator.pop(context);
@@ -729,15 +786,6 @@ class _AgentBuilderDialogState extends State<AgentBuilderDialog> {
     ),
   );
 
-  String _roleLabel(AgentRole r) {
-    switch (r) {
-      case AgentRole.orchestrator: return 'Orchestrator';
-      case AgentRole.worker:       return 'Worker';
-      case AgentRole.specialist:   return 'Specialist';
-      case AgentRole.reviewer:     return 'Reviewer';
-      case AgentRole.planner:      return 'Planner';
-    }
-  }
 
   IconData _toolIcon(String name) {
     switch (name) {
