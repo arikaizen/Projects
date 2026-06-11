@@ -170,18 +170,19 @@ if [ "$DO_TUNNEL" = "1" ]; then
     echo "  Could not install cloudflared automatically (no internet?)."
     echo "  The app still works on your LAN at http://${LAN_IP:-localhost}:$WEB_PORT"
   else
-    free_port 20241  # cloudflared metrics port, in case it's stuck
+    free_port "$WEB_PORT"  # only free the web port; cloudflared picks its own metrics port
     : > "$RUN_DIR/tunnel.log"   # clear old URL so we don't grab a stale one
     start_svc tunnel "$CF_BIN" tunnel --url "http://localhost:$WEB_PORT"
-    echo "  Waiting for public URL (up to 60s)..."
+    echo "  Waiting for public URL (this takes ~30s, no timeout)..."
     url=""
-    for _ in $(seq 1 60); do
-      url="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUN_DIR/tunnel.log" 2>/dev/null | head -1)"
-      [ -n "$url" ] && break
-      # Bail early if the tunnel process died
+    while true; do
+      # Check if the process is still alive
       if [ -f "$RUN_DIR/tunnel.pid" ] && ! kill -0 "$(cat "$RUN_DIR/tunnel.pid")" 2>/dev/null; then
+        echo "  cloudflared process exited unexpectedly."
         break
       fi
+      url="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUN_DIR/tunnel.log" 2>/dev/null | head -1)"
+      [ -n "$url" ] && break
       sleep 1
     done
     if [ -n "$url" ]; then
