@@ -20,3 +20,6 @@ AI/models/
 agent_server/.dart_tool
 mcp_server/.dart_tool
 **/.dart_tool/
+.run/
+agent_server/bin/agent_server
+mcp_server/bin/mcp_server
