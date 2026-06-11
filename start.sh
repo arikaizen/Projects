@@ -77,15 +77,31 @@ fi
 # ── 2. Start backend services ─────────────────────────────────────────────────
 echo "=== [3/4] Starting services ==="
 
+free_port() {
+  # Kill any process currently bound to the given TCP port.
+  local port="$1"
+  if command -v fuser &>/dev/null; then
+    fuser -k "${port}/tcp" 2>/dev/null || true
+  elif command -v lsof &>/dev/null; then
+    local pids; pids="$(lsof -ti tcp:"$port" 2>/dev/null || true)"
+    [ -n "$pids" ] && kill $pids 2>/dev/null || true
+  fi
+}
+
 start_svc() {
   local name="$1"; shift
   local pidfile="$RUN_DIR/$name.pid"
-  # Kill any previous instance
+  # Kill any previous instance tracked by this script
   [ -f "$pidfile" ] && kill "$(cat "$pidfile")" 2>/dev/null || true
   nohup "$@" > "$RUN_DIR/$name.log" 2>&1 &
   echo "$!" > "$pidfile"
   echo "  $name started (PID $!) — log: $RUN_DIR/$name.log"
 }
+
+# Free ports in case stale processes (or a manual run) still hold them
+free_port "$API_PORT"
+free_port "$MCP_PORT"
+free_port "$WEB_PORT"
 
 # agent_server (cloud agents) — bind to all interfaces
 start_svc agent_server \
