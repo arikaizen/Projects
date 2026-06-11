@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -280,6 +283,46 @@ class _ChatPanelState extends State<ChatPanel> {
     );
   }
 
+  Future<void> _attachFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      type: FileType.any,
+      withData: kIsWeb,
+      withReadStream: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+
+    String content;
+    try {
+      if (kIsWeb && file.bytes != null) {
+        content = String.fromCharCodes(file.bytes!);
+      } else if (file.path != null) {
+        content = await File(file.path!).readAsString();
+      } else {
+        return;
+      }
+    } catch (e) {
+      content = '[Could not read file: $e]';
+    }
+
+    // Cap at 20k chars to avoid overwhelming the LLM context
+    const maxLen = 20000;
+    final trimmed = content.length > maxLen
+        ? '${content.substring(0, maxLen)}\n…[truncated at $maxLen chars]'
+        : content;
+
+    final existing = _ctrl.text.trim();
+    final sep = existing.isNotEmpty ? '\n\n' : '';
+    _ctrl.text = '$existing${sep}```${_ext(file.name)}\n// ${file.name}\n$trimmed\n```';
+    _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
+  }
+
+  String _ext(String name) {
+    final dot = name.lastIndexOf('.');
+    return dot >= 0 ? name.substring(dot + 1) : '';
+  }
+
   Widget _inputBar() {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
@@ -287,11 +330,24 @@ class _ChatPanelState extends State<ChatPanel> {
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
+          // Attach file button
+          Tooltip(
+            message: 'Attach file',
+            child: IconButton(
+              icon: const Icon(Icons.attach_file_rounded, size: 20),
+              color: AppColors.textMuted,
+              onPressed: _sending ? null : _attachFile,
+              padding: const EdgeInsets.all(10),
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+            ),
+          ),
+          const SizedBox(width: 4),
           Expanded(
             child: TextField(
               controller: _ctrl,
-              maxLines: 4,
+              maxLines: 6,
               minLines: 1,
               style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
               decoration: InputDecoration(
@@ -314,7 +370,7 @@ class _ChatPanelState extends State<ChatPanel> {
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               ),
               onSubmitted: (_) => _send(),
-              textInputAction: TextInputAction.send,
+              textInputAction: TextInputAction.newline,
             ),
           ),
           const SizedBox(width: 8),
@@ -330,8 +386,7 @@ class _ChatPanelState extends State<ChatPanel> {
                     ),
                     child: const Center(
                       child: SizedBox(
-                        width: 20,
-                        height: 20,
+                        width: 20, height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           valueColor: AlwaysStoppedAnimation(AppColors.primary),

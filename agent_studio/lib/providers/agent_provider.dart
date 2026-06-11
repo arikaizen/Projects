@@ -365,12 +365,32 @@ class AgentProvider extends ChangeNotifier {
       }
     }
 
-    // Fall back to engine / mock if no direct LLM provider
-    await dispatchTask(
-      prompt: content,
-      targetId: targetId,
-      target: isGroup ? TaskTarget.group : TaskTarget.agent,
+    // Fall back to engine if no direct LLM provider
+    if (isGroup || (_groups.containsKey(targetId))) {
+      await dispatchTask(
+        prompt: content,
+        targetId: targetId,
+        target: isGroup ? TaskTarget.group : TaskTarget.agent,
+      );
+      return;
+    }
+
+    // No provider and no engine — surface a real error in the chat
+    final errMsg = ChatMessage(
+      id: _uuid.v4(),
+      content: 'No model provider connected.\n\n'
+          'Open **Settings → Model Providers** and add one:\n'
+          '• **Ollama** for local models (llama3, mistral, gemma…)\n'
+          '• **Anthropic** with your API key for Claude\n'
+          '• **OpenAI / vLLM** for any OpenAI-compatible endpoint\n\n'
+          'Or connect to the Agent Engine (FFI / HTTP) in Settings → Engine Connection.',
+      isUser: false,
+      timestamp: DateTime.now(),
+      agentId: targetId,
+      type: MessageType.error,
     );
+    _agents[targetId]?.history.add(errMsg);
+    notifyListeners();
   }
 
   /// Find the connected ModelProvider for the given agent.

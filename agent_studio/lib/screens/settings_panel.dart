@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -261,7 +262,23 @@ class _SettingsPanelState extends State<SettingsPanel> {
                 ),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.folder_open, size: 20),
+              color: AppColors.textSecondary,
+              tooltip: 'Browse…',
+              onPressed: () async {
+                final result = await FilePicker.platform.pickFiles(
+                  type: FileType.custom,
+                  allowedExtensions: ['so', 'dylib', 'dll'],
+                  dialogTitle: 'Select libagent_engine',
+                );
+                if (result != null && result.files.single.path != null) {
+                  setState(() => _pathCtrl.text = result.files.single.path!);
+                }
+              },
+            ),
+            const SizedBox(width: 4),
             _connectBtn(_pathCtrl),
           ],
         ),

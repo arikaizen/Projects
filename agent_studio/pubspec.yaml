@@ -20,6 +20,7 @@ dependencies:
   collection: ^1.18.0
   ffi: ^2.1.2
   crypto: ^3.0.3
+  file_picker: ^8.1.2
 
 dev_dependencies:
   flutter_test:
