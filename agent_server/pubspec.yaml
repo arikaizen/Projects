@@ -1,0 +1,18 @@
+name: agent_server
+version: 1.0.0
+description: Agent Studio server — agent loop + multi-provider LLM router
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
+  shelf_web_socket: ^2.0.0
+  http: ^1.2.1
+  args: ^2.5.0
+  uuid: ^4.3.3
+  crypto: ^3.0.3
+
+dev_dependencies:
+  lints: ^3.0.0
