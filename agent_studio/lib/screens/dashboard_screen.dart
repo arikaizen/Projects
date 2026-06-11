@@ -9,6 +9,7 @@ import '../providers/auth_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/agent_card.dart';
 import '../widgets/chat_panel.dart';
+import '../widgets/connect_model_dialog.dart';
 import '../widgets/hierarchy_tree.dart';
 import 'agent_builder_dialog.dart';
 import 'group_builder_dialog.dart';
@@ -254,6 +255,16 @@ class _TopBar extends StatelessWidget {
           _statsRow(),
           const Spacer(),
           _connectionIndicator(),
+          const SizedBox(width: 12),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.hub_outlined, size: 15),
+            label: const Text('Connect Model'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              side: const BorderSide(color: AppColors.primary),
+            ),
+            onPressed: () => ConnectModelDialog.show(context),
+          ),
           const SizedBox(width: 12),
           if (tab == _Tab.agents)
             _addBtn(context, label: 'New Agent', onTap: () => _createAgent(context)),

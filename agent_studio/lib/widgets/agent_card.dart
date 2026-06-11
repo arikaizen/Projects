@@ -114,6 +114,11 @@ class AgentCard extends StatelessWidget {
                     padding: const EdgeInsets.only(right: 6),
                     child: _infoChip(Icons.account_tree, '${agent.childIds.length}'),
                   ),
+                if (agent.chainToId != null)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 6),
+                    child: Icon(Icons.alt_route, size: 13, color: AppColors.textMuted),
+                  ),
                 _iconBtn(Icons.chat_bubble_outline, onChat),
                 _iconBtn(Icons.edit_outlined, onEdit),
                 _iconBtn(Icons.delete_outline, onDelete, color: AppColors.error),

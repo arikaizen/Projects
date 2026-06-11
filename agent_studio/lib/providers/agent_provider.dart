@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../models/model_provider.dart';
 import '../services/model_service.dart';
 import '../services/llm_service.dart';
+import '../services/google_auth_service.dart';
 
 const _uuid = Uuid();
 
@@ -371,6 +372,12 @@ class AgentProvider extends ChangeNotifier {
             ));
             _setAgentStatus(targetId, AgentStatus.idle, task: null);
             notifyListeners();
+            // Pipe this output into the next agent in the chain, if any.
+            final next = agent.chainToId;
+            if (next != null && _agents.containsKey(next)) {
+              _log('Chaining output: ${agent.name} → ${_agents[next]!.name}');
+              await sendMessage(next, reply);
+            }
             return;
           } catch (e) {
             _log('LLM error for ${agent.name}: $e');
@@ -553,7 +560,10 @@ class AgentProvider extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_prefsKey);
-      if (raw == null || raw.isEmpty) return;
+      if (raw == null || raw.isEmpty) {
+        await _seedDefaultProviders();
+        return;
+      }
       final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
       for (final m in list) {
         final p = ModelProvider.fromJson(m);
@@ -569,6 +579,70 @@ class AgentProvider extends ChangeNotifier {
     } catch (e) {
       _log('Failed to load saved providers: $e');
     }
+  }
+
+  /// After a Google sign-in, wire up a Gemini provider that authenticates with
+  /// the user's Google OAuth token — no API key to paste.
+  Future<bool> connectGoogleGemini() async {
+    final token = await GoogleAuthService.getAccessToken();
+    if (token == null || token.isEmpty) return false;
+    // Reuse an existing Gemini provider if present, else create one.
+    ModelProvider gemini = _modelProviders.firstWhere(
+      (p) => p.type == ProviderType.gemini,
+      orElse: () {
+        final p = ModelProvider(
+          name: 'Google Gemini (Google account)',
+          type: ProviderType.gemini,
+          baseUrl: ModelProvider.defaultUrl(ProviderType.gemini),
+        );
+        _modelProviders.add(p);
+        return p;
+      },
+    );
+    gemini.googleAuth = true;
+    gemini.apiKey = token; // model_service uses this as the bearer token
+    notifyListeners();
+    await _persistProviders();
+    await refreshModelProvider(gemini.id);
+    _log('Gemini connected via Google account');
+    return gemini.isConnected;
+  }
+
+  /// Pipe one agent's output into another agent's input. Pass null to clear.
+  void setAgentChain(String agentId, String? chainToId) {
+    final a = _agents[agentId];
+    if (a == null) return;
+    // Prevent an agent chaining to itself.
+    final target = chainToId == agentId ? null : chainToId;
+    _agents[agentId] = a.copyWith(chainToId: target);
+    _log(target == null
+        ? 'Agent "${a.name}" output chain cleared'
+        : 'Agent "${a.name}" → pipes output to "${_agents[target]?.name ?? target}"');
+    notifyListeners();
+  }
+
+  /// Seed ready-to-use providers on first launch so the user sees models
+  /// immediately and only has to paste an API key (or nothing for local Ollama).
+  Future<void> _seedDefaultProviders() async {
+    if (_modelProviders.isNotEmpty) return;
+    for (final t in [
+      ProviderType.ollama,    // Local — no key needed
+      ProviderType.anthropic,
+      ProviderType.openai,
+      ProviderType.gemini,
+    ]) {
+      _modelProviders.add(ModelProvider(
+        name: ModelProvider.defaultName(t),
+        type: t,
+        baseUrl: ModelProvider.defaultUrl(t),
+      ));
+    }
+    notifyListeners();
+    await _persistProviders();
+    for (final p in _modelProviders) {
+      unawaited(refreshModelProvider(p.id));
+    }
+    _log('Seeded ${_modelProviders.length} default providers');
   }
 
   /// Change which model (and provider) a given agent uses. Accepts any model

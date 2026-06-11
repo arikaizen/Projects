@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/agent_provider.dart';
 import '../theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -36,7 +37,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _googleSignIn() async {
-    await context.read<AuthProvider>().loginWithGoogle();
+    final ok = await context.read<AuthProvider>().loginWithGoogle();
+    // On success, automatically connect Gemini using the Google token.
+    if (ok && mounted) {
+      await context.read<AgentProvider>().connectGoogleGemini();
+    }
   }
 
   @override
