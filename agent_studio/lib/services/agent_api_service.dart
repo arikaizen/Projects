@@ -50,6 +50,8 @@ class AgentApiService {
   Future<Map<String, dynamic>> getEngineStatus(String id)               => _backend.getEngineStatus(id);
   Future<void>                 cancelEngineAgent(String id)              => _backend.cancelEngineAgent(id);
   Future<List<Map<String, dynamic>>> listEngineAgents()                  => _backend.listEngineAgents();
+  Future<void>                 configureLlm(Map<String, dynamic> config) async {}
+  // LLM config is pushed to the engine backend when connected via FFI or HTTP.
   Future<void>                 connectMcp({required String name, required String url,
                                            String bearerToken = '', String transport = 'http'}) =>
       _backend.connectMcp(name: name, url: url, bearerToken: bearerToken, transport: transport);
