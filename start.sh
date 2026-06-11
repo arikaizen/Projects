@@ -125,30 +125,79 @@ echo "  agent_server http://${LAN_IP:-localhost}:$API_PORT"
 echo "  mcp_server   http://${LAN_IP:-localhost}:$MCP_PORT"
 
 # ── 3. Public tunnel ──────────────────────────────────────────────────────────
+
+# Locate cloudflared, installing it if necessary. Echoes the binary path.
+ensure_cloudflared() {
+  # Already on PATH?
+  if command -v cloudflared &>/dev/null; then
+    command -v cloudflared
+    return 0
+  fi
+  # Previously installed by this script?
+  if [ -x "$RUN_DIR/cloudflared" ]; then
+    echo "$RUN_DIR/cloudflared"
+    return 0
+  fi
+  # A copy lying around the repo from an earlier manual download?
+  if [ -x "$PROJECT_DIR/agent_studio/cloudflared" ]; then
+    echo "$PROJECT_DIR/agent_studio/cloudflared"
+    return 0
+  fi
+  # Download it (no sudo needed — kept inside .run/)
+  echo "  cloudflared not found — downloading..." >&2
+  local arch bin
+  case "$(uname -m)" in
+    x86_64|amd64) arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *) arch=amd64 ;;
+  esac
+  bin="$RUN_DIR/cloudflared"
+  if curl -fsSL \
+      "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch}" \
+      -o "$bin" 2>/dev/null; then
+    chmod +x "$bin"
+    echo "$bin"
+    return 0
+  fi
+  return 1
+}
+
 if [ "$DO_TUNNEL" = "1" ]; then
   echo ""
   echo "=== [4/4] Opening public Cloudflare tunnel ==="
-  if ! command -v cloudflared &>/dev/null; then
-    echo "  cloudflared not installed. Install with:"
-    echo "    curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared"
-    echo "    chmod +x cloudflared && sudo mv cloudflared /usr/local/bin/"
-    echo "  Skipping tunnel. Services are still running on the LAN."
+  CF_BIN="$(ensure_cloudflared || true)"
+  if [ -z "${CF_BIN:-}" ] || [ ! -x "$CF_BIN" ]; then
+    echo "  Could not install cloudflared automatically (no internet?)."
+    echo "  The app still works on your LAN at http://${LAN_IP:-localhost}:$WEB_PORT"
   else
-    start_svc tunnel cloudflared tunnel --url "http://localhost:$WEB_PORT"
-    echo "  Waiting for public URL..."
-    for _ in $(seq 1 15); do
+    free_port 20241  # cloudflared metrics port, in case it's stuck
+    : > "$RUN_DIR/tunnel.log"   # clear old URL so we don't grab a stale one
+    start_svc tunnel "$CF_BIN" tunnel --url "http://localhost:$WEB_PORT"
+    echo "  Waiting for public URL (up to 60s)..."
+    url=""
+    for _ in $(seq 1 60); do
       url="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$RUN_DIR/tunnel.log" 2>/dev/null | head -1)"
       [ -n "$url" ] && break
+      # Bail early if the tunnel process died
+      if [ -f "$RUN_DIR/tunnel.pid" ] && ! kill -0 "$(cat "$RUN_DIR/tunnel.pid")" 2>/dev/null; then
+        break
+      fi
       sleep 1
     done
-    if [ -n "${url:-}" ]; then
+    if [ -n "$url" ]; then
+      # Persist the URL so it's easy to find again
+      echo "$url" > "$RUN_DIR/public_url.txt"
       echo ""
-      echo "  ┌────────────────────────────────────────────────────────┐"
-      echo "  │ PUBLIC URL (open this from work):                      │"
-      echo "  │   $url"
-      echo "  └────────────────────────────────────────────────────────┘"
+      echo "  ============================================================"
+      echo "    PUBLIC URL (open this from work):"
+      echo ""
+      echo "      $url"
+      echo ""
+      echo "  ============================================================"
     else
-      echo "  Tunnel starting — check the URL with: tail -f $RUN_DIR/tunnel.log"
+      echo "  Tunnel did not report a URL. Last log lines:"
+      tail -n 15 "$RUN_DIR/tunnel.log" 2>/dev/null | sed 's/^/    /'
+      echo "  Re-check later with: grep trycloudflare $RUN_DIR/tunnel.log"
     fi
   fi
 fi
@@ -156,4 +205,5 @@ fi
 echo ""
 echo "Login: admin / admin123   (or user / user123)"
 echo "Everything runs in the background. To stop it all:  ./start.sh --stop"
+echo "Public URL saved in: $RUN_DIR/public_url.txt"
 echo "Logs are in: $RUN_DIR/"
