@@ -27,7 +27,7 @@ class _FfiOrHttpBackend implements AgentBackend {
   @override
   Future<bool> connect(String target) async {
     if (target.startsWith('http://') || target.startsWith('https://')) {
-      _delegate  = HttpMockBackend();
+      _delegate  = HttpBackend();
       _ffiActive = false;
       return _delegate!.connect(target);
     }
@@ -39,7 +39,7 @@ class _FfiOrHttpBackend implements AgentBackend {
       _ffiActive = true;
       return true;
     } catch (e) {
-      _delegate  = HttpMockBackend();
+      _delegate  = null;
       _ffiActive = false;
       return false;
     }
@@ -50,7 +50,8 @@ class _FfiOrHttpBackend implements AgentBackend {
 
   @override
   Future<String> runTask(String p, String t, TaskTarget tt) =>
-      _delegate?.runTask(p, t, tt) ?? Future.value('Not connected');
+      _delegate?.runTask(p, t, tt) ??
+          Future.error(StateError('Engine not connected — set a path or URL in Settings.'));
 
   @override
   Future<String> spawnEngineAgent(Map<String, dynamic> c) =>
@@ -69,18 +70,10 @@ class _FfiOrHttpBackend implements AgentBackend {
       _delegate?.listEngineAgents() ?? Future.value([]);
 
   @override
-  Future<void> configureLlm(Map<String, dynamic> config) =>
-      _delegate?.configureLlm(config) ?? Future.value();
-
-  @override
-  Future<void> connectMcp({
-    required String name,
-    required String url,
-    String bearerToken = '',
-    String transport   = 'http',
-  }) => _delegate?.connectMcp(
-        name: name, url: url, bearerToken: bearerToken, transport: transport,
-      ) ?? Future.value();
+  Future<void> connectMcp({required String name, required String url,
+      String bearerToken = '', String transport = 'http'}) =>
+      _delegate?.connectMcp(name: name, url: url,
+          bearerToken: bearerToken, transport: transport) ?? Future.value();
 
   @override
   Future<void> disconnectMcp(String serverName) =>
@@ -156,13 +149,7 @@ class FfiBackend implements AgentBackend {
       name:          config['name'] as String? ?? 'agent',
       userId:        config['user_id'] as String? ?? 'default',
       maxIterations: config['max_iterations'] as int? ?? 20,
-      llm:           config['llm'] as Map<String, dynamic>?,
     );
-  }
-
-  @override
-  Future<void> configureLlm(Map<String, dynamic> config) async {
-    _engine.configureLlm(config);
   }
 
   @override
@@ -183,31 +170,6 @@ class FfiBackend implements AgentBackend {
     return _engine.listAgents();
   }
 
-  @override
-  Future<void> connectMcp({
-    required String name,
-    required String url,
-    String bearerToken = '',
-    String transport   = 'http',
-  }) async {
-    _engine.connectMcp(
-      name:        name,
-      url:         url,
-      bearerToken: bearerToken,
-      transport:   transport,
-    );
-  }
-
-  @override
-  Future<void> disconnectMcp(String serverName) async {
-    _engine.disconnectMcp(serverName);
-  }
-
-  @override
-  Future<Map<String, dynamic>> listMcpServers() async {
-    return _engine.listMcpServers();
-  }
-
   String? _engineIdFor(String dartId) => _idMap[dartId];
 
   String _spawnForId(String dartId) {
@@ -220,5 +182,21 @@ class FfiBackend implements AgentBackend {
   void registerMapping(String dartId, String engineId) {
     _idMap[dartId]       = engineId;
     _idMapRev[engineId]  = dartId;
+  }
+
+  @override
+  Future<void> connectMcp({required String name, required String url,
+      String bearerToken = '', String transport = 'http'}) async {
+    _engine.connectMcp(name: name, url: url);
+  }
+
+  @override
+  Future<void> disconnectMcp(String serverName) async {
+    _engine.disconnectMcp(serverName);
+  }
+
+  @override
+  Future<Map<String, dynamic>> listMcpServers() async {
+    return {'servers': _engine.listMcpServers()};
   }
 }

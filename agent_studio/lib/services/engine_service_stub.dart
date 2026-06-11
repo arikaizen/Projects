@@ -1,4 +1,4 @@
-// Stub used on web — always returns the HTTP/mock backend.
+// Stub used on web — HTTP-only backend (no FFI).
 import 'agent_api_service.dart';
 
-AgentBackend createBackend() => HttpMockBackend();
+AgentBackend createBackend() => HttpBackend();

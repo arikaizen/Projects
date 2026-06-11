@@ -1,14 +1,9 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import '../models/model_provider.dart';
 import '../models/agent_model.dart';
 
-/// Calls each provider's chat protocol directly. Used by both the desktop and
-/// the web build (web note: the Anthropic and Google APIs allow browser calls;
-/// some OpenAI-compatible vendors do not — see docs/LLM_PROVIDERS.md).
 class LlmService {
-  /// Call the appropriate LLM API and return the assistant text.
   Future<String> chat({
     required ModelProvider provider,
     required String modelId,
@@ -19,38 +14,41 @@ class LlmService {
     final base = provider.baseUrl.endsWith('/')
         ? provider.baseUrl.substring(0, provider.baseUrl.length - 1)
         : provider.baseUrl;
+
     switch (provider.type) {
       case ProviderType.anthropic:
         return _anthropic(provider, base, modelId, systemPrompt, history, temperature);
-      case ProviderType.google:
+      case ProviderType.openai:
+        return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
+      case ProviderType.gemini:
         return _gemini(provider, base, modelId, systemPrompt, history, temperature);
       case ProviderType.ollama:
         return _ollama(base, modelId, systemPrompt, history, temperature);
-      default:
+      case ProviderType.mistral:
+        return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
+      case ProviderType.groq:
+        return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
+      case ProviderType.together:
+        return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
+      case ProviderType.cohere:
+        return _cohere(provider, base, modelId, systemPrompt, history, temperature);
+      case ProviderType.xai:
+        return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
+      case ProviderType.perplexity:
+        return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
+      case ProviderType.custom:
         return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
     }
   }
 
-  Future<String> _anthropic(
-    ModelProvider p,
-    String base,
-    String model,
-    String system,
-    List<ChatMessage> history,
-    double temperature,
-  ) async {
+  // ── Anthropic ─────────────────────────────────────────────────────────────
+
+  Future<String> _anthropic(ModelProvider p, String base, String model,
+      String system, List<ChatMessage> history, double temp) async {
     final messages = history.map((m) => {
       'role': m.isUser ? 'user' : 'assistant',
       'content': m.content,
     }).toList();
-
-    final body = {
-      'model': model,
-      'max_tokens': 4096,
-      'temperature': temperature,
-      if (system.isNotEmpty) 'system': system,
-      'messages': messages,
-    };
 
     final res = await http.post(
       Uri.parse('$base/v1/messages'),
@@ -58,78 +56,98 @@ class LlmService {
         'content-type': 'application/json',
         'x-api-key': p.apiKey,
         'anthropic-version': '2023-06-01',
-        // Anthropic requires this opt-in header for direct browser (CORS)
-        // calls from the web build.
-        if (kIsWeb) 'anthropic-dangerous-direct-browser-access': 'true',
       },
-      body: jsonEncode(body),
+      body: jsonEncode({
+        'model': model,
+        'max_tokens': 8192,
+        'temperature': temp,
+        if (system.isNotEmpty) 'system': system,
+        'messages': messages,
+      }),
     ).timeout(const Duration(minutes: 3));
 
-    if (res.statusCode != 200) {
-      throw Exception('Anthropic error ${res.statusCode}: ${res.body}');
-    }
+    _checkStatus(res, 'Anthropic');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
-    final content = (data['content'] as List?)?.first;
-    return (content?['text'] as String?) ?? '';
+    return (data['content'] as List?)?.first?['text'] as String? ?? '';
   }
 
-  Future<String> _gemini(
-    ModelProvider p,
-    String base,
-    String model,
-    String system,
-    List<ChatMessage> history,
-    double temperature,
-  ) async {
+  // ── OpenAI-compatible (OpenAI, Mistral, Groq, Together, xAI, Perplexity, custom) ──
+
+  Future<String> _openAiCompat(ModelProvider p, String base, String model,
+      String system, List<ChatMessage> history, double temp) async {
+    final messages = <Map<String, String>>[
+      if (system.isNotEmpty) {'role': 'system', 'content': system},
+      ...history.map((m) => {
+        'role': m.isUser ? 'user' : 'assistant',
+        'content': m.content,
+      }),
+    ];
+
+    final res = await http.post(
+      Uri.parse('$base/v1/chat/completions'),
+      headers: {
+        'content-type': 'application/json',
+        if (p.apiKey.isNotEmpty) 'authorization': 'Bearer ${p.apiKey}',
+      },
+      body: jsonEncode({
+        'model': model,
+        'messages': messages,
+        'temperature': temp,
+      }),
+    ).timeout(const Duration(minutes: 5));
+
+    _checkStatus(res, p.name);
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return ((data['choices'] as List?)?.first?['message'] as Map?)?['content']
+            as String? ?? '';
+  }
+
+  // ── Google Gemini ─────────────────────────────────────────────────────────
+
+  Future<String> _gemini(ModelProvider p, String base, String model,
+      String system, List<ChatMessage> history, double temp) async {
     final contents = history.map((m) => {
       'role': m.isUser ? 'user' : 'model',
       'parts': [{'text': m.content}],
     }).toList();
 
-    final body = {
+    final body = <String, dynamic>{
       'contents': contents,
       if (system.isNotEmpty)
         'systemInstruction': {'parts': [{'text': system}]},
       'generationConfig': {
-        'temperature': temperature,
-        'maxOutputTokens': 4096,
+        'temperature': temp,
+        'maxOutputTokens': 8192,
       },
     };
 
-    // API key in the query string; Google sign-in / bearer token in the header.
-    final bearer = p.authMethod == AuthMethod.googleOAuth ||
-        p.authMethod == AuthMethod.bearerToken;
-    final uri = bearer
-        ? Uri.parse('$base/v1beta/models/$model:generateContent')
-        : Uri.parse('$base/v1beta/models/$model:generateContent?key=${p.apiKey}');
+    // Auth: Google OAuth access token takes priority over API key
+    final String url;
+    final Map<String, String> headers = {'content-type': 'application/json'};
+    if (p.googleAuth) {
+      url = '$base/v1beta/models/$model:generateContent';
+      headers['authorization'] = 'Bearer ${p.apiKey}';
+    } else {
+      url = '$base/v1beta/models/$model:generateContent?key=${p.apiKey}';
+    }
 
     final res = await http.post(
-      uri,
-      headers: {
-        'content-type': 'application/json',
-        if (bearer) 'Authorization': 'Bearer ${p.apiKey}',
-      },
+      Uri.parse(url),
+      headers: headers,
       body: jsonEncode(body),
     ).timeout(const Duration(minutes: 3));
 
-    if (res.statusCode != 200) {
-      throw Exception('Gemini error ${res.statusCode}: ${res.body}');
-    }
+    _checkStatus(res, 'Gemini');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final candidates = data['candidates'] as List?;
-    if (candidates == null || candidates.isEmpty) return '';
-    final parts = ((candidates.first as Map)['content'] as Map?)?['parts'] as List?;
-    if (parts == null) return '';
-    return parts.map((part) => (part as Map)['text'] as String? ?? '').join();
+    final parts = candidates?.first?['content']?['parts'] as List?;
+    return parts?.first?['text'] as String? ?? '';
   }
 
-  Future<String> _ollama(
-    String base,
-    String model,
-    String system,
-    List<ChatMessage> history,
-    double temperature,
-  ) async {
+  // ── Ollama ────────────────────────────────────────────────────────────────
+
+  Future<String> _ollama(String base, String model,
+      String system, List<ChatMessage> history, double temp) async {
     final messages = <Map<String, String>>[
       if (system.isNotEmpty) {'role': 'system', 'content': system},
       ...history.map((m) => {
@@ -137,65 +155,59 @@ class LlmService {
         'content': m.content,
       }),
     ];
-
-    final body = {
-      'model': model,
-      'messages': messages,
-      'stream': false,
-      'options': {'temperature': temperature},
-    };
 
     final res = await http.post(
       Uri.parse('$base/api/chat'),
       headers: {'content-type': 'application/json'},
-      body: jsonEncode(body),
+      body: jsonEncode({
+        'model': model,
+        'messages': messages,
+        'stream': false,
+        'options': {'temperature': temp},
+      }),
     ).timeout(const Duration(minutes: 5));
 
-    if (res.statusCode != 200) {
-      throw Exception('Ollama error ${res.statusCode}: ${res.body}');
-    }
+    _checkStatus(res, 'Ollama');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
-    return ((data['message'] as Map?)?['content'] as String?) ?? '';
+    return (data['message'] as Map?)?['content'] as String? ?? '';
   }
 
-  Future<String> _openAiCompat(
-    ModelProvider p,
-    String base,
-    String model,
-    String system,
-    List<ChatMessage> history,
-    double temperature,
-  ) async {
-    final messages = <Map<String, String>>[
-      if (system.isNotEmpty) {'role': 'system', 'content': system},
-      ...history.map((m) => {
-        'role': m.isUser ? 'user' : 'assistant',
-        'content': m.content,
-      }),
-    ];
+  // ── Cohere ────────────────────────────────────────────────────────────────
 
-    final body = {
-      'model': model,
-      'messages': messages,
-      'temperature': temperature,
-    };
-
-    final headers = {
-      'content-type': 'application/json',
-      if (p.apiKey.isNotEmpty) 'authorization': 'Bearer ${p.apiKey}',
-    };
+  Future<String> _cohere(ModelProvider p, String base, String model,
+      String system, List<ChatMessage> history, double temp) async {
+    // Split history: last user message is the current prompt, rest is history
+    final chatHistory = history.take(history.length - 1).map((m) => {
+      'role': m.isUser ? 'USER' : 'CHATBOT',
+      'message': m.content,
+    }).toList();
+    final lastMsg = history.isNotEmpty ? history.last.content : '';
 
     final res = await http.post(
-      Uri.parse('$base/v1/chat/completions'),
-      headers: headers,
-      body: jsonEncode(body),
-    ).timeout(const Duration(minutes: 5));
+      Uri.parse('$base/v1/chat'),
+      headers: {
+        'content-type': 'application/json',
+        'authorization': 'Bearer ${p.apiKey}',
+      },
+      body: jsonEncode({
+        'model': model,
+        'message': lastMsg,
+        if (chatHistory.isNotEmpty) 'chat_history': chatHistory,
+        if (system.isNotEmpty) 'preamble': system,
+        'temperature': temp,
+      }),
+    ).timeout(const Duration(minutes: 3));
 
-    if (res.statusCode != 200) {
-      throw Exception('OpenAI-compat error ${res.statusCode}: ${res.body}');
-    }
+    _checkStatus(res, 'Cohere');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
-    final choices = data['choices'] as List?;
-    return ((choices?.first as Map?)?['message'] as Map?)?['content'] as String? ?? '';
+    return data['text'] as String? ?? '';
+  }
+
+  // ── Shared ────────────────────────────────────────────────────────────────
+
+  void _checkStatus(http.Response res, String provider) {
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('$provider error ${res.statusCode}: ${res.body}');
+    }
   }
 }

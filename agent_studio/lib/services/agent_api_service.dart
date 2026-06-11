@@ -1,8 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
-import 'dart:math';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import '../models/task_model.dart';
 
@@ -21,24 +18,16 @@ abstract class AgentBackend {
   Future<void> cancelEngineAgent(String agentId);
   Future<List<Map<String, dynamic>>> listEngineAgents();
 
-  Stream<Map<String, dynamic>>? get engineEvents;
-
-  // LLM backend selection — optional; default is a no-op (e.g. HTTP/mock).
-  // [config] matches the engine llm_factory shape:
-  //   {'provider':'openai','model':'gpt-4o','api_key':'...'}
-  Future<void> configureLlm(Map<String, dynamic> config) async {}
-
-  // MCP server management — optional; default implementations are no-ops.
   Future<void> connectMcp({
     required String name,
     required String url,
-    String bearerToken,
-    String transport,
-  }) async {}
+    String bearerToken = '',
+    String transport = 'http',
+  });
+  Future<void> disconnectMcp(String serverName);
+  Future<Map<String, dynamic>> listMcpServers();
 
-  Future<void> disconnectMcp(String serverName) async {}
-
-  Future<Map<String, dynamic>> listMcpServers() async => {};
+  Stream<Map<String, dynamic>>? get engineEvents;
 }
 
 class AgentApiService {
@@ -48,72 +37,48 @@ class AgentApiService {
     _backend = createBackend();
   }
 
-  Future<bool> connect(String target) => _backend.connect(target);
-  void         disconnect()           => _backend.disconnect();
-  bool         get isConnected        => _backend.isConnected;
-  String       get connectionLabel    => _backend.connectionLabel;
+  Future<bool> connect(String target)  => _backend.connect(target);
+  void         disconnect()            => _backend.disconnect();
+  bool         get isConnected         => _backend.isConnected;
+  String       get connectionLabel     => _backend.connectionLabel;
   Stream<Map<String, dynamic>>? get engineEvents => _backend.engineEvents;
 
   Future<String> runTask(String prompt, String targetId, TaskTarget target) =>
       _backend.runTask(prompt, targetId, target);
 
-  Future<String> spawnEngineAgent(Map<String, dynamic> config) =>
-      _backend.spawnEngineAgent(config);
-
-  Future<Map<String, dynamic>> getEngineStatus(String id) =>
-      _backend.getEngineStatus(id);
-
-  Future<void> cancelEngineAgent(String id) =>
-      _backend.cancelEngineAgent(id);
-
-  Future<List<Map<String, dynamic>>> listEngineAgents() =>
-      _backend.listEngineAgents();
-
-  Future<void> configureLlm(Map<String, dynamic> config) =>
-      _backend.configureLlm(config);
-
-  Future<void> connectMcp({
-    required String name,
-    required String url,
-    String bearerToken = '',
-    String transport   = 'http',
-  }) => _backend.connectMcp(name: name, url: url, bearerToken: bearerToken, transport: transport);
-
-  Future<void> disconnectMcp(String serverName) => _backend.disconnectMcp(serverName);
-
-  Future<Map<String, dynamic>> listMcpServers() => _backend.listMcpServers();
+  Future<String>               spawnEngineAgent(Map<String, dynamic> c) => _backend.spawnEngineAgent(c);
+  Future<Map<String, dynamic>> getEngineStatus(String id)               => _backend.getEngineStatus(id);
+  Future<void>                 cancelEngineAgent(String id)              => _backend.cancelEngineAgent(id);
+  Future<List<Map<String, dynamic>>> listEngineAgents()                  => _backend.listEngineAgents();
+  Future<void>                 connectMcp({required String name, required String url,
+                                           String bearerToken = '', String transport = 'http'}) =>
+      _backend.connectMcp(name: name, url: url, bearerToken: bearerToken, transport: transport);
+  Future<void>                 disconnectMcp(String name)  => _backend.disconnectMcp(name);
+  Future<Map<String, dynamic>> listMcpServers()            => _backend.listMcpServers();
 }
 
-class HttpMockBackend implements AgentBackend {
+/// HTTP backend — no mocks. Every call either succeeds or throws.
+class HttpBackend implements AgentBackend {
   String? _baseUrl;
-  bool _connected = false;
-  bool _isMock    = true;
-  final _rng      = Random();
+  bool    _connected = false;
 
   final _eventCtrl = StreamController<Map<String, dynamic>>.broadcast();
 
-  @override
-  Stream<Map<String, dynamic>> get engineEvents => _eventCtrl.stream;
-
-  @override
-  bool   get isConnected     => _connected;
-
-  @override
-  String get connectionLabel => _isMock
-      ? 'Mock'
-      : (_connected ? 'HTTP: ${Uri.parse(_baseUrl!).host}' : 'Disconnected');
+  @override bool   get isConnected     => _connected;
+  @override String get connectionLabel =>
+      _connected ? 'HTTP: ${Uri.parse(_baseUrl!).host}' : 'Disconnected';
+  @override Stream<Map<String, dynamic>> get engineEvents => _eventCtrl.stream;
 
   @override
   Future<bool> connect(String target) async {
     _baseUrl = target.endsWith('/') ? target.substring(0, target.length - 1) : target;
     try {
-      final res = await http.get(Uri.parse('$_baseUrl/health'))
-          .timeout(const Duration(seconds: 4));
+      final res = await http
+          .get(Uri.parse('$_baseUrl/health'))
+          .timeout(const Duration(seconds: 5));
       _connected = res.statusCode == 200;
-      _isMock    = !_connected;
     } catch (_) {
       _connected = false;
-      _isMock    = true;
     }
     return _connected;
   }
@@ -121,91 +86,105 @@ class HttpMockBackend implements AgentBackend {
   @override
   void disconnect() {
     _connected = false;
-    _isMock    = true;
     _baseUrl   = null;
   }
 
   @override
   Future<String> runTask(String prompt, String targetId, TaskTarget target) async {
-    if (_isMock) return _mockResponse(prompt);
-
-    try {
-      final endpoint = target == TaskTarget.group
-          ? '/api/groups/$targetId/run'
-          : '/api/agents/$targetId/run';
-      final res = await http.post(
-        Uri.parse('$_baseUrl$endpoint'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'task': prompt}),
-      ).timeout(const Duration(minutes: 5));
-
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        return (data is Map ? (data['output'] ?? data.toString()) : data).toString();
-      }
-      throw Exception('HTTP ${res.statusCode}');
-    } catch (e) {
-      return _mockResponse(prompt);
-    }
+    _assertConnected();
+    final endpoint = target == TaskTarget.group
+        ? '/api/groups/$targetId/run'
+        : '/api/agents/$targetId/run';
+    final res = await http.post(
+      Uri.parse('$_baseUrl$endpoint'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'task': prompt}),
+    ).timeout(const Duration(minutes: 5));
+    if (res.statusCode != 200) throw Exception('Engine HTTP ${res.statusCode}: ${res.body}');
+    final data = jsonDecode(res.body);
+    return (data is Map ? (data['output'] ?? data.toString()) : data).toString();
   }
 
   @override
   Future<String> spawnEngineAgent(Map<String, dynamic> config) async {
-    if (_isMock) return 'mock-${DateTime.now().millisecondsSinceEpoch}';
+    _assertConnected();
     final res = await http.post(
       Uri.parse('$_baseUrl/api/agents'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(config),
     ).timeout(const Duration(seconds: 10));
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception('Spawn agent HTTP ${res.statusCode}');
+    }
     return (jsonDecode(res.body) as Map)['agent_id'] as String;
   }
 
   @override
-  Future<void> configureLlm(Map<String, dynamic> config) async {
-    if (_isMock) return;
-    await http.post(
-      Uri.parse('$_baseUrl/api/llm'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(config),
-    ).timeout(const Duration(seconds: 10));
-  }
-
-  @override
   Future<Map<String, dynamic>> getEngineStatus(String id) async {
-    if (_isMock) return {'status': 'idle', 'iterations': 0};
-    final res = await http.get(Uri.parse('$_baseUrl/api/agents/$id/status'));
+    _assertConnected();
+    final res = await http
+        .get(Uri.parse('$_baseUrl/api/agents/$id/status'))
+        .timeout(const Duration(seconds: 5));
+    if (res.statusCode != 200) throw Exception('Status HTTP ${res.statusCode}');
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   @override
   Future<void> cancelEngineAgent(String id) async {
-    if (_isMock) return;
-    await http.post(Uri.parse('$_baseUrl/api/agents/$id/cancel'));
+    if (!_connected) return;
+    await http
+        .post(Uri.parse('$_baseUrl/api/agents/$id/cancel'))
+        .timeout(const Duration(seconds: 5));
   }
 
   @override
   Future<List<Map<String, dynamic>>> listEngineAgents() async {
-    if (_isMock) return [];
-    final res = await http.get(Uri.parse('$_baseUrl/api/agents'));
+    _assertConnected();
+    final res = await http
+        .get(Uri.parse('$_baseUrl/api/agents'))
+        .timeout(const Duration(seconds: 5));
+    if (res.statusCode != 200) throw Exception('List agents HTTP ${res.statusCode}');
     return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
   }
 
-  Future<String> _mockResponse(String prompt) async {
-    await Future.delayed(Duration(milliseconds: 600 + _rng.nextInt(1000)));
-    return _responses[_rng.nextInt(_responses.length)];
+  @override
+  Future<void> connectMcp({
+    required String name,
+    required String url,
+    String bearerToken = '',
+    String transport = 'http',
+  }) async {
+    _assertConnected();
+    final res = await http.post(
+      Uri.parse('$_baseUrl/api/mcp/connect'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'name': name, 'url': url,
+                        'bearer_token': bearerToken, 'transport': transport}),
+    ).timeout(const Duration(seconds: 10));
+    if (res.statusCode != 200 && res.statusCode != 204) {
+      throw Exception('connectMcp HTTP ${res.statusCode}');
+    }
   }
 
-  static const _responses = [
-    "I've processed your request and here's the result:\n\n"
-    "**Analysis complete.** The task was executed through the reasoning pipeline.\n\n"
-    "- Input validated ✓\n- Reasoning steps applied ✓\n- Output synthesised ✓\n\n"
-    "_Note: running in mock mode — connect to your agent engine for real results._",
+  @override
+  Future<void> disconnectMcp(String serverName) async {
+    if (!_connected) return;
+    await http
+        .post(Uri.parse('$_baseUrl/api/mcp/$serverName/disconnect'))
+        .timeout(const Duration(seconds: 5));
+  }
 
-    "Task received and handled:\n\n```\nStatus: SUCCESS (mock)\nIterations: 3\nConfidence: 0.91\n```\n\n"
-    "Connect to `libagent_engine.so` or the HTTP endpoint to run real agent inference.",
+  @override
+  Future<Map<String, dynamic>> listMcpServers() async {
+    _assertConnected();
+    final res = await http
+        .get(Uri.parse('$_baseUrl/api/mcp'))
+        .timeout(const Duration(seconds: 5));
+    if (res.statusCode != 200) throw Exception('listMcpServers HTTP ${res.statusCode}');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
 
-    "Here's my response to your query:\n\n"
-    "The pipeline completed all stages successfully. "
-    "For live results, point the app at your compiled agent engine.",
-  ];
+  void _assertConnected() {
+    if (!_connected) throw StateError('Not connected to engine — connect first in Settings.');
+  }
 }

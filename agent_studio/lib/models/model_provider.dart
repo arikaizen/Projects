@@ -1,36 +1,20 @@
+import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 const _pid = Uuid();
 
-/// Every LLM service the studio can talk to, hosted and local.
-/// All "OpenAI-compatible" types share one protocol implementation and differ
-/// only in base URL and branding.
 enum ProviderType {
-  // Hosted
-  anthropic,   // Claude
-  openai,      // ChatGPT
-  google,      // Gemini
-  groq,
-  mistral,
-  deepseek,
-  xai,         // Grok
-  openrouter,  // meta-provider: one key, many models
-  together,
-  // Local
-  ollama,
-  lmstudio,
-  llamacpp,    // llama.cpp ./llama-server
-  vllm,
-  // Anything else speaking the OpenAI protocol
-  custom,
-}
-
-/// How the provider is authenticated.
-enum AuthMethod {
-  apiKey,       // classic API key
-  googleOAuth,  // Sign in with Google → OAuth access token (Gemini)
-  bearerToken,  // paste an OAuth/bearer token obtained elsewhere
-  none,         // local servers
+  anthropic,   // Claude — api.anthropic.com
+  openai,      // GPT-4o, o3, o1 — api.openai.com
+  gemini,      // Gemini — generativelanguage.googleapis.com (Google OAuth or API key)
+  ollama,      // Local Ollama — localhost:11434
+  mistral,     // Mistral AI — api.mistral.ai
+  groq,        // Groq (fast inference) — api.groq.com
+  together,    // Together AI — api.together.xyz
+  cohere,      // Cohere — api.cohere.com
+  xai,         // xAI Grok — api.x.ai
+  perplexity,  // Perplexity — api.perplexity.ai
+  custom,      // Any OpenAI-compatible endpoint
 }
 
 class ModelProvider {
@@ -38,14 +22,12 @@ class ModelProvider {
   String name;
   ProviderType type;
   String baseUrl;
-  String apiKey;            // API key or OAuth access token, per authMethod
-  AuthMethod authMethod;
-  String oauthClientId;     // Google sign-in: OAuth client id
-  String oauthClientSecret; // Google sign-in: desktop-app client secret
+  String apiKey;
   bool isConnected;
   bool isLoading;
   List<ModelInfo> models;
   String? error;
+  bool googleAuth; // true = authenticated via Google OAuth (Gemini)
 
   ModelProvider({
     String? id,
@@ -53,132 +35,112 @@ class ModelProvider {
     required this.type,
     required this.baseUrl,
     this.apiKey = '',
-    AuthMethod? authMethod,
-    this.oauthClientId = '',
-    this.oauthClientSecret = '',
     this.isConnected = false,
     this.isLoading = false,
     List<ModelInfo>? models,
     this.error,
+    this.googleAuth = false,
   })  : id = id ?? _pid.v4(),
-        authMethod = authMethod ?? defaultAuthMethod(type),
         models = models ?? [];
-
-  bool get isLocal => isLocalType(type);
-
-  static bool isLocalType(ProviderType t) =>
-      t == ProviderType.ollama ||
-      t == ProviderType.lmstudio ||
-      t == ProviderType.llamacpp ||
-      t == ProviderType.vllm;
-
-  /// True when the provider speaks the OpenAI Chat Completions protocol.
-  static bool isOpenAiCompatible(ProviderType t) {
-    switch (t) {
-      case ProviderType.anthropic:
-      case ProviderType.google:
-      case ProviderType.ollama:
-        return false;
-      default:
-        return true;
-    }
-  }
-
-  static AuthMethod defaultAuthMethod(ProviderType t) =>
-      isLocalType(t) ? AuthMethod.none : AuthMethod.apiKey;
 
   static String defaultUrl(ProviderType t) {
     switch (t) {
       case ProviderType.anthropic:  return 'https://api.anthropic.com';
       case ProviderType.openai:     return 'https://api.openai.com';
-      case ProviderType.google:     return 'https://generativelanguage.googleapis.com';
-      case ProviderType.groq:       return 'https://api.groq.com/openai';
-      case ProviderType.mistral:    return 'https://api.mistral.ai';
-      case ProviderType.deepseek:   return 'https://api.deepseek.com';
-      case ProviderType.xai:        return 'https://api.x.ai';
-      case ProviderType.openrouter: return 'https://openrouter.ai/api';
-      case ProviderType.together:   return 'https://api.together.xyz';
+      case ProviderType.gemini:     return 'https://generativelanguage.googleapis.com';
       case ProviderType.ollama:     return 'http://localhost:11434';
-      case ProviderType.lmstudio:   return 'http://localhost:1234';
-      case ProviderType.llamacpp:   return 'http://localhost:8080';
-      case ProviderType.vllm:       return 'http://localhost:8000';
-      case ProviderType.custom:     return 'http://localhost:8000';
+      case ProviderType.mistral:    return 'https://api.mistral.ai';
+      case ProviderType.groq:       return 'https://api.groq.com/openai';
+      case ProviderType.together:   return 'https://api.together.xyz';
+      case ProviderType.cohere:     return 'https://api.cohere.com';
+      case ProviderType.xai:        return 'https://api.x.ai';
+      case ProviderType.perplexity: return 'https://api.perplexity.ai';
+      case ProviderType.custom:     return 'http://localhost:8080';
     }
   }
 
   static String defaultName(ProviderType t) {
     switch (t) {
-      case ProviderType.anthropic:  return 'Anthropic';
-      case ProviderType.openai:     return 'OpenAI';
-      case ProviderType.google:     return 'Google Gemini';
-      case ProviderType.groq:       return 'Groq';
-      case ProviderType.mistral:    return 'Mistral';
-      case ProviderType.deepseek:   return 'DeepSeek';
-      case ProviderType.xai:        return 'xAI Grok';
-      case ProviderType.openrouter: return 'OpenRouter';
-      case ProviderType.together:   return 'Together AI';
+      case ProviderType.anthropic:  return 'Anthropic (Claude)';
+      case ProviderType.openai:     return 'OpenAI (ChatGPT)';
+      case ProviderType.gemini:     return 'Google Gemini';
       case ProviderType.ollama:     return 'Local Ollama';
-      case ProviderType.lmstudio:   return 'LM Studio';
-      case ProviderType.llamacpp:   return 'llama.cpp';
-      case ProviderType.vllm:       return 'vLLM';
-      case ProviderType.custom:     return 'Custom Server';
+      case ProviderType.mistral:    return 'Mistral AI';
+      case ProviderType.groq:       return 'Groq';
+      case ProviderType.together:   return 'Together AI';
+      case ProviderType.cohere:     return 'Cohere';
+      case ProviderType.xai:        return 'xAI (Grok)';
+      case ProviderType.perplexity: return 'Perplexity';
+      case ProviderType.custom:     return 'Custom Endpoint';
     }
   }
 
   static String typeLabel(ProviderType t) {
     switch (t) {
-      case ProviderType.anthropic:  return 'Claude';
-      case ProviderType.openai:     return 'ChatGPT';
-      case ProviderType.google:     return 'Gemini';
-      case ProviderType.groq:       return 'Groq';
-      case ProviderType.mistral:    return 'Mistral';
-      case ProviderType.deepseek:   return 'DeepSeek';
-      case ProviderType.xai:        return 'Grok';
-      case ProviderType.openrouter: return 'OpenRouter';
-      case ProviderType.together:   return 'Together';
+      case ProviderType.anthropic:  return 'Anthropic';
+      case ProviderType.openai:     return 'OpenAI';
+      case ProviderType.gemini:     return 'Gemini';
       case ProviderType.ollama:     return 'Ollama';
-      case ProviderType.lmstudio:   return 'LM Studio';
-      case ProviderType.llamacpp:   return 'llama.cpp';
-      case ProviderType.vllm:       return 'vLLM';
+      case ProviderType.mistral:    return 'Mistral';
+      case ProviderType.groq:       return 'Groq';
+      case ProviderType.together:   return 'Together';
+      case ProviderType.cohere:     return 'Cohere';
+      case ProviderType.xai:        return 'xAI';
+      case ProviderType.perplexity: return 'Perplexity';
       case ProviderType.custom:     return 'Custom';
     }
   }
 
-  /// Provider id string understood by the C++ engine's LLM factory
-  /// (am_configure_llm / per-agent "llm" config).
-  static String engineProviderName(ProviderType t) {
+  static IconData typeIcon(ProviderType t) {
     switch (t) {
-      case ProviderType.anthropic:  return 'anthropic';
-      case ProviderType.openai:     return 'openai';
-      case ProviderType.google:     return 'google';
-      case ProviderType.groq:       return 'groq';
-      case ProviderType.mistral:    return 'mistral';
-      case ProviderType.deepseek:   return 'deepseek';
-      case ProviderType.xai:        return 'xai';
-      case ProviderType.openrouter: return 'openrouter';
-      case ProviderType.together:   return 'together';
-      case ProviderType.ollama:     return 'ollama';
-      case ProviderType.lmstudio:   return 'lmstudio';
-      case ProviderType.llamacpp:   return 'llamacpp';
-      case ProviderType.vllm:       return 'vllm';
-      case ProviderType.custom:     return 'custom';
+      case ProviderType.anthropic:  return Icons.auto_awesome;
+      case ProviderType.openai:     return Icons.chat_bubble_outline;
+      case ProviderType.gemini:     return Icons.star_border_purple500_outlined;
+      case ProviderType.ollama:     return Icons.computer;
+      case ProviderType.mistral:    return Icons.wind_power;
+      case ProviderType.groq:       return Icons.bolt;
+      case ProviderType.together:   return Icons.group_work_outlined;
+      case ProviderType.cohere:     return Icons.waves;
+      case ProviderType.xai:        return Icons.close; // X logo approximation
+      case ProviderType.perplexity: return Icons.manage_search;
+      case ProviderType.custom:     return Icons.settings_ethernet;
     }
   }
 
-  /// Engine-side config for this provider + model, matching the C++
-  /// llm_factory JSON shape. Credentials stay between the GUI and the engine —
-  /// they are never placed in prompts.
-  Map<String, dynamic> toEngineLlmConfig(String modelId) => {
-        'provider': engineProviderName(type),
-        'model': modelId,
-        'base_url': baseUrl,
-        if (apiKey.isNotEmpty) 'api_key': apiKey,
-        if (type == ProviderType.google)
-          'auth_method':
-              authMethod == AuthMethod.googleOAuth || authMethod == AuthMethod.bearerToken
-                  ? 'bearer'
-                  : 'api_key',
-      };
+  static Color typeColor(ProviderType t) {
+    switch (t) {
+      case ProviderType.anthropic:  return const Color(0xFFD97757);
+      case ProviderType.openai:     return const Color(0xFF10A37F);
+      case ProviderType.gemini:     return const Color(0xFF4285F4);
+      case ProviderType.ollama:     return const Color(0xFF7C3AED);
+      case ProviderType.mistral:    return const Color(0xFFFF7000);
+      case ProviderType.groq:       return const Color(0xFFF55036);
+      case ProviderType.together:   return const Color(0xFF0066FF);
+      case ProviderType.cohere:     return const Color(0xFF39594D);
+      case ProviderType.xai:        return const Color(0xFF000000);
+      case ProviderType.perplexity: return const Color(0xFF20B2AA);
+      case ProviderType.custom:     return const Color(0xFF6B7280);
+    }
+  }
+
+  static bool needsApiKey(ProviderType t) => t != ProviderType.ollama;
+  static bool supportsGoogleAuth(ProviderType t) => t == ProviderType.gemini;
+
+  /// API key setup URL for each provider
+  static String apiKeyUrl(ProviderType t) {
+    switch (t) {
+      case ProviderType.anthropic:  return 'https://console.anthropic.com/settings/keys';
+      case ProviderType.openai:     return 'https://platform.openai.com/api-keys';
+      case ProviderType.gemini:     return 'https://aistudio.google.com/app/apikey';
+      case ProviderType.mistral:    return 'https://console.mistral.ai/api-keys/';
+      case ProviderType.groq:       return 'https://console.groq.com/keys';
+      case ProviderType.together:   return 'https://api.together.xyz/settings/api-keys';
+      case ProviderType.cohere:     return 'https://dashboard.cohere.com/api-keys';
+      case ProviderType.xai:        return 'https://console.x.ai/';
+      case ProviderType.perplexity: return 'https://www.perplexity.ai/settings/api';
+      default:                      return '';
+    }
+  }
 }
 
 class ModelInfo {
