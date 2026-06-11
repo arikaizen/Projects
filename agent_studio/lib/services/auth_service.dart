@@ -40,4 +40,10 @@ class AuthService {
   }
 
   List<AuthUser> get allUsers => [..._users, ..._extra];
+
+  // Override admin emails here — everyone else gets 'user' role.
+  static const _adminEmails = <String>[];
+
+  UserRole roleForGoogleEmail(String email) =>
+      _adminEmails.contains(email) ? UserRole.admin : UserRole.user;
 }

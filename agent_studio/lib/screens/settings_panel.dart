@@ -911,43 +911,43 @@ class _AddProviderDialogState extends State<_AddProviderDialog> {
                 children: [
                   _label('Provider Type'),
                   const SizedBox(height: 8),
-                  Row(
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
                     children: ProviderType.values.map((t) {
                       final sel = _type == t;
-                      return Expanded(
-                        child: GestureDetector(
-                          onTap: () => _selectType(t),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 120),
-                            margin: const EdgeInsets.only(right: 6),
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            decoration: BoxDecoration(
-                              color: sel
-                                  ? AppColors.primary.withOpacity(0.12)
-                                  : AppColors.surfaceAlt,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: sel ? AppColors.primary : AppColors.border,
-                                width: sel ? 1.5 : 1,
-                              ),
+                      final color = ModelProvider.typeColor(t);
+                      return GestureDetector(
+                        onTap: () => _selectType(t),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 120),
+                          width: 82,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: sel
+                                ? color.withOpacity(0.14)
+                                : AppColors.surfaceAlt,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: sel ? color : AppColors.border,
+                              width: sel ? 1.5 : 1,
                             ),
-                            child: Column(
-                              children: [
-                                Icon(_typeIcon(t), size: 18,
-                                    color: sel ? AppColors.primary
-                                        : AppColors.textMuted),
-                                const SizedBox(height: 4),
-                                Text(ModelProvider.typeLabel(t),
-                                    style: TextStyle(
-                                      color: sel ? AppColors.primary
-                                          : AppColors.textSecondary,
-                                      fontSize: 10,
-                                      fontWeight: sel
-                                          ? FontWeight.w600
-                                          : FontWeight.normal,
-                                    )),
-                              ],
-                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(ModelProvider.typeIcon(t), size: 18,
+                                  color: sel ? color : AppColors.textMuted),
+                              const SizedBox(height: 4),
+                              Text(ModelProvider.typeLabel(t),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: sel ? color : AppColors.textSecondary,
+                                    fontSize: 10,
+                                    fontWeight: sel
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                  )),
+                            ],
                           ),
                         ),
                       );
@@ -1050,12 +1050,5 @@ class _AddProviderDialogState extends State<_AddProviderDialog> {
           fontSize: 12,
           fontWeight: FontWeight.w600));
 
-  IconData _typeIcon(ProviderType t) {
-    switch (t) {
-      case ProviderType.anthropic: return Icons.auto_awesome;
-      case ProviderType.ollama:    return Icons.computer;
-      case ProviderType.openai:    return Icons.cloud_outlined;
-      case ProviderType.custom:    return Icons.settings_ethernet;
-    }
-  }
+  IconData _typeIcon(ProviderType t) => ModelProvider.typeIcon(t);
 }

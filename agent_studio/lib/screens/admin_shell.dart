@@ -56,7 +56,19 @@ class _AdminShellState extends State<AdminShell> {
           const Spacer(),
           Text(auth.session?.username ?? '',
             style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-          const SizedBox(width: 16),
+          const SizedBox(width: 10),
+          if (auth.session?.photoUrl != null)
+            CircleAvatar(
+              radius: 14,
+              backgroundImage: NetworkImage(auth.session!.photoUrl!),
+            )
+          else
+            const CircleAvatar(
+              radius: 14,
+              backgroundColor: AppColors.primary,
+              child: Icon(Icons.person, size: 14, color: Colors.white),
+            ),
+          const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.settings_outlined, size: 18, color: AppColors.textMuted),
             tooltip: 'Settings',
