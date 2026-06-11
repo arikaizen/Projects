@@ -366,35 +366,43 @@ class _ChatPanelState extends State<ChatPanel> {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.warning.withOpacity(0.35)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded,
-              size: 16, color: AppColors.warning),
-          const SizedBox(width: 10),
-          const Expanded(
-            child: Text(
-              'No LLM provider connected — responses will be mocked.\n'
-              'Add a provider in Settings to use a real model.',
-              style: TextStyle(
-                  color: AppColors.warning, fontSize: 11, height: 1.4),
-            ),
+          Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded,
+                  size: 16, color: AppColors.warning),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'No LLM provider connected — responses will be mocked.\n'
+                  'Add a provider in Settings to use a real model.',
+                  style: TextStyle(
+                      color: AppColors.warning, fontSize: 11, height: 1.4),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          TextButton(
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.warning,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              side: BorderSide(color: AppColors.warning.withOpacity(0.5)),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.warning,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                side: BorderSide(color: AppColors.warning.withOpacity(0.5)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () => showDialog(
+                context: context,
+                builder: (_) => const SettingsPanel(),
+              ),
+              child: const Text('Open Settings',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
             ),
-            onPressed: () => showDialog(
-              context: context,
-              builder: (_) => const SettingsPanel(),
-            ),
-            child: const Text('Open Settings',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
