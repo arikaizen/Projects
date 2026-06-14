@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../models/agent_model.dart';
 import '../models/agent_group.dart';
 import '../models/task_model.dart';
+import '../models/benchmark.dart';
 import '../services/agent_api_service.dart';
 import '../theme/app_theme.dart';
 import '../models/model_provider.dart';
@@ -29,6 +30,7 @@ class AgentProvider extends ChangeNotifier {
   final Map<String, AgentModel> _agents = {};
   final Map<String, AgentGroup> _groups = {};
   final List<TaskModel>         _tasks  = [];
+  final List<Benchmark>         _benchmarks = [];
   String?  _selectedAgentId;
   String?  _selectedGroupId;
   String?  _activeConversationId;
@@ -51,6 +53,9 @@ class AgentProvider extends ChangeNotifier {
   List<AgentGroup> get groups        => _groups.values.toList();
   List<TaskModel>  get tasks         => List.unmodifiable(_tasks);
   List<TaskModel>  get activeTasks   => _tasks.where((t) => t.isActive).toList();
+  List<Benchmark>  get benchmarks    => List.unmodifiable(_benchmarks);
+  int              get runningBenchmarks =>
+      _benchmarks.where((b) => b.isRunning).length;
   String?          get selectedAgentId  => _selectedAgentId;
   String?          get selectedGroupId  => _selectedGroupId;
   String?          get activeConvId     => _activeConversationId;
@@ -450,6 +455,113 @@ class AgentProvider extends ChangeNotifier {
       completedAt: DateTime.now(),
     );
     notifyListeners();
+  }
+
+  // ── Benchmarking ───────────────────────────────────────────────────────────
+
+  /// Run a single prompt against several models at once and compare how they
+  /// perform — latency, token usage and throughput — side by side. All runs
+  /// fire concurrently so the wall-clock comparison is fair.
+  Future<Benchmark> runBenchmark({
+    required String prompt,
+    required List<ModelInfo> models,
+    double temperature = 0.7,
+    String? name,
+  }) async {
+    final bench = Benchmark(
+      name: (name != null && name.trim().isNotEmpty)
+          ? name.trim()
+          : _defaultBenchmarkName(prompt),
+      prompt: prompt,
+      temperature: temperature,
+      runs: [
+        for (final m in models)
+          BenchmarkRun(
+            modelId: m.id,
+            modelLabel: m.displayName,
+            providerId: m.providerId,
+            providerName: m.providerName,
+            providerType: m.providerType,
+          ),
+      ],
+    );
+    _benchmarks.insert(0, bench);
+    _log('Benchmark "${bench.name}": ${models.length} model(s) on one prompt');
+    notifyListeners();
+
+    await Future.wait(
+      bench.runs.map((run) => _runBenchmarkRun(run, prompt, temperature)),
+    );
+
+    final fastest = bench.fastest;
+    _log(fastest != null
+        ? 'Benchmark "${bench.name}" done — fastest: ${fastest.modelLabel} '
+            '(${fastest.latency!.inMilliseconds}ms)'
+        : 'Benchmark "${bench.name}" finished with no successful runs');
+    notifyListeners();
+    return bench;
+  }
+
+  Future<void> _runBenchmarkRun(
+      BenchmarkRun run, String prompt, double temperature) async {
+    final matches = _modelProviders.where((p) =>
+        p.id == run.providerId ||
+        p.models.any((m) => m.id == run.modelId));
+    final provider = matches.isNotEmpty ? matches.first : null;
+
+    if (provider == null) {
+      run.status = BenchmarkRunStatus.error;
+      run.error = 'No connected provider for ${run.modelLabel}';
+      notifyListeners();
+      return;
+    }
+
+    run.status = BenchmarkRunStatus.running;
+    notifyListeners();
+
+    final sw = Stopwatch()..start();
+    try {
+      final result = await _llmService.complete(
+        provider: provider,
+        modelId: run.modelId,
+        systemPrompt: '',
+        history: [
+          ChatMessage(
+            id: _uuid.v4(),
+            content: prompt,
+            isUser: true,
+            timestamp: DateTime.now(),
+          ),
+        ],
+        temperature: temperature,
+      );
+      sw.stop();
+      run
+        ..latency = sw.elapsed
+        ..output = result.content
+        ..promptTokens = result.promptTokens
+        ..completionTokens = result.completionTokens
+        ..totalTokens = result.total
+        ..status = BenchmarkRunStatus.done;
+    } catch (e) {
+      sw.stop();
+      run
+        ..latency = sw.elapsed
+        ..error = e.toString()
+        ..status = BenchmarkRunStatus.error;
+    }
+    notifyListeners();
+  }
+
+  void deleteBenchmark(String id) {
+    _benchmarks.removeWhere((b) => b.id == id);
+    notifyListeners();
+  }
+
+  String _defaultBenchmarkName(String prompt) {
+    final trimmed = prompt.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final snippet = trimmed.length > 40 ? '${trimmed.substring(0, 40)}…' : trimmed;
+    return snippet.isEmpty ? 'Benchmark' : snippet;
   }
 
   // ── Backend connection ─────────────────────────────────────────────────────

@@ -3,8 +3,52 @@ import 'package:http/http.dart' as http;
 import '../models/model_provider.dart';
 import '../models/agent_model.dart';
 
+/// The result of a single LLM completion: the text plus token-usage metrics
+/// (when the provider reports them) used for benchmarking.
+class LlmResult {
+  final String content;
+  final int? promptTokens;
+  final int? completionTokens;
+  final int? totalTokens;
+
+  const LlmResult(
+    this.content, {
+    this.promptTokens,
+    this.completionTokens,
+    this.totalTokens,
+  });
+
+  /// Best-effort total: explicit total, else the sum of the parts.
+  int? get total {
+    if (totalTokens != null) return totalTokens;
+    if (promptTokens != null && completionTokens != null) {
+      return promptTokens! + completionTokens!;
+    }
+    return null;
+  }
+}
+
 class LlmService {
+  /// Convenience wrapper that returns just the reply text. Used by the chat UI.
   Future<String> chat({
+    required ModelProvider provider,
+    required String modelId,
+    required String systemPrompt,
+    required List<ChatMessage> history,
+    double temperature = 0.7,
+  }) async {
+    final r = await complete(
+      provider: provider,
+      modelId: modelId,
+      systemPrompt: systemPrompt,
+      history: history,
+      temperature: temperature,
+    );
+    return r.content;
+  }
+
+  /// Full completion including token usage. Used by the benchmark runner.
+  Future<LlmResult> complete({
     required ModelProvider provider,
     required String modelId,
     required String systemPrompt,
@@ -18,24 +62,18 @@ class LlmService {
     switch (provider.type) {
       case ProviderType.anthropic:
         return _anthropic(provider, base, modelId, systemPrompt, history, temperature);
-      case ProviderType.openai:
-        return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
       case ProviderType.gemini:
         return _gemini(provider, base, modelId, systemPrompt, history, temperature);
       case ProviderType.ollama:
         return _ollama(base, modelId, systemPrompt, history, temperature);
-      case ProviderType.mistral:
-        return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
-      case ProviderType.groq:
-        return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
-      case ProviderType.together:
-        return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
       case ProviderType.cohere:
         return _cohere(provider, base, modelId, systemPrompt, history, temperature);
+      case ProviderType.openai:
+      case ProviderType.mistral:
+      case ProviderType.groq:
+      case ProviderType.together:
       case ProviderType.xai:
-        return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
       case ProviderType.perplexity:
-        return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
       case ProviderType.custom:
         return _openAiCompat(provider, base, modelId, systemPrompt, history, temperature);
     }
@@ -43,7 +81,7 @@ class LlmService {
 
   // ── Anthropic ─────────────────────────────────────────────────────────────
 
-  Future<String> _anthropic(ModelProvider p, String base, String model,
+  Future<LlmResult> _anthropic(ModelProvider p, String base, String model,
       String system, List<ChatMessage> history, double temp) async {
     final messages = history.map((m) => {
       'role': m.isUser ? 'user' : 'assistant',
@@ -68,12 +106,18 @@ class LlmService {
 
     _checkStatus(res, 'Anthropic');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
-    return (data['content'] as List?)?.first?['text'] as String? ?? '';
+    final text = (data['content'] as List?)?.first?['text'] as String? ?? '';
+    final usage = data['usage'] as Map<String, dynamic>?;
+    return LlmResult(
+      text,
+      promptTokens: _asInt(usage?['input_tokens']),
+      completionTokens: _asInt(usage?['output_tokens']),
+    );
   }
 
   // ── OpenAI-compatible (OpenAI, Mistral, Groq, Together, xAI, Perplexity, custom) ──
 
-  Future<String> _openAiCompat(ModelProvider p, String base, String model,
+  Future<LlmResult> _openAiCompat(ModelProvider p, String base, String model,
       String system, List<ChatMessage> history, double temp) async {
     final messages = <Map<String, String>>[
       if (system.isNotEmpty) {'role': 'system', 'content': system},
@@ -98,13 +142,20 @@ class LlmService {
 
     _checkStatus(res, p.name);
     final data = jsonDecode(res.body) as Map<String, dynamic>;
-    return ((data['choices'] as List?)?.first?['message'] as Map?)?['content']
+    final text = ((data['choices'] as List?)?.first?['message'] as Map?)?['content']
             as String? ?? '';
+    final usage = data['usage'] as Map<String, dynamic>?;
+    return LlmResult(
+      text,
+      promptTokens: _asInt(usage?['prompt_tokens']),
+      completionTokens: _asInt(usage?['completion_tokens']),
+      totalTokens: _asInt(usage?['total_tokens']),
+    );
   }
 
   // ── Google Gemini ─────────────────────────────────────────────────────────
 
-  Future<String> _gemini(ModelProvider p, String base, String model,
+  Future<LlmResult> _gemini(ModelProvider p, String base, String model,
       String system, List<ChatMessage> history, double temp) async {
     final contents = history.map((m) => {
       'role': m.isUser ? 'user' : 'model',
@@ -141,12 +192,19 @@ class LlmService {
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final candidates = data['candidates'] as List?;
     final parts = candidates?.first?['content']?['parts'] as List?;
-    return parts?.first?['text'] as String? ?? '';
+    final text = parts?.first?['text'] as String? ?? '';
+    final usage = data['usageMetadata'] as Map<String, dynamic>?;
+    return LlmResult(
+      text,
+      promptTokens: _asInt(usage?['promptTokenCount']),
+      completionTokens: _asInt(usage?['candidatesTokenCount']),
+      totalTokens: _asInt(usage?['totalTokenCount']),
+    );
   }
 
   // ── Ollama ────────────────────────────────────────────────────────────────
 
-  Future<String> _ollama(String base, String model,
+  Future<LlmResult> _ollama(String base, String model,
       String system, List<ChatMessage> history, double temp) async {
     final messages = <Map<String, String>>[
       if (system.isNotEmpty) {'role': 'system', 'content': system},
@@ -169,12 +227,17 @@ class LlmService {
 
     _checkStatus(res, 'Ollama');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
-    return (data['message'] as Map?)?['content'] as String? ?? '';
+    final text = (data['message'] as Map?)?['content'] as String? ?? '';
+    return LlmResult(
+      text,
+      promptTokens: _asInt(data['prompt_eval_count']),
+      completionTokens: _asInt(data['eval_count']),
+    );
   }
 
   // ── Cohere ────────────────────────────────────────────────────────────────
 
-  Future<String> _cohere(ModelProvider p, String base, String model,
+  Future<LlmResult> _cohere(ModelProvider p, String base, String model,
       String system, List<ChatMessage> history, double temp) async {
     // Split history: last user message is the current prompt, rest is history
     final chatHistory = history.take(history.length - 1).map((m) => {
@@ -200,10 +263,23 @@ class LlmService {
 
     _checkStatus(res, 'Cohere');
     final data = jsonDecode(res.body) as Map<String, dynamic>;
-    return data['text'] as String? ?? '';
+    final text = data['text'] as String? ?? '';
+    final billed = (data['meta'] as Map?)?['billed_units'] as Map?;
+    return LlmResult(
+      text,
+      promptTokens: _asInt(billed?['input_tokens']),
+      completionTokens: _asInt(billed?['output_tokens']),
+    );
   }
 
   // ── Shared ────────────────────────────────────────────────────────────────
+
+  static int? _asInt(Object? v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
 
   void _checkStatus(http.Response res, String provider) {
     if (res.statusCode < 200 || res.statusCode >= 300) {
