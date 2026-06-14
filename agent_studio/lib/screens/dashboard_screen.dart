@@ -13,9 +13,10 @@ import '../widgets/connect_model_dialog.dart';
 import '../widgets/hierarchy_tree.dart';
 import 'agent_builder_dialog.dart';
 import 'group_builder_dialog.dart';
+import 'benchmark_screen.dart';
 import 'settings_panel.dart';
 
-enum _Tab { agents, groups, hierarchy, tasks, logs }
+enum _Tab { agents, groups, hierarchy, benchmark, tasks, logs }
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -77,6 +78,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case _Tab.agents:    return _AgentsTab(prov: prov);
       case _Tab.groups:    return _GroupsTab(prov: prov);
       case _Tab.hierarchy: return const HierarchyTree();
+      case _Tab.benchmark: return BenchmarkTab(prov: prov);
       case _Tab.tasks:     return _TasksTab(prov: prov);
       case _Tab.logs:      return _LogsTab(prov: prov);
     }
@@ -121,6 +123,8 @@ class _Sidebar extends StatelessWidget {
             badge: prov.runningCount > 0 ? '${prov.runningCount}' : null),
           _navItem(_Tab.groups,    Icons.group_outlined,      'Groups'),
           _navItem(_Tab.hierarchy, Icons.account_tree_outlined,'Tree'),
+          _navItem(_Tab.benchmark, Icons.speed_outlined,      'Benchmark',
+            badge: prov.runningBenchmarks > 0 ? '${prov.runningBenchmarks}' : null),
           _navItem(_Tab.tasks,     Icons.task_outlined,       'Tasks',
             badge: prov.activeTasks.isNotEmpty ? '${prov.activeTasks.length}' : null),
           _navItem(_Tab.logs,      Icons.receipt_long_outlined,'Logs'),
@@ -271,6 +275,10 @@ class _TopBar extends StatelessWidget {
           if (tab == _Tab.groups)
             _addBtn(context, label: 'New Group', onTap: () => _createGroup(context),
               color: AppColors.secondary),
+          if (tab == _Tab.benchmark)
+            _addBtn(context, label: 'New Benchmark',
+              onTap: () => BenchmarkDialog.show(context),
+              color: AppColors.accent),
         ],
       ),
     );
@@ -371,6 +379,7 @@ class _TopBar extends StatelessWidget {
       case _Tab.agents:    return 'Agents';
       case _Tab.groups:    return 'Groups';
       case _Tab.hierarchy: return 'Hierarchy';
+      case _Tab.benchmark: return 'Benchmark';
       case _Tab.tasks:     return 'Tasks';
       case _Tab.logs:      return 'Event Log';
     }
