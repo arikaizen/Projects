@@ -39,9 +39,33 @@ class AgentCard extends StatelessWidget {
             color: selected ? agent.color.withOpacity(0.6) : AppColors.border,
             width: selected ? 1.5 : 1,
           ),
+          boxShadow: selected
+            ? [BoxShadow(
+                color: agent.color.withOpacity(0.12),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              )]
+            : null,
         ),
-        padding: const EdgeInsets.all(14),
-        child: Column(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(11),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top accent strip
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                height: selected ? 3 : 0,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [agent.color, agent.color.withOpacity(0.4)],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -124,9 +148,14 @@ class AgentCard extends StatelessWidget {
                 _iconBtn(Icons.delete_outline, onDelete, color: AppColors.error),
               ],
             ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
+    ),
     );
   }
 

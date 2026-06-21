@@ -178,36 +178,65 @@ class _Sidebar extends StatelessWidget {
         onTap: () => onTab(tab),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: active ? AppColors.primary.withOpacity(0.15) : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-          ),
+          margin: const EdgeInsets.symmetric(vertical: 2),
           child: Stack(
-            alignment: Alignment.center,
             children: [
-              Icon(icon,
-                size: 22,
-                color: active ? AppColors.primary : AppColors.textMuted),
-              if (badge != null)
-                Positioned(
-                  top: -2,
-                  right: 4,
-                  child: Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      shape: BoxShape.circle,
+              // Left accent bar
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 150),
+                left: 0,
+                top: 6,
+                bottom: 6,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: active ? 3 : 0,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(3),
+                      bottomRight: Radius.circular(3),
                     ),
-                    child: Text(badge,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                      )),
                   ),
                 ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      width: 44,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: active ? AppColors.primary.withOpacity(0.12) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(icon,
+                        size: active ? 23 : 21,
+                        color: active ? AppColors.primary : AppColors.textMuted),
+                    ),
+                    if (badge != null)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(
+                            color: AppColors.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(badge,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                            )),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -288,33 +317,41 @@ class _TopBar extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _stat('${prov.totalCount}', 'agents'),
-        const SizedBox(width: 12),
-        _stat('${prov.groupCount}', 'groups'),
-        const SizedBox(width: 12),
+        _stat('${prov.totalCount}', 'agents', AppColors.textMuted),
+        const SizedBox(width: 8),
+        _stat('${prov.groupCount}', 'groups', AppColors.textMuted),
+        const SizedBox(width: 8),
         _stat('${prov.runningCount}', 'running',
-          color: prov.runningCount > 0 ? AppColors.statusRunning : AppColors.textMuted),
+          prov.runningCount > 0 ? AppColors.statusRunning : AppColors.textMuted),
       ],
     );
   }
 
-  Widget _stat(String value, String label, {Color? color}) {
-    return RichText(
-      text: TextSpan(
-        children: [
-          TextSpan(
-            text: value,
-            style: TextStyle(
-              color: color ?? AppColors.textPrimary,
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
+  Widget _stat(String value, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: RichText(
+        text: TextSpan(
+          children: [
+            TextSpan(
+              text: value,
+              style: TextStyle(
+                color: color == AppColors.textMuted ? AppColors.textPrimary : color,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
             ),
-          ),
-          TextSpan(
-            text: ' $label',
-            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-          ),
-        ],
+            TextSpan(
+              text: ' $label',
+              style: TextStyle(color: color, fontSize: 11),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -560,7 +597,24 @@ class _GroupCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.border),
       ),
-      child: Column(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                width: 3,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppColors.secondary, AppColors.primary],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header
@@ -657,8 +711,13 @@ class _GroupCard extends StatelessWidget {
               ),
             ),
           ],
-        ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
+    ),
     );
   }
 
@@ -800,82 +859,97 @@ class _TaskTile extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 8),
+              Container(width: 3, color: statusColor),
               Expanded(
-                child: Text(task.prompt,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(task.prompt,
+                              style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (task.isActive)
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                valueColor: AlwaysStoppedAnimation(statusColor),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _chip(task.status.name.toUpperCase(), statusColor),
+                          const SizedBox(width: 8),
+                          if (target != null) _chip(target, AppColors.textMuted),
+                          const SizedBox(width: 8),
+                          if (task.duration != null)
+                            _chip('${task.duration!.inSeconds}s', AppColors.textMuted),
+                          const Spacer(),
+                          if (task.isActive)
+                            GestureDetector(
+                              onTap: () => prov.cancelTask(task.id),
+                              child: const Text('Cancel',
+                                style: TextStyle(color: AppColors.error, fontSize: 11)),
+                            ),
+                        ],
+                      ),
+                      if (task.result != null) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceAlt,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            task.result!,
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12,
+                            ),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (task.isActive)
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.5,
-                    valueColor: AlwaysStoppedAnimation(statusColor),
-                  ),
-                ),
             ],
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _chip(task.status.name.toUpperCase(), statusColor),
-              const SizedBox(width: 8),
-              if (target != null) _chip(target, AppColors.textMuted),
-              const SizedBox(width: 8),
-              if (task.duration != null)
-                _chip('${task.duration!.inSeconds}s', AppColors.textMuted),
-              const Spacer(),
-              if (task.isActive)
-                GestureDetector(
-                  onTap: () => prov.cancelTask(task.id),
-                  child: const Text('Cancel',
-                    style: TextStyle(color: AppColors.error, fontSize: 11)),
-                ),
-            ],
-          ),
-          if (task.result != null) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceAlt,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                task.result!,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                ),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -918,22 +992,80 @@ class _LogsTab extends StatelessWidget {
           style: TextStyle(color: AppColors.textMuted)),
       );
     }
-    return ListView.builder(
+    return Padding(
       padding: const EdgeInsets.all(20),
-      itemCount: logs.length,
-      itemBuilder: (_, i) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Text(
-            logs[i],
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-              fontFamily: 'monospace',
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF0D1117),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Terminal chrome bar
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                children: [
+                  _dot(const Color(0xFFFF5F57)),
+                  const SizedBox(width: 6),
+                  _dot(const Color(0xFFFEBC2E)),
+                  const SizedBox(width: 6),
+                  _dot(const Color(0xFF28C840)),
+                  const SizedBox(width: 12),
+                  const Text('event log',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontFamily: 'monospace')),
+                ],
+              ),
             ),
-          ),
-        );
-      },
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(14),
+                itemCount: logs.length,
+                itemBuilder: (_, i) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '> ',
+                            style: const TextStyle(
+                              color: AppColors.accent,
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                          TextSpan(
+                            text: logs[i],
+                            style: const TextStyle(
+                              color: Color(0xFF8FBCBB),
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dot(Color color) {
+    return Container(
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }
