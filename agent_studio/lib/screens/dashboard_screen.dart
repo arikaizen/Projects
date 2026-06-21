@@ -15,8 +15,9 @@ import 'agent_builder_dialog.dart';
 import 'group_builder_dialog.dart';
 import 'benchmark_screen.dart';
 import 'settings_panel.dart';
+import 'api_catalog_screen.dart';
 
-enum _Tab { agents, groups, hierarchy, benchmark, tasks, logs }
+enum _Tab { agents, groups, hierarchy, benchmark, tasks, logs, apis }
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -81,6 +82,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case _Tab.benchmark: return BenchmarkTab(prov: prov);
       case _Tab.tasks:     return _TasksTab(prov: prov);
       case _Tab.logs:      return _LogsTab(prov: prov);
+      case _Tab.apis:      return ApiCatalogScreen(mcpServers: prov.mcpServers);
     }
   }
 }
@@ -128,6 +130,7 @@ class _Sidebar extends StatelessWidget {
           _navItem(_Tab.tasks,     Icons.task_outlined,       'Tasks',
             badge: prov.activeTasks.isNotEmpty ? '${prov.activeTasks.length}' : null),
           _navItem(_Tab.logs,      Icons.receipt_long_outlined,'Logs'),
+          _navItem(_Tab.apis,      Icons.api_outlined,         'API Catalog'),
           const Spacer(),
           const Divider(color: AppColors.border, height: 1),
           Consumer<AuthProvider>(
@@ -419,6 +422,7 @@ class _TopBar extends StatelessWidget {
       case _Tab.benchmark: return 'Benchmark';
       case _Tab.tasks:     return 'Tasks';
       case _Tab.logs:      return 'Event Log';
+      case _Tab.apis:      return 'API Catalog';
     }
   }
 
