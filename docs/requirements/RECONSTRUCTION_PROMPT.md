@@ -6,14 +6,15 @@ You are building **Agent Studio** from scratch — a multi-model AI agent orches
 
 ## What You Are Building
 
-Agent Studio lets users create autonomous AI agents, wire them together into pipelines, run them against tasks, and benchmark them across different AI providers. The entire system is C++ on the backend. There is no GUI yet — the backend must be complete first. The GUI is a separate future effort.
+Agent Studio lets users create autonomous AI agents, wire them together into pipelines, run them against tasks, and benchmark them across different AI providers. The backend is entirely C++. The frontend is a React + TypeScript web application that talks to the C++ backend over REST and WebSocket.
 
-The project has five active C++ components and two legacy Dart components that exist only to be deleted:
+The project has six active components and two legacy Dart components that exist only to be deleted:
 
 | Component | Language | Keep? |
 |-----------|----------|-------|
 | Agent Engine (`agent/`) | C++17 | Yes — core library |
 | Agent Server (`agent_server_cpp/`) | C++17 | Yes — build this in Phase 1 |
+| React Web UI (`ui/`) | TypeScript/React | Yes — build this in Phase 1 |
 | MCP Tool Server (`mcp-server/`) | C++17 + Python | Yes — already exists |
 | Auth Server (`auth-server/`) | C++17 | Yes — already exists |
 | Data Server (`data server/`) | C++ | Yes — do not touch |
@@ -30,6 +31,7 @@ Create this exact directory structure:
 Projects/
 ├── agent/                        # C++ Agent Engine — compiles to shared library
 ├── agent_server_cpp/             # C++ Agent Server — HTTP/WebSocket wrapper (build this)
+├── ui/                           # React Web UI (TypeScript) — build this in Phase 1
 ├── agent_server/                 # Dart server — legacy, delete in Phase 2
 ├── mcp-server/                   # C++ MCP Tool Server — already exists
 ├── mcp_server/                   # Dart MCP server — legacy, delete in Phase 2
@@ -42,7 +44,6 @@ Projects/
 │       ├── REQUIREMENTS.md
 │       ├── 01-agent-engine.md
 │       ├── 02-cpp-server.md
-│       ├── 03-flutter-app.md
 │       ├── 04-mcp-server.md
 │       └── 05-decommission-dart.md
 ├── ARCHITECTURE_PLAN.md
@@ -861,7 +862,225 @@ data server/
 
 ---
 
-## Component 6 — Dart Agent Server (`agent_server/`) — DELETE IN PHASE 2
+## Component 6 — React Web UI (`ui/`)
+
+### What it is
+
+A browser-based single-page application that is the only client of the C++ Agent Server. It communicates exclusively over REST and WebSocket — no direct connection to the engine. All business logic stays in the C++ backend; the UI only displays state and sends commands.
+
+### Tech Stack
+
+| Layer | Library | Purpose |
+|-------|---------|---------|
+| Framework | React 18 + TypeScript | Component model, strict typing |
+| Build | Vite | Fast dev server, production bundler |
+| Styling | Tailwind CSS | Utility-first styling |
+| Components | shadcn/ui | Accessible, composable base components |
+| Data fetching | TanStack Query | REST calls, caching, loading states, auto-refetch |
+| WebSocket | reconnecting-websocket | Persistent connection to `/events` with auto-reconnect |
+| Charts | Recharts | Benchmark leaderboard and metric charts |
+| Drag and drop | @dnd-kit/core | Pipeline canvas (Phase 5) |
+| Routing | React Router v6 | Multi-page navigation |
+
+### Directory Structure
+
+```
+ui/
+├── src/
+│   ├── api/
+│   │   ├── agents.ts          # REST calls: CRUD agents, run, cancel, inject
+│   │   ├── groups.ts          # REST calls: CRUD groups, run
+│   │   ├── benchmark.ts       # POST /api/benchmark
+│   │   ├── blackboard.ts      # GET/POST /api/blackboard
+│   │   ├── mcp.ts             # GET/POST/DELETE /api/mcp
+│   │   └── models.ts          # GET /api/llm/models
+│   ├── hooks/
+│   │   ├── useAgents.ts       # TanStack Query wrappers for agent endpoints
+│   │   ├── useGroups.ts       # TanStack Query wrappers for group endpoints
+│   │   ├── useBenchmark.ts    # Benchmark runner hook
+│   │   └── useEvents.ts       # WebSocket /events hook
+│   ├── types/
+│   │   ├── agent.ts           # Agent, AgentStatus, AgentRole types
+│   │   ├── group.ts           # AgentGroup, GroupMode types
+│   │   ├── task.ts            # Task type
+│   │   └── benchmark.ts       # BenchmarkResult type
+│   ├── components/
+│   │   ├── AgentCard.tsx      # Compact tile: name, role, model, status, actions
+│   │   ├── ChatPanel.tsx      # Conversation panel with streaming markdown output
+│   │   ├── StatusBadge.tsx    # Animated badge: idle/running/waiting/done/error
+│   │   ├── HierarchyTree.tsx  # Visual directed graph of agent relationships
+│   │   ├── BenchmarkTable.tsx # Sortable leaderboard with metric columns
+│   │   ├── GroupCard.tsx      # Group tile with mode label and member count
+│   │   ├── LogFeed.tsx        # Live scrolling event log
+│   │   └── ModelSelector.tsx  # Provider + model dropdown fed from /api/llm/models
+│   ├── pages/
+│   │   ├── Dashboard.tsx      # Root layout with six-tab navigation
+│   │   ├── Agents.tsx         # Agent list + create/edit drawer
+│   │   ├── Groups.tsx         # Group list + create/edit drawer
+│   │   ├── Hierarchy.tsx      # Agent relationship canvas
+│   │   ├── Benchmark.tsx      # Benchmark runner + leaderboard
+│   │   ├── Tasks.tsx          # Task history table
+│   │   ├── Logs.tsx           # Live engine event feed
+│   │   └── Settings.tsx       # MCP servers, default LLM, API keys
+│   ├── store/
+│   │   └── eventStore.ts      # In-memory store updated by WebSocket events
+│   ├── auth/
+│   │   ├── AuthContext.tsx    # Token storage, silent refresh, role
+│   │   └── LoginPage.tsx      # OAuth 2.1 + PKCE login flow
+│   └── main.tsx
+├── index.html
+├── vite.config.ts
+├── tailwind.config.ts
+├── tsconfig.json
+└── package.json
+```
+
+### Pages
+
+**Dashboard** — six-tab layout:
+
+| Tab | Content |
+|-----|---------|
+| Agents | Agent list with status badges; create/edit/delete; run with prompt |
+| Groups | Group list; create/edit; run with prompt |
+| Hierarchy | Visual directed graph of pipe and parent/child relationships |
+| Benchmark | Run same prompt across multiple agents; sortable leaderboard |
+| Tasks | Task history: prompt, target, status, duration, result |
+| Logs | Live scrolling engine event feed with timestamps and event types |
+
+**Settings** — MCP server URL list (add/remove), default LLM provider and model (populated from `GET /api/llm/models`), per-provider API key fields.
+
+**Agent create/edit drawer** — 4-step form:
+1. Name and role (orchestrator / worker / specialist / reviewer / planner)
+2. System prompt text editor
+3. Provider and model selection (dynamic list from server)
+4. Review and save
+
+**Group create/edit drawer** — Name, collaboration mode (5 modes), member agent multi-select, edge mapping for sequential and pipeline modes.
+
+### WebSocket Event Hook
+
+```typescript
+// hooks/useEvents.ts
+import ReconnectingWebSocket from 'reconnecting-websocket';
+import { useEffect } from 'react';
+
+export function useEvents(onEvent: (event: AgentEvent) => void) {
+  useEffect(() => {
+    const ws = new ReconnectingWebSocket(`${import.meta.env.VITE_WS_URL}/events`, [], {
+      maxRetries: Infinity,
+      reconnectionDelayGrowFactor: 2,
+      minReconnectionDelay: 2000,
+      maxReconnectionDelay: 16000,
+    });
+    ws.onmessage = (msg) => onEvent(JSON.parse(msg.data));
+    return () => ws.close();
+  }, []);
+}
+```
+
+Events update `eventStore.ts`. TanStack Query invalidates relevant caches on `agent_finished` and `agent_failed` so lists re-fetch automatically.
+
+### REST API Integration
+
+All calls use TanStack Query. Base URL set via `VITE_API_URL` env var. Every request attaches the Bearer token from `AuthContext`.
+
+```typescript
+// api/agents.ts
+const API = import.meta.env.VITE_API_URL;
+
+export const getAgents = () =>
+  fetch(`${API}/api/agents`, { headers: authHeaders() }).then(r => r.json());
+
+export const createAgent = (config: AgentConfig) =>
+  fetch(`${API}/api/agents`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  }).then(r => r.json());
+```
+
+### Authentication Flow (OAuth 2.1 + PKCE)
+
+1. User clicks login → UI generates code verifier and code challenge
+2. Redirect to `GET <AUTH_SERVER>/authorize` with `code_challenge` and `code_challenge_method=S256`
+3. Auth Server returns an authorization code
+4. UI exchanges code for access + refresh token via `POST <AUTH_SERVER>/token`
+5. Access token stored in memory only (not localStorage); refresh token in HTTP-only cookie
+6. Every API request includes `Authorization: Bearer <token>`
+7. On 401 → silently refresh token and retry the request once
+
+### TypeScript Types
+
+Define these types in `ui/src/types/` to match the data models exactly:
+
+```typescript
+// agent.ts
+type AgentStatus = 'idle' | 'running' | 'waiting' | 'done' | 'error' | 'cancelled';
+type AgentRole = 'orchestrator' | 'worker' | 'specialist' | 'reviewer' | 'planner';
+
+interface Agent {
+  id: string;
+  name: string;
+  user_id: string;
+  role: AgentRole;
+  system_prompt: string;
+  model: string;
+  provider: string;
+  status: AgentStatus;
+  parent_id: string | null;
+  metadata: Record<string, unknown>;
+}
+
+// group.ts
+type GroupMode = 'parallel' | 'sequential' | 'broadcast' | 'consensus' | 'pipeline';
+
+interface AgentGroup {
+  id: string;
+  name: string;
+  mode: GroupMode;
+  agents: string[];
+  edges: Record<string, string>;
+}
+
+// benchmark.ts
+interface BenchmarkResult {
+  id: string;
+  agent_id: string;
+  agent_name: string;
+  model: string;
+  provider: string;
+  prompt: string;
+  speed: { latency_ms: number; ttft_ms: number; tokens_per_sec: number };
+  cost: { prompt_tokens: number; completion_tokens: number; total_tokens: number; est_cost_usd: number };
+  quality: { score: number; method: string };
+  reliability: { success: boolean; retries: number; error: string | null };
+  timestamp: string;
+}
+```
+
+### Environment Variables (`ui/.env`)
+
+```bash
+VITE_API_URL=http://localhost:3002      # C++ Agent Server base URL
+VITE_WS_URL=ws://localhost:3002         # C++ Agent Server WebSocket URL
+VITE_AUTH_URL=http://localhost:8080     # C++ Auth Server base URL
+```
+
+### Build and Run
+
+```bash
+# Development
+cd ui && npm install && npm run dev     # Vite dev server at http://localhost:5173
+
+# Production
+cd ui && npm run build                  # Static files output to ui/dist/
+# nginx serves ui/dist/ and proxies /api/, /events, /auth/ to backend services
+```
+
+---
+
+## Component 7 — Dart Agent Server (`agent_server/`) — DELETE IN PHASE 2
 
 This server re-implements agent execution and AI routing independently of the C++ engine, creating dangerous duplication. It runs on port 3001. Do not add any new features. Delete the entire directory in Phase 2.
 
@@ -1089,17 +1308,27 @@ These are hard requirements — not suggestions. Violating them is a bug.
 
 ## Build Order
 
-Build and verify components in this order:
+Build and verify in this order:
 
-1. **Agent Engine** — `cmake -B agent/build -DAGENT_ENABLE_API_LLM=ON && cmake --build agent/build`
-2. **Auth Server** — `cmake -B auth-server/build && cmake --build auth-server/build`
-3. **MCP Tool Server** — `cmake -B mcp-server/build && cmake --build mcp-server/build`
-4. **Agent Server** — `cmake -B agent_server_cpp/build && cmake --build agent_server_cpp/build`
+**Backend (C++)**
+1. `cmake -B agent/build -DAGENT_ENABLE_API_LLM=ON && cmake --build agent/build`
+2. `cmake -B auth-server/build && cmake --build auth-server/build`
+3. `cmake -B mcp-server/build && cmake --build mcp-server/build`
+4. `cmake -B agent_server_cpp/build && cmake --build agent_server_cpp/build`
 
-Verify by starting all four and running:
+**Frontend (React)**
+5. `cd ui && npm install && npm run dev`
+
+Verify backends:
 - `curl http://localhost:8080/.well-known/oauth-authorization-server` → Auth Server metadata
 - `curl -H "Authorization: Bearer <token>" http://localhost:8081/tools` → MCP tool list
 - `curl -H "Authorization: Bearer <token>" http://localhost:3002/health` → Agent Server health
+
+Verify frontend:
+- Open `http://localhost:5173` in a browser → login page loads
+- After login, Dashboard loads with Agents tab
+- Create an agent → it appears in the list
+- Run the agent → status badge updates in real time via WebSocket
 
 ---
 
@@ -1107,11 +1336,11 @@ Verify by starting all four and running:
 
 | Phase | What to do |
 |-------|-----------|
-| **1** | Build the C++ Agent Server (`agent_server_cpp/`) as specified above. It must expose all REST endpoints, the WebSocket `/events` channel, `GET /api/llm/models`, LLM-as-judge benchmarking, and centralized auth introspection. |
+| **1** | Build the C++ Agent Server (`agent_server_cpp/`) and the React UI (`ui/`). The Agent Server must expose all REST endpoints, WebSocket `/events`, `GET /api/llm/models`, LLM-as-judge benchmarking, and centralized auth introspection. The React UI must connect to it and display agents, groups, benchmark results, and the live event log. |
 | **2** | Delete `agent_server/` (Dart) and `mcp_server/` (Dart) directories entirely. |
-| **3** | Update `start.sh` and `docker-compose.yml` to remove all Dart build steps and Dart service entries. |
-| **4** | Verify the full stack: start Auth Server, MCP Server, and Agent Server; spawn an agent via the REST API; send it a prompt; confirm the result arrives over WebSocket; run a benchmark and confirm LLM-as-judge scores are returned. |
-| **5** | GUI — deferred. Do not start this until Phases 1–4 are complete and verified. |
+| **3** | Update `start.sh` and `docker-compose.yml` to remove all Dart references; add React build step and static file serving via nginx. |
+| **4** | Verify the full stack end-to-end: login in the browser, create an agent, run it, watch the event stream update the UI in real time, run a benchmark and confirm LLM-as-judge scores appear in the leaderboard. |
+| **5** | Add drag-and-drop pipeline canvas to the Hierarchy page using @dnd-kit/core. |
 
 ---
 
