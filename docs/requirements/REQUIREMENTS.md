@@ -1099,23 +1099,24 @@ The platform is undergoing a consolidation to eliminate the duplicate Dart serve
 
 | Phase | Goal | Status |
 |-------|------|--------|
-| 1 | Build C++ Agent Server wrapping the engine | Planned |
-| 2 | Remove LLM calls from Flutter app; route all via engine | Planned |
-| 3 | Delete Dart `agent_server` and `mcp_server` directories | Planned |
-| 4 | Remove duplicate `LlmService` and `ModelService` from Flutter | Planned |
-| 5 | Add formation canvas (drag-and-drop pipeline builder) | Planned |
-| 6 | Engine-native benchmarking metrics (replace in-app LLM calls) | Planned |
+| 1 | Build C++ Agent Server (`agent_server_cpp/`) wrapping the engine C API; WebSocket `/events`; `GET /api/llm/models`; centralized auth introspection | Planned |
+| 2 | Delete Dart `agent_server/` and `mcp_server/` directories | Planned |
+| 3 | Clean `start.sh` and `docker-compose.yml` of all Dart build and run steps | Planned |
+| 4 | Add LLM-as-judge quality scorer to benchmark endpoint; configurable via `JUDGE_MODEL` / `JUDGE_PROVIDER` env vars | Planned |
+| 5 | GUI (deferred — to be scoped separately when resumed) | Deferred |
 
 ---
 
-## 12. Open Decisions
+## 12. Architectural Decisions (Resolved)
 
-| # | Question | Options | Recommendation |
-|---|----------|---------|----------------|
-| 1 | **Event transport** for HTTP mode | WebSocket vs SSE | WebSocket — bidirectional, lower overhead, browser-native |
-| 2 | **Model list source** | New `GET /api/llm/models` engine endpoint vs static presets in Flutter | Engine endpoint — keeps GUI decoupled from model catalogue |
-| 3 | **Quality scoring default** | LLM-as-judge, expected-answer comparison, or both configurable | Configurable — different use cases need different methods |
-| 4 | **Auth on C++ Server** | Sit behind auth-server (like mcp-server) or standalone JWT validation | Behind auth-server — consistent policy enforcement |
+All four decisions are locked. No further discussion needed — implement exactly as specified below.
+
+| # | Decision | Resolution |
+|---|----------|------------|
+| 1 | **Event transport** | **WebSocket** — C++ Agent Server opens a persistent two-way WebSocket connection at `WS /events`. Engine event callbacks are marshalled from engine threads into a thread-safe queue; a dedicated sender thread drains the queue and writes to all connected clients. |
+| 2 | **Model list** | **Dynamic endpoint** — Agent Server exposes `GET /api/llm/models`. For each configured provider the server queries the provider's model-list API and returns the live result. Response schema: `{"provider": "<name>", "models": ["model-id", ...]}[]`. |
+| 3 | **Benchmark quality scoring** | **LLM-as-judge** — After each agent completes a benchmark run, the Agent Server sends the original prompt and the agent's response to a designated judge model (configurable via `JUDGE_MODEL` and `JUDGE_PROVIDER` env vars). The judge is prompted to return a numeric score 0–10 as JSON. That score is stored in `BenchmarkResult.quality.score` with `"method": "llm_judge"`. |
+| 4 | **Auth enforcement on Agent Server** | **Centralized introspection** — The Agent Server calls `POST <AUTH_SERVER_URL>/introspect` on every inbound request, identical to how the MCP Tool Server does it. Valid token responses are cached in-process for 60 seconds. Returns HTTP 401 on failure. |
 
 ---
 
